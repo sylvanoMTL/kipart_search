@@ -6,7 +6,14 @@ Only available when KiCad 9+ is running with IPC API enabled.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
+
+log = logging.getLogger(__name__)
+
+# Common field names for MPN across different KiCad libraries
+MPN_FIELD_NAMES = {"mpn", "manf#", "mfr part", "mfr.part", "manufacturer part number",
+                   "manufacturer_part_number", "part number", "pn"}
 
 
 @dataclass
@@ -17,6 +24,18 @@ class BoardComponent:
     footprint: str        # e.g. "Capacitor_SMD:C_0805_2012Metric"
     mpn: str = ""         # Manufacturer Part Number (may be empty)
     datasheet: str = ""   # Datasheet URL (may be empty)
+    extra_fields: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def has_mpn(self) -> bool:
+        return bool(self.mpn.strip())
+
+    @property
+    def footprint_short(self) -> str:
+        """Return just the footprint name without library prefix."""
+        if ":" in self.footprint:
+            return self.footprint.split(":", 1)[1]
+        return self.footprint
 
 
 class KiCadBridge:
@@ -29,6 +48,7 @@ class KiCadBridge:
     def __init__(self):
         self._kicad = None
         self._board = None
+        self._footprint_cache: dict[str, object] = {}  # reference → FootprintInstance
 
     def connect(self) -> bool:
         """Attempt to connect to KiCad IPC API.
@@ -39,8 +59,13 @@ class KiCadBridge:
             from kipy import KiCad
             self._kicad = KiCad()
             self._board = self._kicad.get_board()
+            log.info("Connected to KiCad IPC API")
             return True
-        except Exception:
+        except ImportError:
+            log.info("kicad-python (kipy) not installed — KiCad integration disabled")
+            return False
+        except Exception as e:
+            log.info("Could not connect to KiCad: %s", e)
             self._kicad = None
             self._board = None
             return False
@@ -54,9 +79,58 @@ class KiCadBridge:
         if not self.is_connected:
             return []
 
-        # TODO: Iterate footprints, extract reference, value, footprint,
-        # MPN field, datasheet field → list of BoardComponent
-        return []
+        components = []
+        self._footprint_cache.clear()
+
+        try:
+            footprints = self._board.get_footprints()
+        except Exception as e:
+            log.warning("Failed to read footprints: %s", e)
+            return []
+
+        for fp in footprints:
+            try:
+                ref = fp.reference_field.text.value
+                value = fp.value_field.text.value
+                footprint_id = str(fp.definition.id) if fp.definition else ""
+
+                # Read datasheet field
+                datasheet = ""
+                try:
+                    datasheet = fp.datasheet_field.text.value
+                except Exception:
+                    pass
+
+                # Read all custom fields, find MPN
+                mpn = ""
+                extra_fields = {}
+                try:
+                    for item in fp.texts_and_fields:
+                        if hasattr(item, "name") and hasattr(item, "text"):
+                            fname = item.name
+                            fval = item.text.value if item.text else ""
+                            extra_fields[fname] = fval
+                            if fname.lower().strip() in MPN_FIELD_NAMES:
+                                mpn = fval
+                except Exception:
+                    pass
+
+                self._footprint_cache[ref] = fp
+
+                components.append(BoardComponent(
+                    reference=ref,
+                    value=value,
+                    footprint=footprint_id,
+                    mpn=mpn,
+                    datasheet=datasheet,
+                    extra_fields=extra_fields,
+                ))
+            except Exception as e:
+                log.warning("Failed to read footprint: %s", e)
+                continue
+
+        log.info("Read %d components from KiCad board", len(components))
+        return components
 
     def select_component(self, reference: str) -> bool:
         """Select/highlight a component in KiCad by reference.
@@ -66,16 +140,57 @@ class KiCadBridge:
         if not self.is_connected:
             return False
 
-        # TODO: Find footprint by reference, call board.select()
-        return False
+        fp = self._footprint_cache.get(reference)
+        if fp is None:
+            log.warning("Component %s not found in cache", reference)
+            return False
+
+        try:
+            self._board.clear_selection()
+            self._board.add_to_selection(fp)
+            return True
+        except Exception as e:
+            log.warning("Failed to select %s: %s", reference, e)
+            return False
 
     def write_field(self, reference: str, field_name: str, value: str) -> bool:
         """Write a field value to a component (e.g. MPN, datasheet).
 
         Safety: caller must check that the field is empty before calling.
+        This method does NOT overwrite non-empty fields.
         """
         if not self.is_connected:
             return False
 
-        # TODO: Find footprint, set field value via IPC API
-        return False
+        fp = self._footprint_cache.get(reference)
+        if fp is None:
+            log.warning("Component %s not found in cache", reference)
+            return False
+
+        try:
+            # Check predefined fields first
+            if field_name.lower() == "datasheet":
+                current = fp.datasheet_field.text.value
+                if current and current.strip():
+                    log.warning("Field 'datasheet' on %s is not empty, skipping", reference)
+                    return False
+                fp.datasheet_field.text.value = value
+                self._board.update_items(fp)
+                return True
+
+            # Search custom fields
+            for item in fp.texts_and_fields:
+                if hasattr(item, "name") and item.name.lower() == field_name.lower():
+                    current = item.text.value if item.text else ""
+                    if current and current.strip():
+                        log.warning("Field '%s' on %s is not empty, skipping", field_name, reference)
+                        return False
+                    item.text.value = value
+                    self._board.update_items(fp)
+                    return True
+
+            log.warning("Field '%s' not found on %s", field_name, reference)
+            return False
+        except Exception as e:
+            log.warning("Failed to write field '%s' on %s: %s", field_name, reference, e)
+            return False
