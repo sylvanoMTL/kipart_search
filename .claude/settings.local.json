@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx bmad-method:*)",
+      "Bash(find c:/Git_Repo_Clones/kipart-search/_bmad -type f -name *brainstorm*)",
+      "Bash(find c:/Git_Repo_Clones/kipart-search/.claude -type f -name *brainstorm*)",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  }
+}
