@@ -13,8 +13,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
-    QStackedWidget,
     QStatusBar,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -108,30 +108,23 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
 
-        # Top bar with action buttons
-        top_bar = QHBoxLayout()
-        self.scan_btn = QPushButton("Scan Project")
-        self.scan_btn.setToolTip("Connect to KiCad and verify BOM")
-        self.scan_btn.clicked.connect(self._on_scan)
-        self.search_btn = QPushButton("Search Parts")
-        self.search_btn.setToolTip("Show parametric search view")
-        self.search_btn.clicked.connect(self._show_search_view)
+        # Tab widget: Search and BOM Verification as separate tabs
+        self._tabs = QTabWidget()
+        layout.addWidget(self._tabs)
+
+        # ── Tab 0: Search Parts ──
+        search_tab = QWidget()
+        search_layout = QVBoxLayout(search_tab)
+
+        # Search toolbar
+        search_toolbar = QHBoxLayout()
         self.db_btn = QPushButton("Download Database")
         self.db_btn.setToolTip("Download or update the JLCPCB parts database")
         self.db_btn.clicked.connect(self._on_download_db)
-        top_bar.addWidget(self.scan_btn)
-        top_bar.addWidget(self.search_btn)
-        top_bar.addWidget(self.db_btn)
-        top_bar.addStretch()
-        layout.addLayout(top_bar)
+        search_toolbar.addWidget(self.db_btn)
+        search_toolbar.addStretch()
+        search_layout.addLayout(search_toolbar)
 
-        # Stacked widget: search view (0) and verify view (1)
-        self._stack = QStackedWidget()
-
-        # Search view
-        search_widget = QWidget()
-        search_layout = QVBoxLayout(search_widget)
-        search_layout.setContentsMargins(0, 0, 0, 0)
         self.search_bar = SearchBar()
         self.search_bar.search_requested.connect(self._on_search)
         search_layout.addWidget(self.search_bar)
@@ -140,15 +133,28 @@ class MainWindow(QMainWindow):
         self.results_table = ResultsTable()
         self.results_table.part_selected.connect(self._on_part_selected)
         search_layout.addWidget(self.results_table)
-        self._stack.addWidget(search_widget)
 
-        # Verify view
+        self._tabs.addTab(search_tab, "Search Parts")
+
+        # ── Tab 1: BOM Verification ──
+        bom_tab = QWidget()
+        bom_layout = QVBoxLayout(bom_tab)
+
+        # BOM toolbar
+        bom_toolbar = QHBoxLayout()
+        self.scan_btn = QPushButton("Scan Project")
+        self.scan_btn.setToolTip("Connect to KiCad and verify BOM")
+        self.scan_btn.clicked.connect(self._on_scan)
+        bom_toolbar.addWidget(self.scan_btn)
+        bom_toolbar.addStretch()
+        bom_layout.addLayout(bom_toolbar)
+
         self.verify_panel = VerifyPanel()
         self.verify_panel.component_clicked.connect(self._on_component_clicked)
         self.verify_panel.search_for_component.connect(self._on_guided_search)
-        self._stack.addWidget(self.verify_panel)
+        bom_layout.addWidget(self.verify_panel)
 
-        layout.addWidget(self._stack)
+        self._tabs.addTab(bom_tab, "BOM Verification")
 
         # Status bar
         self.status_bar = QStatusBar()
@@ -182,13 +188,13 @@ class MainWindow(QMainWindow):
 
         self.status_bar.showMessage(" | ".join(parts))
 
-    def _show_search_view(self):
-        """Switch to the search/results view."""
-        self._stack.setCurrentIndex(0)
+    def _show_search_tab(self):
+        """Switch to the Search Parts tab."""
+        self._tabs.setCurrentIndex(0)
 
-    def _show_verify_view(self):
-        """Switch to the verification dashboard view."""
-        self._stack.setCurrentIndex(1)
+    def _show_bom_tab(self):
+        """Switch to the BOM Verification tab."""
+        self._tabs.setCurrentIndex(1)
 
     # --- Search ---
 
@@ -227,20 +233,15 @@ class MainWindow(QMainWindow):
         """Scan the KiCad project and verify BOM."""
         # Try to connect if not already connected
         if not self._bridge.is_connected:
-            if not self._bridge.connect():
-                QMessageBox.warning(
-                    self,
-                    "KiCad Not Found",
-                    "Could not connect to KiCad.\n\n"
-                    "Make sure KiCad 9+ is running with a board open\n"
-                    "and the IPC API is enabled.",
-                )
+            ok, error_msg = self._bridge.connect()
+            if not ok:
+                self._show_connection_error(error_msg)
                 return
 
         self._update_status()
         self.scan_btn.setEnabled(False)
         self.scan_btn.setText("Scanning...")
-        self._show_verify_view()
+        self._show_bom_tab()
 
         self._scan_worker = ScanWorker(self._bridge, self._orchestrator)
         self._scan_worker.scan_complete.connect(self._on_scan_complete)
@@ -259,6 +260,30 @@ class MainWindow(QMainWindow):
         self.scan_btn.setEnabled(True)
         self.scan_btn.setText("Scan Project")
 
+    def _show_connection_error(self, error_msg: str):
+        """Show a connection error dialog with copyable diagnostics."""
+        diag = self._bridge.get_diagnostics()
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setWindowTitle("KiCad Connection Failed")
+        dialog.setText(
+            "Could not connect to KiCad IPC API.\n\n"
+            "Checklist:\n"
+            "  1. KiCad 9+ is running\n"
+            "  2. A board (.kicad_pcb) is open in the PCB editor\n"
+            "  3. IPC API is enabled (Preferences → API)\n"
+            "  4. KiCad was restarted after enabling the API"
+        )
+        dialog.setDetailedText(
+            f"Error:\n{error_msg}\n\n"
+            f"--- Diagnostics ---\n{diag}"
+        )
+
+        # Make the detailed text area wider and selectable
+        dialog.setMinimumWidth(500)
+        dialog.exec()
+
     def _on_component_clicked(self, reference: str):
         """Highlight the clicked component in KiCad."""
         self._bridge.select_component(reference)
@@ -272,7 +297,7 @@ class MainWindow(QMainWindow):
             return
 
         self._assign_target = comp
-        self._show_search_view()
+        self._show_search_tab()
         query = comp.value
         if comp.footprint_short:
             query = f"{comp.value} {comp.footprint_short}"
@@ -330,7 +355,8 @@ class MainWindow(QMainWindow):
         """Open the database download dialog."""
         from kipart_search.gui.download_dialog import DownloadDialog
 
-        dialog = DownloadDialog(self)
+        db_path = self._jlcpcb_source.db_path if self._jlcpcb_source else None
+        dialog = DownloadDialog(db_path=db_path, parent=self)
         dialog.download_complete.connect(self._on_db_downloaded)
         dialog.exec()
 

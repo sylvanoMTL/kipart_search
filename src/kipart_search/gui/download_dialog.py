@@ -1,4 +1,4 @@
-"""Database download dialog with progress bar."""
+"""Database download dialog with update check and location picker."""
 
 from __future__ import annotations
 
@@ -7,13 +7,34 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QDialog,
+    QFileDialog,
+    QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QVBoxLayout,
 )
 
 from kipart_search.core.sources import JLCPCBSource
+
+
+class UpdateCheckWorker(QThread):
+    """Background thread for checking if a database update is available."""
+
+    result = Signal(bool, str)  # (update_available, message)
+
+    def __init__(self, db_path: Path | None = None):
+        super().__init__()
+        self.db_path = db_path
+
+    def run(self):
+        try:
+            available, msg = JLCPCBSource.check_for_update(self.db_path)
+            self.result.emit(available, msg)
+        except Exception as e:
+            self.result.emit(False, f"Check failed: {e}")
 
 
 class DownloadWorker(QThread):
@@ -23,7 +44,7 @@ class DownloadWorker(QThread):
     finished = Signal(str)            # path to database
     error = Signal(str)               # error message
 
-    def __init__(self, target_dir: Path | None = None):
+    def __init__(self, target_dir: Path):
         super().__init__()
         self.target_dir = target_dir
 
@@ -39,24 +60,40 @@ class DownloadWorker(QThread):
 
 
 class DownloadDialog(QDialog):
-    """Dialog for downloading the JLCPCB parts database."""
+    """Dialog for downloading/updating the JLCPCB parts database."""
 
     download_complete = Signal(str)  # path to database
 
-    def __init__(self, parent=None):
+    def __init__(self, db_path: Path | None = None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Download JLCPCB Database")
-        self.setMinimumWidth(450)
+        self.setWindowTitle("JLCPCB Database")
+        self.setMinimumWidth(500)
         self.setModal(True)
+
+        self._db_path = db_path or JLCPCBSource.default_db_path()
+        self._worker: DownloadWorker | None = None
+        self._check_worker: UpdateCheckWorker | None = None
 
         layout = QVBoxLayout(self)
 
-        self.info_label = QLabel(
-            "The JLCPCB parts database (~500 MB) needs to be downloaded.\n"
-            "This is a one-time download. You can update it later."
-        )
+        # Database location
+        loc_label = QLabel("Database location:")
+        layout.addWidget(loc_label)
+
+        loc_row = QHBoxLayout()
+        self.path_edit = QLineEdit(str(self._db_path.parent))
+        self.path_edit.setReadOnly(True)
+        loc_row.addWidget(self.path_edit)
+        self.browse_btn = QPushButton("Browse...")
+        self.browse_btn.clicked.connect(self._on_browse)
+        loc_row.addWidget(self.browse_btn)
+        layout.addLayout(loc_row)
+
+        # Status / info
+        self.info_label = QLabel("Checking for updates...")
         layout.addWidget(self.info_label)
 
+        # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setMinimum(0)
         self.progress_bar.setValue(0)
@@ -67,23 +104,60 @@ class DownloadDialog(QDialog):
         self.status_label.setVisible(False)
         layout.addWidget(self.status_label)
 
+        # Buttons
+        btn_row = QHBoxLayout()
         self.download_btn = QPushButton("Download")
+        self.download_btn.setEnabled(False)
         self.download_btn.clicked.connect(self._start_download)
-        layout.addWidget(self.download_btn)
+        btn_row.addWidget(self.download_btn)
 
         self.close_btn = QPushButton("Cancel")
         self.close_btn.clicked.connect(self.reject)
-        layout.addWidget(self.close_btn)
+        btn_row.addWidget(self.close_btn)
+        layout.addLayout(btn_row)
 
-        self._worker: DownloadWorker | None = None
+        # Auto-check on open
+        self._check_for_update()
+
+    def _on_browse(self):
+        """Let the user pick a directory for the database."""
+        directory = QFileDialog.getExistingDirectory(
+            self, "Select Database Directory", str(self._db_path.parent)
+        )
+        if directory:
+            self._db_path = Path(directory) / "parts-fts5.db"
+            self.path_edit.setText(directory)
+            # Re-check with new path
+            self._check_for_update()
+
+    def _check_for_update(self):
+        """Check if the database needs downloading/updating."""
+        self.info_label.setText("Checking for updates...")
+        self.download_btn.setEnabled(False)
+
+        self._check_worker = UpdateCheckWorker(self._db_path)
+        self._check_worker.result.connect(self._on_check_result)
+        self._check_worker.start()
+
+    def _on_check_result(self, update_available: bool, message: str):
+        self.info_label.setText(message)
+        if update_available:
+            self.download_btn.setEnabled(True)
+            self.download_btn.setText("Download")
+        else:
+            self.download_btn.setEnabled(False)
+            self.download_btn.setText("Up to date")
+            self.close_btn.setText("Close")
 
     def _start_download(self):
         self.download_btn.setEnabled(False)
+        self.browse_btn.setEnabled(False)
         self.close_btn.setText("Cancel")
         self.progress_bar.setVisible(True)
         self.status_label.setVisible(True)
 
-        self._worker = DownloadWorker()
+        target_dir = self._db_path.parent
+        self._worker = DownloadWorker(target_dir)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
@@ -97,9 +171,11 @@ class DownloadDialog(QDialog):
     def _on_finished(self, db_path: str):
         self.status_label.setText("Database downloaded successfully!")
         self.close_btn.setText("Close")
+        self.browse_btn.setEnabled(True)
         self.download_complete.emit(db_path)
 
     def _on_error(self, error_msg: str):
         self.status_label.setText(f"Error: {error_msg}")
         self.download_btn.setEnabled(True)
         self.download_btn.setText("Retry")
+        self.browse_btn.setEnabled(True)
