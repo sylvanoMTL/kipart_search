@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kipart-search"
+version = "0.1.0"
+description = "Parametric electronic component search with KiCad integration"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Sylvain Boyer (MecaFrog)" },
+]
+dependencies = [
+    "httpx",
+    "keyring",
+    "PySide6",
+]
+
+[project.optional-dependencies]
+kicad = ["kicad-python"]
+dev = ["pytest"]
+
+[project.scripts]
+kipart-search = "kipart_search.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kipart_search"]
