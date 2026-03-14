@@ -50,25 +50,73 @@ class KiCadBridge:
         self._board = None
         self._footprint_cache: dict[str, object] = {}  # reference → FootprintInstance
 
-    def connect(self) -> bool:
+    def connect(self) -> tuple[bool, str]:
         """Attempt to connect to KiCad IPC API.
 
-        Returns True if connection successful, False otherwise.
+        Returns (success, diagnostic_message).
         """
         try:
             from kipy import KiCad
+        except ImportError:
+            msg = "kicad-python (kipy) not installed — KiCad integration disabled"
+            log.info(msg)
+            return False, msg
+
+        try:
             self._kicad = KiCad()
             self._board = self._kicad.get_board()
             log.info("Connected to KiCad IPC API")
-            return True
-        except ImportError:
-            log.info("kicad-python (kipy) not installed — KiCad integration disabled")
-            return False
+            return True, "Connected"
         except Exception as e:
             log.info("Could not connect to KiCad: %s", e)
             self._kicad = None
             self._board = None
-            return False
+            return False, str(e)
+
+    def get_diagnostics(self) -> str:
+        """Gather diagnostic info for debugging connection issues."""
+        import os
+        import platform
+
+        lines = [
+            f"Platform: {platform.system()} {platform.release()}",
+            f"Python: {platform.python_version()}",
+        ]
+
+        # kipy version
+        try:
+            import kipy
+            lines.append(f"kipy version: {getattr(kipy, '__version__', 'unknown')}")
+        except ImportError:
+            lines.append("kipy: NOT INSTALLED")
+
+        # Environment variables KiCad sets for API plugins
+        for var in ("KICAD_API_SOCKET", "KICAD_API_TOKEN", "KICAD_RUN_FROM_BUILD_DIR"):
+            val = os.environ.get(var)
+            lines.append(f"{var}: {val or '(not set)'}")
+
+        # Check common socket paths
+        if platform.system() == "Windows":
+            pipe_path = r"\\.\pipe\kicad"
+            lines.append(f"Windows named pipe prefix: {pipe_path}")
+            # Check KICAD_API_SOCKET or default
+            socket_val = os.environ.get("KICAD_API_SOCKET", "(not set)")
+            lines.append(f"Expected socket: {socket_val}")
+        else:
+            import glob
+            sock_patterns = ["/tmp/kicad/api.sock", "/tmp/kicad/*.sock"]
+            found = []
+            for pat in sock_patterns:
+                found.extend(glob.glob(pat))
+            if found:
+                lines.append(f"Found sockets: {', '.join(found)}")
+            else:
+                lines.append("No KiCad API sockets found in /tmp/kicad/")
+
+        # Connection state
+        lines.append(f"Bridge connected: {self.is_connected}")
+
+        return "\n".join(lines)
 
     @property
     def is_connected(self) -> bool:
