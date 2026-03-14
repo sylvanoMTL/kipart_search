@@ -8,7 +8,10 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(PYTHONPATH=src .env/Scripts/python.exe -c \"from kipart_search.core.models import PartResult, Confidence, PARAM_TEMPLATES; print\\(''Models OK:'', list\\(PARAM_TEMPLATES.keys\\(\\)\\)\\); from kipart_search.vendored.units import compareValues; print\\(''Units OK:'', compareValues\\(''100nF'', ''0.1uF''\\)\\); from kipart_search.core.sources import JLCPCBSource; print\\(''Sources OK:'', JLCPCBSource.default_db_path\\(\\)\\); from kipart_search.core.cache import QueryCache; print\\(''Cache OK''\\)\")",
       "Bash(PYTHONPATH=src .env/Scripts/python.exe -c \":*)",
-      "Bash(.env/Scripts/pip.exe install:*)"
+      "Bash(.env/Scripts/pip.exe install:*)",
+      "Bash(.env/Scripts/python.exe -c \":*)",
+      "Bash(git commit -m \"*:*)",
+      "Bash(git push:*)"
     ]
   }
 }
