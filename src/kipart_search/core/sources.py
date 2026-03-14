@@ -210,8 +210,8 @@ class JLCPCBSource(DataSource):
         """Check if a newer database is available remotely.
 
         Returns (update_available, message).
-        If the database doesn't exist locally, returns (True, ...).
-        Compares the remote chunk count with what was stored at last download.
+        Uses the HTTP Last-Modified header on the chunk count file as
+        the remote build date, and compares with local metadata.
         """
         import json
 
@@ -226,40 +226,56 @@ class JLCPCBSource(DataSource):
         # Read local metadata
         local_chunks = None
         local_date = None
+        local_remote_date = None
         if meta_path.exists():
             try:
                 meta = json.loads(meta_path.read_text())
                 local_chunks = meta.get("chunk_count")
                 local_date = meta.get("downloaded_at", "unknown")
+                local_remote_date = meta.get("remote_last_modified")
             except Exception:
                 pass
 
-        # Fetch remote chunk count
+        # Fetch remote chunk count and Last-Modified header
         try:
             with httpx.Client(timeout=15, follow_redirects=True) as client:
                 r = client.get(JLCPCBSource.URL_BASE + JLCPCBSource.CHUNK_COUNT_FILE)
                 r.raise_for_status()
                 remote_chunks = int(r.text.strip())
+                remote_last_modified = r.headers.get("last-modified", "")
         except Exception as e:
             return False, f"Could not check for updates: {e}"
 
         if local_chunks is None:
-            # We have a DB but no metadata — can't tell, assume update available
             return True, (
                 f"Local database exists but has no version info.\n"
-                f"Remote has {remote_chunks} chunks."
+                f"Remote: {remote_chunks} chunks"
+                f" (built {remote_last_modified})." if remote_last_modified else "."
             )
 
+        # Compare: either chunk count changed or remote was rebuilt
         if remote_chunks != local_chunks:
             return True, (
-                f"Update available: remote has {remote_chunks} chunks, "
-                f"local has {local_chunks} (downloaded {local_date})."
+                f"Update available: remote has {remote_chunks} chunks "
+                f"(built {remote_last_modified}),\n"
+                f"local has {local_chunks} chunks (downloaded {local_date})."
             )
 
-        return False, f"Database is up to date ({local_chunks} chunks, downloaded {local_date})."
+        if remote_last_modified and local_remote_date and remote_last_modified != local_remote_date:
+            return True, (
+                f"Database was rebuilt on the server.\n"
+                f"Remote: {remote_last_modified}\n"
+                f"Local: downloaded {local_date} (server was {local_remote_date})."
+            )
+
+        return False, (
+            f"Database is up to date.\n"
+            f"Chunks: {local_chunks} | Downloaded: {local_date}"
+            + (f" | Server build: {local_remote_date}" if local_remote_date else "")
+        )
 
     @staticmethod
-    def _save_db_metadata(db_path: Path, chunk_count: int):
+    def _save_db_metadata(db_path: Path, chunk_count: int, remote_last_modified: str = ""):
         """Save metadata alongside the database after download."""
         import json
         from datetime import datetime, timezone
@@ -268,6 +284,7 @@ class JLCPCBSource(DataSource):
         meta = {
             "chunk_count": chunk_count,
             "downloaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "remote_last_modified": remote_last_modified,
             "db_file": db_path.name,
         }
         meta_path.write_text(json.dumps(meta, indent=2))
@@ -304,12 +321,13 @@ class JLCPCBSource(DataSource):
                 progress_callback(step, total, msg)
             log.info("Download [%d/%d]: %s", step, total, msg)
 
-        # Step 1: Get chunk count
+        # Step 1: Get chunk count and server build date
         _report(0, 1, "Checking database version...")
         with httpx.Client(timeout=60, follow_redirects=True) as client:
             r = client.get(JLCPCBSource.URL_BASE + JLCPCBSource.CHUNK_COUNT_FILE)
             r.raise_for_status()
             total_chunks = int(r.text.strip())
+            remote_last_modified = r.headers.get("last-modified", "")
 
         _report(0, total_chunks + 2, f"Downloading {total_chunks} chunks...")
 
@@ -354,7 +372,7 @@ class JLCPCBSource(DataSource):
 
         zip_file.unlink()  # Clean up zip
 
-        JLCPCBSource._save_db_metadata(db_file, total_chunks)
+        JLCPCBSource._save_db_metadata(db_file, total_chunks, remote_last_modified)
         _report(total_chunks + 2, total_chunks + 2, "Database ready!")
         return db_file
 
