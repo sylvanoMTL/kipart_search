@@ -28,6 +28,10 @@ class SearchBar(QWidget):
         self.search_button.clicked.connect(self._on_search)
         layout.addWidget(self.search_button)
 
+    def set_query(self, query: str):
+        """Set the search input text programmatically."""
+        self.query_input.setText(query)
+
     def _on_search(self):
         query = self.query_input.text().strip()
         if query:

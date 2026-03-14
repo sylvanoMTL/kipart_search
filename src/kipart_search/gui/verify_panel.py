@@ -32,6 +32,7 @@ class VerifyPanel(QWidget):
     """Verification dashboard showing BOM health."""
 
     component_clicked = Signal(str)  # Emits reference when row clicked
+    search_for_component = Signal(int)  # Emits row index on double-click missing MPN
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -61,7 +62,10 @@ class VerifyPanel(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.cellClicked.connect(self._on_cell_clicked)
+        self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         layout.addWidget(self.table)
+
+        self._components: list[BoardComponent] = []
 
     def set_results(
         self,
@@ -74,6 +78,7 @@ class VerifyPanel(QWidget):
             components: List of board components from KiCad
             mpn_statuses: Map of reference → confidence level from MPN verification
         """
+        self._components = list(components)
         self.table.setRowCount(len(components))
 
         has_mpn = 0
@@ -143,10 +148,23 @@ class VerifyPanel(QWidget):
             self.summary_label.setText("No components found")
             self.health_bar.setVisible(False)
 
+    def get_component(self, row: int) -> BoardComponent | None:
+        """Return the BoardComponent for a given row index."""
+        if 0 <= row < len(self._components):
+            return self._components[row]
+        return None
+
     def _on_cell_clicked(self, row: int, _col: int):
         ref_item = self.table.item(row, 0)
         if ref_item:
             self.component_clicked.emit(ref_item.text())
+
+    def _on_cell_double_clicked(self, row: int, col: int):
+        """Double-click on MPN column of a missing-MPN row opens guided search."""
+        if col in (2, 3) and 0 <= row < len(self._components):
+            comp = self._components[row]
+            if not comp.has_mpn:
+                self.search_for_component.emit(row)
 
     def clear(self):
         """Clear the verification table."""

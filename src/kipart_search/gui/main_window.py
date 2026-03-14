@@ -101,6 +101,7 @@ class MainWindow(QMainWindow):
         self._search_worker: SearchWorker | None = None
         self._scan_worker: ScanWorker | None = None
         self._bridge = KiCadBridge()
+        self._assign_target: BoardComponent | None = None  # Component being assigned
 
         # Central widget
         central = QWidget()
@@ -137,12 +138,14 @@ class MainWindow(QMainWindow):
         self.results_label = QLabel("")
         search_layout.addWidget(self.results_label)
         self.results_table = ResultsTable()
+        self.results_table.part_selected.connect(self._on_part_selected)
         search_layout.addWidget(self.results_table)
         self._stack.addWidget(search_widget)
 
         # Verify view
         self.verify_panel = VerifyPanel()
         self.verify_panel.component_clicked.connect(self._on_component_clicked)
+        self.verify_panel.search_for_component.connect(self._on_guided_search)
         self._stack.addWidget(self.verify_panel)
 
         layout.addWidget(self._stack)
@@ -259,6 +262,67 @@ class MainWindow(QMainWindow):
     def _on_component_clicked(self, reference: str):
         """Highlight the clicked component in KiCad."""
         self._bridge.select_component(reference)
+
+    # --- Guided search & assign ---
+
+    def _on_guided_search(self, row: int):
+        """Switch to search view pre-filled with the component's value."""
+        comp = self.verify_panel.get_component(row)
+        if comp is None:
+            return
+
+        self._assign_target = comp
+        self._show_search_view()
+        query = comp.value
+        if comp.footprint_short:
+            query = f"{comp.value} {comp.footprint_short}"
+        self.search_bar.set_query(query)
+        self._on_search(query)
+
+    def _on_part_selected(self, row: int):
+        """Handle double-click on a search result to assign it."""
+        part = self.results_table.get_result(row)
+        if part is None:
+            return
+
+        if not self._bridge.is_connected:
+            QMessageBox.information(
+                self,
+                "Not Connected",
+                "Connect to KiCad first (Scan Project) to assign parts.",
+            )
+            return
+
+        if self._assign_target is None:
+            QMessageBox.information(
+                self,
+                "No Target",
+                "Double-click a missing-MPN component in the verification view first,\n"
+                "then double-click a search result to assign it.",
+            )
+            return
+
+        from kipart_search.gui.assign_dialog import AssignDialog
+
+        dialog = AssignDialog(self._assign_target, part, parent=self)
+        if dialog.exec():
+            fields = dialog.fields_to_write
+            ref = self._assign_target.reference
+            written = 0
+            for field_name, value in fields.items():
+                if self._bridge.write_field(ref, field_name, value):
+                    written += 1
+
+            if written > 0:
+                self.status_bar.showMessage(
+                    f"Wrote {written} field(s) to {ref}", 5000
+                )
+            else:
+                self.status_bar.showMessage(
+                    f"No fields written to {ref}", 5000
+                )
+
+            self._assign_target = None
 
     # --- Database ---
 
