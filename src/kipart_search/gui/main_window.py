@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal, Qt
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -13,8 +16,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QStatusBar,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -24,6 +27,7 @@ from kipart_search.core.models import Confidence
 from kipart_search.core.sources import JLCPCBSource
 from kipart_search.core.search import SearchOrchestrator
 from kipart_search.gui.kicad_bridge import BoardComponent, KiCadBridge
+from kipart_search.gui.log_panel import LogPanel
 from kipart_search.gui.search_bar import SearchBar
 from kipart_search.gui.results_table import ResultsTable
 from kipart_search.gui.verify_panel import VerifyPanel
@@ -34,6 +38,7 @@ class SearchWorker(QThread):
 
     results_ready = Signal(list)
     error = Signal(str)
+    log = Signal(str)
 
     def __init__(self, orchestrator: SearchOrchestrator, query: str):
         super().__init__()
@@ -42,9 +47,12 @@ class SearchWorker(QThread):
 
     def run(self):
         try:
+            self.log.emit(f"Searching for '{self.query}' ...")
             results = self.orchestrator.search(self.query, limit=200)
+            self.log.emit(f"Found {len(results)} result(s).")
             self.results_ready.emit(results)
         except Exception as e:
+            self.log.emit(f"Search error: {e}")
             self.error.emit(str(e))
 
 
@@ -53,6 +61,7 @@ class ScanWorker(QThread):
 
     scan_complete = Signal(list, dict)  # components, mpn_statuses
     error = Signal(str)
+    log = Signal(str)
 
     def __init__(self, bridge: KiCadBridge, orchestrator: SearchOrchestrator):
         super().__init__()
@@ -61,29 +70,39 @@ class ScanWorker(QThread):
 
     def run(self):
         try:
+            self.log.emit("Reading components from KiCad board ...")
             components = self.bridge.get_components()
             if not components:
                 self.error.emit("No components found on the board")
                 return
 
-            # Verify each component's MPN against the database
+            self.log.emit(f"Read {len(components)} components. Verifying MPNs ...")
+
             mpn_statuses: dict[str, Confidence] = {}
+            green = 0
+            red = 0
             for comp in components:
                 if not comp.has_mpn:
                     mpn_statuses[comp.reference] = Confidence.RED
+                    red += 1
                     continue
 
-                # Look up MPN in data sources
                 result = self.orchestrator.verify_mpn(comp.mpn)
                 if result:
-                    # Check category consistency
                     mpn_statuses[comp.reference] = result.confidence
+                    if result.confidence == Confidence.GREEN:
+                        green += 1
                 else:
-                    # MPN not found in any source
                     mpn_statuses[comp.reference] = Confidence.RED
+                    red += 1
 
+            self.log.emit(
+                f"Scan complete: {green} verified, {red} missing/not found, "
+                f"{len(components) - green - red} uncertain."
+            )
             self.scan_complete.emit(components, mpn_statuses)
         except Exception as e:
+            self.log.emit(f"Scan error: {e}")
             self.error.emit(str(e))
 
 
@@ -93,7 +112,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"KiPart Search v{__version__}")
-        self.setMinimumSize(900, 600)
+        self.setMinimumSize(1000, 600)
 
         # Core engine
         self._orchestrator = SearchOrchestrator()
@@ -101,68 +120,147 @@ class MainWindow(QMainWindow):
         self._search_worker: SearchWorker | None = None
         self._scan_worker: ScanWorker | None = None
         self._bridge = KiCadBridge()
-        self._assign_target: BoardComponent | None = None  # Component being assigned
+        self._assign_target: BoardComponent | None = None
+
+        self._build_menus()
 
         # Central widget
         central = QWidget()
         self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
+        root_layout = QVBoxLayout(central)
 
-        # Tab widget: Search and BOM Verification as separate tabs
-        self._tabs = QTabWidget()
-        layout.addWidget(self._tabs)
+        # ── Toolbar ──
+        toolbar = QHBoxLayout()
+        self.scan_btn = QPushButton("Scan Project")
+        self.scan_btn.setToolTip("Connect to KiCad and verify BOM")
+        self.scan_btn.clicked.connect(self._on_scan)
+        toolbar.addWidget(self.scan_btn)
 
-        # ── Tab 0: Search Parts ──
-        search_tab = QWidget()
-        search_layout = QVBoxLayout(search_tab)
-
-        # Search toolbar
-        search_toolbar = QHBoxLayout()
         self.db_btn = QPushButton("Download Database")
         self.db_btn.setToolTip("Download or update the JLCPCB parts database")
         self.db_btn.clicked.connect(self._on_download_db)
-        search_toolbar.addWidget(self.db_btn)
-        search_toolbar.addStretch()
-        search_layout.addLayout(search_toolbar)
+        toolbar.addWidget(self.db_btn)
+
+        self.search_toggle_btn = QPushButton("Search Parts >>")
+        self.search_toggle_btn.setToolTip("Show/hide the part search panel")
+        self.search_toggle_btn.setCheckable(True)
+        self.search_toggle_btn.clicked.connect(self._toggle_search_panel)
+        toolbar.addWidget(self.search_toggle_btn)
+
+        toolbar.addStretch()
+        root_layout.addLayout(toolbar)
+
+        # ── Splitter: BOM (left) | Search (right) ──
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # Left side: BOM verification
+        self.verify_panel = VerifyPanel()
+        self.verify_panel.component_clicked.connect(self._on_component_clicked)
+        self.verify_panel.search_for_component.connect(self._on_guided_search)
+        self._splitter.addWidget(self.verify_panel)
+
+        # Right side: Search panel (collapsible)
+        self._search_panel = QWidget()
+        search_layout = QVBoxLayout(self._search_panel)
+        search_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Search panel header with close button
+        search_header = QHBoxLayout()
+        search_header.addWidget(QLabel("<b>Part Search</b>"))
+        search_header.addStretch()
+        self._search_target_label = QLabel("")
+        search_header.addWidget(self._search_target_label)
+        close_search_btn = QPushButton("X")
+        close_search_btn.setFixedWidth(28)
+        close_search_btn.setToolTip("Close search panel")
+        close_search_btn.clicked.connect(self._hide_search_panel)
+        search_header.addWidget(close_search_btn)
+        search_layout.addLayout(search_header)
 
         self.search_bar = SearchBar()
         self.search_bar.search_requested.connect(self._on_search)
         search_layout.addWidget(self.search_bar)
-        self.results_label = QLabel("")
-        search_layout.addWidget(self.results_label)
+
         self.results_table = ResultsTable()
         self.results_table.part_selected.connect(self._on_part_selected)
         search_layout.addWidget(self.results_table)
 
-        self._tabs.addTab(search_tab, "Search Parts")
+        self._splitter.addWidget(self._search_panel)
 
-        # ── Tab 1: BOM Verification ──
-        bom_tab = QWidget()
-        bom_layout = QVBoxLayout(bom_tab)
+        # Splitter proportions: BOM gets ~60%, search gets ~40%
+        self._splitter.setStretchFactor(0, 3)
+        self._splitter.setStretchFactor(1, 2)
 
-        # BOM toolbar
-        bom_toolbar = QHBoxLayout()
-        self.scan_btn = QPushButton("Scan Project")
-        self.scan_btn.setToolTip("Connect to KiCad and verify BOM")
-        self.scan_btn.clicked.connect(self._on_scan)
-        bom_toolbar.addWidget(self.scan_btn)
-        bom_toolbar.addStretch()
-        bom_layout.addLayout(bom_toolbar)
+        root_layout.addWidget(self._splitter)
 
-        self.verify_panel = VerifyPanel()
-        self.verify_panel.component_clicked.connect(self._on_component_clicked)
-        self.verify_panel.search_for_component.connect(self._on_guided_search)
-        bom_layout.addWidget(self.verify_panel)
+        # Start with search panel hidden
+        self._search_panel.setVisible(False)
 
-        self._tabs.addTab(bom_tab, "BOM Verification")
+        # ── Log panel ──
+        self.log_panel = LogPanel()
+        root_layout.addWidget(self.log_panel)
 
-        # Status bar
+        # ── Status bar with mode indicator ──
         self.status_bar = QStatusBar()
+        self._mode_label = QLabel()
+        self.status_bar.addPermanentWidget(self._mode_label)
         self.setStatusBar(self.status_bar)
 
         # Try to load existing database
         self._init_jlcpcb_source()
         self._update_status()
+
+    # --- Menu bar ---
+
+    def _build_menus(self):
+        menubar = self.menuBar()
+
+        # Help menu
+        help_menu = menubar.addMenu("Help")
+
+        about_action = QAction("About", self)
+        about_action.triggered.connect(self._show_about)
+        help_menu.addAction(about_action)
+
+        about_qt_action = QAction("About Qt", self)
+        about_qt_action.triggered.connect(lambda: QMessageBox.aboutQt(self))
+        help_menu.addAction(about_qt_action)
+
+    def _show_about(self):
+        QMessageBox.about(
+            self,
+            "About KiPart Search",
+            f"<h3>KiPart Search v{__version__}</h3>"
+            "<p>Parametric electronic component search with KiCad integration.</p>"
+            "<p><b>Author:</b> Sylvain Boyer (MecaFrog)</p>"
+            "<p><b>License:</b> MIT</p>"
+            '<p><a href="https://github.com/sylvanoMTL/kipart-search">'
+            "github.com/sylvanoMTL/kipart-search</a></p>",
+        )
+
+    # --- Search panel visibility ---
+
+    def _show_search_panel(self):
+        """Expand the search panel."""
+        self._search_panel.setVisible(True)
+        self.search_toggle_btn.setChecked(True)
+        self.search_toggle_btn.setText("<< Search Parts")
+
+    def _hide_search_panel(self):
+        """Collapse the search panel."""
+        self._search_panel.setVisible(False)
+        self.search_toggle_btn.setChecked(False)
+        self.search_toggle_btn.setText("Search Parts >>")
+        self._assign_target = None
+        self._search_target_label.setText("")
+
+    def _toggle_search_panel(self):
+        if self._search_panel.isVisible():
+            self._hide_search_panel()
+        else:
+            self._show_search_panel()
+
+    # --- Init & status ---
 
     def _init_jlcpcb_source(self):
         """Initialize JLCPCB source if database exists."""
@@ -172,14 +270,32 @@ class MainWindow(QMainWindow):
             self._orchestrator.add_source(self._jlcpcb_source)
 
     def _update_status(self):
-        """Update the status bar with data source info."""
+        """Update the status bar with data source info and mode badge."""
         parts = []
         if self._jlcpcb_source and self._jlcpcb_source.is_configured():
-            parts.append("JLCPCB database: loaded")
+            db_path = self._jlcpcb_source.db_path
+            try:
+                mtime = os.path.getmtime(db_path)
+                dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+                size_mb = os.path.getsize(db_path) / (1024 * 1024)
+                parts.append(f"JLCPCB DB: {size_mb:.0f} MB, {dt}")
+            except OSError:
+                parts.append("JLCPCB DB: loaded")
             self.db_btn.setText("Update Database")
+            # Mode badge: Local DB
+            self._mode_label.setText("  Local DB  ")
+            self._mode_label.setStyleSheet(
+                "background-color: #2d7d46; color: white; padding: 2px 6px; "
+                "border-radius: 3px; font-weight: bold; font-size: 11px;"
+            )
         else:
-            parts.append("JLCPCB database: not loaded")
+            parts.append("JLCPCB DB: not loaded")
             self.db_btn.setText("Download Database")
+            self._mode_label.setText("  No DB  ")
+            self._mode_label.setStyleSheet(
+                "background-color: #6b7280; color: white; padding: 2px 6px; "
+                "border-radius: 3px; font-weight: bold; font-size: 11px;"
+            )
 
         if self._bridge.is_connected:
             parts.append("KiCad: connected")
@@ -187,14 +303,6 @@ class MainWindow(QMainWindow):
             parts.append("KiCad: not connected")
 
         self.status_bar.showMessage(" | ".join(parts))
-
-    def _show_search_tab(self):
-        """Switch to the Search Parts tab."""
-        self._tabs.setCurrentIndex(0)
-
-    def _show_bom_tab(self):
-        """Switch to the BOM Verification tab."""
-        self._tabs.setCurrentIndex(1)
 
     # --- Search ---
 
@@ -208,10 +316,16 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # Log query transformation if it happened
+        raw = self.search_bar.query_input.text().strip()
+        if raw != query:
+            self.log_panel.log(f"Query: '{raw}' \u2192 '{query}'")
+
         self.search_bar.search_button.setEnabled(False)
-        self.results_label.setText("Searching...")
+        self.log_panel.clear()
 
         self._search_worker = SearchWorker(self._orchestrator, query)
+        self._search_worker.log.connect(self.log_panel.log)
         self._search_worker.results_ready.connect(self._on_results)
         self._search_worker.error.connect(self._on_search_error)
         self._search_worker.start()
@@ -219,19 +333,17 @@ class MainWindow(QMainWindow):
     def _on_results(self, results):
         """Display search results."""
         self.results_table.set_results(results)
-        self.results_label.setText(f"{len(results)} results found")
         self.search_bar.search_button.setEnabled(True)
 
     def _on_search_error(self, error_msg: str):
         """Handle search error."""
-        self.results_label.setText(f"Search error: {error_msg}")
+        self.log_panel.log(f"Search error: {error_msg}")
         self.search_bar.search_button.setEnabled(True)
 
     # --- Scan Project ---
 
     def _on_scan(self):
         """Scan the KiCad project and verify BOM."""
-        # Try to connect if not already connected
         if not self._bridge.is_connected:
             ok, error_msg = self._bridge.connect()
             if not ok:
@@ -241,9 +353,10 @@ class MainWindow(QMainWindow):
         self._update_status()
         self.scan_btn.setEnabled(False)
         self.scan_btn.setText("Scanning...")
-        self._show_bom_tab()
+        self.log_panel.clear()
 
         self._scan_worker = ScanWorker(self._bridge, self._orchestrator)
+        self._scan_worker.log.connect(self.log_panel.log)
         self._scan_worker.scan_complete.connect(self._on_scan_complete)
         self._scan_worker.error.connect(self._on_scan_error)
         self._scan_worker.start()
@@ -272,15 +385,13 @@ class MainWindow(QMainWindow):
             "Checklist:\n"
             "  1. KiCad 9+ is running\n"
             "  2. A board (.kicad_pcb) is open in the PCB editor\n"
-            "  3. IPC API is enabled (Preferences → API)\n"
+            "  3. IPC API is enabled (Preferences \u2192 API)\n"
             "  4. KiCad was restarted after enabling the API"
         )
         dialog.setDetailedText(
             f"Error:\n{error_msg}\n\n"
             f"--- Diagnostics ---\n{diag}"
         )
-
-        # Make the detailed text area wider and selectable
         dialog.setMinimumWidth(500)
         dialog.exec()
 
@@ -291,13 +402,14 @@ class MainWindow(QMainWindow):
     # --- Guided search & assign ---
 
     def _on_guided_search(self, row: int):
-        """Switch to search view pre-filled with the component's value."""
+        """Open search panel pre-filled with the component's value."""
         comp = self.verify_panel.get_component(row)
         if comp is None:
             return
 
         self._assign_target = comp
-        self._show_search_tab()
+        self._show_search_panel()
+        self._search_target_label.setText(f"Assigning to: {comp.reference}")
         query = comp.value
         if comp.footprint_short:
             query = f"{comp.value} {comp.footprint_short}"
@@ -322,7 +434,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "No Target",
-                "Double-click a missing-MPN component in the verification view first,\n"
+                "Double-click a missing-MPN component in the BOM table first,\n"
                 "then double-click a search result to assign it.",
             )
             return
@@ -339,15 +451,12 @@ class MainWindow(QMainWindow):
                     written += 1
 
             if written > 0:
-                self.status_bar.showMessage(
-                    f"Wrote {written} field(s) to {ref}", 5000
-                )
+                self.log_panel.log(f"Wrote {written} field(s) to {ref}")
             else:
-                self.status_bar.showMessage(
-                    f"No fields written to {ref}", 5000
-                )
+                self.log_panel.log(f"No fields written to {ref}")
 
             self._assign_target = None
+            self._search_target_label.setText("")
 
     # --- Database ---
 
@@ -371,6 +480,7 @@ class MainWindow(QMainWindow):
             self._orchestrator.add_source(self._jlcpcb_source)
 
         self._update_status()
+        self.log_panel.log(f"Database loaded: {db_path}")
 
 
 def run_app() -> int:

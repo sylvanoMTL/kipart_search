@@ -57,7 +57,7 @@ class VerifyPanel(QWidget):
         self.table.setHorizontalHeaderLabels(VERIFY_COLUMNS)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
+            QHeaderView.ResizeMode.Interactive
         )
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -129,6 +129,8 @@ class VerifyPanel(QWidget):
             fp_color = COLORS[Confidence.GREEN] if comp.footprint else COLORS[Confidence.RED]
             fp_item.setBackground(fp_color)
             self.table.setItem(row, 4, fp_item)
+
+        self.table.resizeColumnsToContents()
 
         # Update summary
         total = len(components)

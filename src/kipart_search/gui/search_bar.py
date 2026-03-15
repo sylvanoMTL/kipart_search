@@ -1,38 +1,62 @@
-"""Search bar widget — keyword input with category filter."""
+"""Search bar widget — keyword input with live query transformation preview."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout, QWidget
+
+from kipart_search.core.query_transform import strip_quotes, transform_query
 
 
 class SearchBar(QWidget):
-    """Search input with a search button."""
+    """Search input with transformed query preview and search button."""
 
-    search_requested = Signal(str)  # Emits the query string
+    search_requested = Signal(str)  # Emits the transformed query string
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # Row 1: user input + search button
+        row1 = QHBoxLayout()
         self.query_input = QLineEdit()
         self.query_input.setPlaceholderText(
-            "Search parts (e.g. '100nF capacitor MLCC 0805')"
+            "Search parts (e.g. '100nF capacitor MLCC 0805', 'R_0805 10kohm')"
         )
+        self.query_input.textChanged.connect(self._on_query_changed)
         self.query_input.returnPressed.connect(self._on_search)
-        layout.addWidget(self.query_input)
+        row1.addWidget(self.query_input)
 
         self.search_button = QPushButton("Search")
         self.search_button.clicked.connect(self._on_search)
-        layout.addWidget(self.search_button)
+        row1.addWidget(self.search_button)
+        layout.addLayout(row1)
+
+        # Row 2: transformed query preview (editable)
+        self._transformed_input = QLineEdit()
+        self._transformed_input.setPlaceholderText("Transformed query (editable)")
+        self._transformed_input.setStyleSheet(
+            "font-style: italic; background-color: #f0f4ff;"
+        )
+        self._transformed_input.returnPressed.connect(self._on_search)
+        layout.addWidget(self._transformed_input)
 
     def set_query(self, query: str):
-        """Set the search input text programmatically."""
+        """Set the raw search input text programmatically.
+
+        The transformed preview updates automatically via textChanged.
+        """
         self.query_input.setText(query)
 
+    def _on_query_changed(self, text: str):
+        """Live-transform the user's query and display in the preview."""
+        transformed = transform_query(text)
+        if self._transformed_input.text() != transformed:
+            self._transformed_input.setText(transformed)
+
     def _on_search(self):
-        query = self.query_input.text().strip()
+        query = strip_quotes(self._transformed_input.text().strip())
         if query:
             self.search_requested.emit(query)
