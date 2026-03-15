@@ -11,7 +11,27 @@
       "Bash(.env/Scripts/pip.exe install:*)",
       "Bash(.env/Scripts/python.exe -c \":*)",
       "Bash(git commit -m \"*:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "WebFetch(domain:docs.kicad.org)",
+      "Bash(.env/Scripts/python.exe -c \"from kipart_search.gui.kicad_bridge import KiCadBridge, BoardComponent; print\\(''kicad_bridge OK''\\)\")",
+      "Bash(.env/Scripts/python.exe -c \"from kipart_search.gui.verify_panel import VerifyPanel; print\\(''verify_panel OK''\\)\")",
+      "Bash(.env/Scripts/python.exe -c \"from kipart_search.gui.main_window import MainWindow; print\\(''main_window OK''\\)\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(.env/Scripts/python.exe -c \"from kipart_search.gui.assign_dialog import AssignDialog; from kipart_search.gui.main_window import MainWindow; print\\(''All imports OK''\\)\")",
+      "Bash(.env/Scripts/python.exe -c \"from kipart_search.gui.main_window import MainWindow; print\\(''OK''\\)\")",
+      "Bash(.env/Scripts/python.exe -c \"from kipart_search.gui.download_dialog import DownloadDialog; from kipart_search.gui.main_window import MainWindow; print\\(''OK''\\)\")",
+      "Bash(.env/Scripts/python.exe -c \"from kipart_search.core.sources import JLCPCBSource; print\\(''OK''\\)\")",
+      "Bash(git clone:*)",
+      "Read(//c/tmp/**)",
+      "Bash(.env/Scripts/python.exe -c \"from kipart_search.core.query_transform import transform_query; print\\(transform_query\\(''R_0805 10kohm''\\)\\); from kipart_search.gui.main_window import MainWindow; print\\(''All imports OK''\\)\")",
+      "Bash(.env/Scripts/python.exe -c \"from kipart_search.core.query_transform import transform_query; r = transform_query\\(''R_0805 10kohm''\\); from kipart_search.gui.log_panel import LogPanel; from kipart_search.gui.main_window import MainWindow; print\\(''All imports OK''\\)\")",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(.env/Scripts/python.exe -c \"from kipart_search.core.sources import JLCPCBSource; src = JLCPCBSource\\(\\); print\\(repr\\(src._to_db_query\\(''10 kohm''\\)\\)\\); print\\(repr\\(src._to_db_query\\(''10 uF''\\)\\)\\); r1 = src.search\\(''10kohm 0805 resistor'', limit=5\\); print\\(f''10kohm: {len\\(r1\\)}''\\); r2 = src.search\\(''10uF 0805 capacitor'', limit=5\\); print\\(f''10uF: {len\\(r2\\)}''\\)\")",
+      "Bash(PYTHONIOENCODING=utf-8 .env/Scripts/python.exe -c \":*)",
+      "Bash(PYTHONIOENCODING=utf-8 .env/Scripts/python.exe -c \"from kipart_search.gui.main_window import MainWindow; print\\(''OK''\\)\")",
+      "Bash(find c:/Git_Repo_Clones/kipart-search/src -type d -name __pycache__ -exec rm -rf {} +)",
+      "Bash(PYTHONIOENCODING=utf-8 timeout 30 .env/Scripts/python.exe -c \":*)"
     ]
   }
 }
