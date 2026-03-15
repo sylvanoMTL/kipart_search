@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from functools import partial
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from kipart_search.core.query_transform import strip_quotes, transform_query
+
+# Special symbols that are useful in EE search queries
+_SYMBOL_BUTTONS = [
+    ("\u03a9", "Ohm symbol"),        # Ω
+    ("\u00b1", "Plus/minus"),        # ±
+    ("\u00b5", "Micro prefix"),      # µ
+]
 
 
 class SearchBar(QWidget):
@@ -19,7 +28,7 @@ class SearchBar(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Row 1: user input + search button
+        # Row 1: user input + symbol buttons + search button
         row1 = QHBoxLayout()
         self.query_input = QLineEdit()
         self.query_input.setPlaceholderText(
@@ -28,6 +37,14 @@ class SearchBar(QWidget):
         self.query_input.textChanged.connect(self._on_query_changed)
         self.query_input.returnPressed.connect(self._on_search)
         row1.addWidget(self.query_input)
+
+        # Symbol insert buttons
+        for symbol, tooltip in _SYMBOL_BUTTONS:
+            btn = QPushButton(symbol)
+            btn.setFixedWidth(28)
+            btn.setToolTip(f"Insert {tooltip} ({symbol})")
+            btn.clicked.connect(partial(self._insert_symbol, symbol))
+            row1.addWidget(btn)
 
         self.search_button = QPushButton("Search")
         self.search_button.clicked.connect(self._on_search)
@@ -49,6 +66,11 @@ class SearchBar(QWidget):
         The transformed preview updates automatically via textChanged.
         """
         self.query_input.setText(query)
+
+    def _insert_symbol(self, symbol: str):
+        """Insert a special symbol at the cursor position in the query input."""
+        self.query_input.insert(symbol)
+        self.query_input.setFocus()
 
     def _on_query_changed(self, text: str):
         """Live-transform the user's query and display in the preview."""

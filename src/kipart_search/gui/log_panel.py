@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTextEdit, QVBoxLayout, QWidget
 
 
@@ -19,6 +20,11 @@ class LogPanel(QWidget):
         self._text = QTextEdit()
         self._text.setReadOnly(True)
         self._text.setFixedHeight(90)
+        self._text.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        self._text.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
         self._text.setStyleSheet("font-family: Consolas, monospace; font-size: 11px;")
         self._text.setPlaceholderText("Activity log ...")
         layout.addWidget(self._text)

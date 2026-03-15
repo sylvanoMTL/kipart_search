@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+from html import escape
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QProgressBar,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -51,6 +55,9 @@ class VerifyPanel(QWidget):
         self.health_bar.setVisible(False)
         layout.addWidget(self.health_bar)
 
+        # Splitter: table (top) | detail (bottom)
+        splitter = QSplitter(Qt.Orientation.Vertical)
+
         # Verification table
         self.table = QTableWidget()
         self.table.setColumnCount(len(VERIFY_COLUMNS))
@@ -61,11 +68,30 @@ class VerifyPanel(QWidget):
         )
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        self.table.setStyleSheet(
+            "QTableWidget { gridline-color: #d0d0d0; }"
+            "QTableWidget::item:selected { background-color: #3399ff; color: white; }"
+            "QTableWidget::item:hover { background-color: #e0eeff; }"
+        )
         self.table.cellClicked.connect(self._on_cell_clicked)
         self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
-        layout.addWidget(self.table)
+        splitter.addWidget(self.table)
+
+        # Detail browser
+        self._detail = QTextBrowser()
+        self._detail.setReadOnly(True)
+        self._detail.setOpenExternalLinks(True)
+        self._detail.setMinimumHeight(150)
+        splitter.addWidget(self._detail)
+
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 3)
+
+        layout.addWidget(splitter)
 
         self._components: list[BoardComponent] = []
+        self._mpn_statuses: dict[str, Confidence] = {}
 
     def set_results(
         self,
@@ -76,9 +102,11 @@ class VerifyPanel(QWidget):
 
         Args:
             components: List of board components from KiCad
-            mpn_statuses: Map of reference → confidence level from MPN verification
+            mpn_statuses: Map of reference -> confidence level from MPN verification
         """
         self._components = list(components)
+        self._mpn_statuses = dict(mpn_statuses)
+        self._detail.clear()
         self.table.setRowCount(len(components))
 
         has_mpn = 0
@@ -157,19 +185,54 @@ class VerifyPanel(QWidget):
         return None
 
     def _on_cell_clicked(self, row: int, _col: int):
-        ref_item = self.table.item(row, 0)
-        if ref_item:
-            self.component_clicked.emit(ref_item.text())
+        comp = self.get_component(row)
+        if comp:
+            self.component_clicked.emit(comp.reference)
+            status = self._mpn_statuses.get(comp.reference, Confidence.RED)
+            self._detail.setHtml(self._render_detail(comp, status))
 
-    def _on_cell_double_clicked(self, row: int, col: int):
-        """Double-click on MPN column of a missing-MPN row opens guided search."""
-        if col in (2, 3) and 0 <= row < len(self._components):
-            comp = self._components[row]
-            if not comp.has_mpn:
-                self.search_for_component.emit(row)
+    def _on_cell_double_clicked(self, row: int, _col: int):
+        """Double-click any row to open guided search for that component."""
+        if 0 <= row < len(self._components):
+            self.search_for_component.emit(row)
 
     def clear(self):
         """Clear the verification table."""
         self.table.setRowCount(0)
         self.summary_label.setText("")
         self.health_bar.setVisible(False)
+        self._detail.clear()
+
+    @staticmethod
+    def _render_detail(comp: BoardComponent, status: Confidence) -> str:
+        """Render HTML detail view for a BoardComponent."""
+        status_labels = {
+            Confidence.GREEN: ('<span style="color: green;">Verified</span>'),
+            Confidence.AMBER: ('<span style="color: #cc8800;">Uncertain</span>'),
+            Confidence.RED: ('<span style="color: red;">Missing / Not Found</span>'),
+        }
+
+        lines: list[str] = []
+        lines.append(f"<h2>{escape(comp.reference)}</h2>")
+        lines.append(f"<b>Value:</b> {escape(comp.value)}<br>")
+        lines.append(f"<b>MPN:</b> {escape(comp.mpn) if comp.has_mpn else '<i>(missing)</i>'}<br>")
+        lines.append(f"<b>Status:</b> {status_labels[status]}<br>")
+        lines.append(f"<b>Footprint:</b> {escape(comp.footprint)}<br>")
+
+        if comp.datasheet:
+            url = escape(comp.datasheet)
+            lines.append(f'<b>Datasheet:</b> <a href="{url}">{url}</a><br>')
+
+        # Extra fields
+        if comp.extra_fields:
+            lines.append("<h3>Fields</h3>")
+            lines.append('<table border="1" cellpadding="4" cellspacing="0">')
+            lines.append("<tr><th>Field</th><th>Value</th></tr>")
+            for fname, fval in sorted(comp.extra_fields.items()):
+                lines.append(
+                    f"<tr><td>{escape(fname)}</td>"
+                    f"<td>{escape(fval)}</td></tr>"
+                )
+            lines.append("</table>")
+
+        return "\n".join(lines)

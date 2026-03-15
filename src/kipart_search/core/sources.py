@@ -70,14 +70,37 @@ class JLCPCBSource(DataSource):
     CHUNK_COUNT_FILE = "chunk_num_fts5.txt"
     CHUNK_FILE_STUB = "parts-fts5.db.zip."
 
+    # The DB uses ASCII for capacitors/inductors (uF, nF, uH) but Unicode Ω
+    # for resistors (10kΩ). The query_transform converts uF→µF and Ohm→Ω.
+    # Reverse µ→u for cap/inductor units; keep Ω as-is (DB uses it).
+    # Also strip "ohm" since DB stores "10kΩ" not "10kohm".
+    _QUERY_FIXUPS: list[tuple[str, str]] = [
+        ("\u00b5F", "uF"), ("\u00b5H", "uH"), ("\u00b5A", "uA"), ("\u00b5V", "uV"),
+        ("kohm", "k\u03a9"), ("Mohm", "M\u03a9"), ("mohm", "m\u03a9"),
+        ("Ohm", "\u03a9"),
+    ]
+
+    @staticmethod
+    def _to_db_query(query: str) -> str:
+        """Normalize query to match the JLCPCB DB's unit conventions."""
+        for src, dst in JLCPCBSource._QUERY_FIXUPS:
+            query = query.replace(src, dst)
+        return query
+
     def __init__(self, db_path: Path | None = None):
         self.db_path = db_path or self.default_db_path()
         self._conn: sqlite3.Connection | None = None
 
     def _get_conn(self) -> sqlite3.Connection:
-        """Get or create a database connection."""
+        """Get or create a database connection.
+
+        Uses check_same_thread=False because searches run in QThread workers.
+        The connection is only used for read-only queries, so this is safe.
+        """
         if self._conn is None:
-            self._conn = sqlite3.connect(str(self.db_path))
+            self._conn = sqlite3.connect(
+                str(self.db_path), check_same_thread=False
+            )
             self._conn.create_collation("naturalsort", _natural_sort_collation)
         return self._conn
 
@@ -101,7 +124,7 @@ class JLCPCBSource(DataSource):
         if not self.is_configured():
             return []
 
-        query = query.strip()
+        query = self._to_db_query(query.strip())
         if not query:
             return []
 
@@ -109,7 +132,9 @@ class JLCPCBSource(DataSource):
         columns = ", ".join(f'"{c}"' for c in JLCPCB_COLUMNS)
 
         # Build FTS5 MATCH query
-        # For short terms (< 3 chars), FTS5 doesn't work well, use LIKE
+        # For short terms (< 3 chars), FTS5 doesn't work well.
+        # Use instr() instead of LIKE — LIKE has a bug with multi-byte
+        # UTF-8 characters (e.g. kΩ) on FTS5 virtual tables.
         terms = query.split()
         short_terms = [t for t in terms if len(t) < 3]
         long_terms = [t for t in terms if len(t) >= 3]
@@ -119,21 +144,21 @@ class JLCPCBSource(DataSource):
             match_expr = " ".join(f'"{t}"*' for t in long_terms)
             sql = f'SELECT {columns} FROM parts WHERE parts MATCH ? '
 
-            # Add LIKE clauses for short terms
-            for i, t in enumerate(short_terms):
-                sql += f'AND "Description" LIKE ? '
+            # Add instr() clauses for short terms
+            for _t in short_terms:
+                sql += 'AND instr("Description", ?) > 0 '
 
             sql += f"LIMIT {limit}"
 
             params: list[str] = [match_expr]
-            params.extend(f"%{t}%" for t in short_terms)
+            params.extend(short_terms)
         elif short_terms:
-            # All terms are short, use LIKE only
+            # All terms are short, use instr() only
             sql = f"SELECT {columns} FROM parts WHERE 1=1 "
-            for t in short_terms:
-                sql += f'AND "Description" LIKE ? '
+            for _t in short_terms:
+                sql += 'AND instr("Description", ?) > 0 '
             sql += f"LIMIT {limit}"
-            params = [f"%{t}%" for t in short_terms]
+            params = list(short_terms)
         else:
             return []
 

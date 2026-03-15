@@ -128,6 +128,8 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         root_layout = QVBoxLayout(central)
+        root_layout.setContentsMargins(4, 4, 4, 0)
+        root_layout.setSpacing(4)
 
         # ── Toolbar ──
         toolbar = QHBoxLayout()
@@ -222,10 +224,6 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
-        about_qt_action = QAction("About Qt", self)
-        about_qt_action.triggered.connect(lambda: QMessageBox.aboutQt(self))
-        help_menu.addAction(about_qt_action)
-
     def _show_about(self):
         QMessageBox.about(
             self,
@@ -316,13 +314,13 @@ class MainWindow(QMainWindow):
             )
             return
 
+        self.search_bar.search_button.setEnabled(False)
+        self.log_panel.clear()
+
         # Log query transformation if it happened
         raw = self.search_bar.query_input.text().strip()
         if raw != query:
             self.log_panel.log(f"Query: '{raw}' \u2192 '{query}'")
-
-        self.search_bar.search_button.setEnabled(False)
-        self.log_panel.clear()
 
         self._search_worker = SearchWorker(self._orchestrator, query)
         self._search_worker.log.connect(self.log_panel.log)
@@ -396,13 +394,23 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _on_component_clicked(self, reference: str):
-        """Highlight the clicked component in KiCad."""
+        """Highlight the clicked component in KiCad and update assign target."""
         self._bridge.select_component(reference)
+
+        # Update assign target if search panel is open
+        if self._search_panel.isVisible():
+            # Find the component by reference
+            for i in range(len(self.verify_panel._components)):
+                comp = self.verify_panel.get_component(i)
+                if comp and comp.reference == reference:
+                    self._assign_target = comp
+                    self._search_target_label.setText(f"Assigning to: {comp.reference}")
+                    break
 
     # --- Guided search & assign ---
 
     def _on_guided_search(self, row: int):
-        """Open search panel pre-filled with the component's value."""
+        """Open search panel pre-filled with a smart query built from component metadata."""
         comp = self.verify_panel.get_component(row)
         if comp is None:
             return
@@ -410,11 +418,16 @@ class MainWindow(QMainWindow):
         self._assign_target = comp
         self._show_search_panel()
         self._search_target_label.setText(f"Assigning to: {comp.reference}")
-        query = comp.value
-        if comp.footprint_short:
-            query = f"{comp.value} {comp.footprint_short}"
-        self.search_bar.set_query(query)
-        self._on_search(query)
+        raw_query = comp.build_search_query()
+        self.log_panel.log(
+            f"Guided search for {comp.reference}: "
+            f"value={comp.value!r}, footprint={comp.footprint_short!r} "
+            f"\u2192 query={raw_query!r}"
+        )
+        # Set query and trigger search through the SearchBar so it goes
+        # through the same transform pipeline as a manual search.
+        self.search_bar.set_query(raw_query)
+        self.search_bar.search_button.click()
 
     def _on_part_selected(self, row: int):
         """Handle double-click on a search result to assign it."""

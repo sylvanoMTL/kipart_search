@@ -5,11 +5,13 @@ from __future__ import annotations
 from html import escape
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -74,6 +76,8 @@ class ResultsTable(QWidget):
             QTableWidget.SelectionBehavior.SelectRows
         )
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_context_menu)
         self.table.cellClicked.connect(self._on_click)
         self.table.cellDoubleClicked.connect(self._on_double_click)
         splitter.addWidget(self.table)
@@ -173,6 +177,24 @@ class ResultsTable(QWidget):
     def _on_double_click(self, row: int, _col: int):
         """Emit part_selected for assignment."""
         self.part_selected.emit(row)
+
+    def _on_context_menu(self, pos):
+        """Show right-click context menu."""
+        item = self.table.itemAt(pos)
+        if item is None:
+            return
+        row = item.row()
+        part = self.get_result(row)
+        if part is None:
+            return
+
+        menu = QMenu(self)
+
+        assign_action = QAction("Assign to component", self)
+        assign_action.triggered.connect(lambda: self.part_selected.emit(row))
+        menu.addAction(assign_action)
+
+        menu.exec(self.table.viewport().mapToGlobal(pos))
 
     # ── Detail rendering ──
 
