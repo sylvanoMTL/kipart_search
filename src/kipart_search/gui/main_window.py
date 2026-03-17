@@ -201,14 +201,14 @@ class MainWindow(QMainWindow):
         self._splitter.setStretchFactor(0, 3)
         self._splitter.setStretchFactor(1, 2)
 
-        root_layout.addWidget(self._splitter)
+        root_layout.addWidget(self._splitter, stretch=1)
 
         # Start with search panel hidden
         self._search_panel.setVisible(False)
 
         # ── Log panel ──
         self.log_panel = LogPanel()
-        root_layout.addWidget(self.log_panel)
+        root_layout.addWidget(self.log_panel, stretch=0)
 
         # ── Status bar with mode indicator ──
         self.status_bar = QStatusBar()

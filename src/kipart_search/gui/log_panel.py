@@ -19,7 +19,8 @@ class LogPanel(QWidget):
 
         self._text = QTextEdit()
         self._text.setReadOnly(True)
-        self._text.setFixedHeight(90)
+        self._text.setMaximumHeight(90)
+        self._text.setMinimumHeight(30)
         self._text.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
             | Qt.TextInteractionFlag.TextSelectableByKeyboard

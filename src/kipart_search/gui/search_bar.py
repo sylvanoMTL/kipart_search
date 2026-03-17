@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import partial
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from kipart_search.core.query_transform import strip_quotes, transform_query
 
@@ -27,6 +27,9 @@ class SearchBar(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        # SearchBar should not stretch vertically
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
         # Row 1: user input + symbol buttons + search button
         row1 = QHBoxLayout()

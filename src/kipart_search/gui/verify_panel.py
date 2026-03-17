@@ -83,11 +83,12 @@ class VerifyPanel(QWidget):
         self._detail = QTextBrowser()
         self._detail.setReadOnly(True)
         self._detail.setOpenExternalLinks(True)
-        self._detail.setMinimumHeight(150)
         splitter.addWidget(self._detail)
 
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
+        # Table gets most space; detail is secondary and collapsible
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 1)
+        splitter.setCollapsible(1, True)
 
         layout.addWidget(splitter)
 

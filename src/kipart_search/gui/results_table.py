@@ -88,8 +88,10 @@ class ResultsTable(QWidget):
         self._detail.setOpenExternalLinks(True)
         splitter.addWidget(self._detail)
 
+        # Table gets most space; detail is secondary and collapsible
         splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 2)
+        splitter.setStretchFactor(1, 1)
+        splitter.setCollapsible(1, True)
 
         layout.addWidget(splitter)
 
