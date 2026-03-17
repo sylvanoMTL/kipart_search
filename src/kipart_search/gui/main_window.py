@@ -26,6 +26,7 @@ from kipart_search import __version__
 from kipart_search.core.models import Confidence
 from kipart_search.core.sources import JLCPCBSource
 from kipart_search.core.search import SearchOrchestrator
+from kipart_search.core.units import generate_query_variants
 from kipart_search.gui.kicad_bridge import BoardComponent, KiCadBridge
 from kipart_search.gui.log_panel import LogPanel
 from kipart_search.gui.search_bar import SearchBar
@@ -47,7 +48,14 @@ class SearchWorker(QThread):
 
     def run(self):
         try:
-            self.log.emit(f"Searching for '{self.query}' ...")
+            variants = generate_query_variants(self.query)
+            if len(variants) > 1:
+                self.log.emit(
+                    f"Searching for '{self.query}' + {len(variants) - 1} "
+                    f"equivalent(s): {', '.join(repr(v) for v in variants)}"
+                )
+            else:
+                self.log.emit(f"Searching for '{self.query}' ...")
             results = self.orchestrator.search(self.query, limit=200)
             self.log.emit(f"Found {len(results)} result(s).")
             self.results_ready.emit(results)

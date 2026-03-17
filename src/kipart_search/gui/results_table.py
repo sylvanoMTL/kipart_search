@@ -76,6 +76,7 @@ class ResultsTable(QWidget):
             QTableWidget.SelectionBehavior.SelectRows
         )
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSortingEnabled(True)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._on_context_menu)
         self.table.cellClicked.connect(self._on_click)
@@ -114,23 +115,38 @@ class ResultsTable(QWidget):
         self._filter_mfr.blockSignals(False)
         self._filter_pkg.blockSignals(False)
 
-        # Populate table
+        # Populate table (disable sorting during insertion to avoid mid-build reorder)
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(len(results))
         for row, part in enumerate(results):
-            self.table.setItem(row, 0, QTableWidgetItem(part.mpn))
-            self.table.setItem(row, 1, QTableWidgetItem(part.manufacturer))
-            self.table.setItem(row, 2, QTableWidgetItem(part.description))
-            self.table.setItem(row, 3, QTableWidgetItem(part.package))
-            self.table.setItem(row, 4, QTableWidgetItem(part.category))
-            self.table.setItem(row, 5, QTableWidgetItem(part.source))
+            items = [
+                QTableWidgetItem(part.mpn),
+                QTableWidgetItem(part.manufacturer),
+                QTableWidgetItem(part.description),
+                QTableWidgetItem(part.package),
+                QTableWidgetItem(part.category),
+                QTableWidgetItem(part.source),
+            ]
+            for col, item in enumerate(items):
+                item.setData(Qt.ItemDataRole.UserRole, row)  # original index
+                self.table.setItem(row, col, item)
 
         self.table.resizeColumnsToContents()
+        self.table.setSortingEnabled(True)
         self._apply_filters()
 
+    def _original_index(self, row: int) -> int | None:
+        """Return the original result index stored in a visual row."""
+        item = self.table.item(row, 0)
+        if item is None:
+            return None
+        return item.data(Qt.ItemDataRole.UserRole)
+
     def get_result(self, row: int) -> PartResult | None:
-        """Return the PartResult for a given row index."""
-        if 0 <= row < len(self._results):
-            return self._results[row]
+        """Return the PartResult for a given visual row (sort-safe)."""
+        idx = self._original_index(row)
+        if idx is not None and 0 <= idx < len(self._results):
+            return self._results[idx]
         return None
 
     def clear_results(self) -> None:
@@ -148,7 +164,10 @@ class ResultsTable(QWidget):
         pkg_filter = self._filter_pkg.currentText()
         visible = 0
 
-        for row, part in enumerate(self._results):
+        for row in range(self.table.rowCount()):
+            part = self.get_result(row)
+            if part is None:
+                continue
             hide = False
             if mfr_filter != "All" and part.manufacturer != mfr_filter:
                 hide = True

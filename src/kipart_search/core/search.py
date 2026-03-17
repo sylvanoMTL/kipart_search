@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from kipart_search.core.models import Confidence, PartResult
 from kipart_search.core.sources import DataSource
+from kipart_search.core.units import generate_query_variants
 
 
 class SearchOrchestrator:
@@ -26,16 +27,27 @@ class SearchOrchestrator:
     ) -> list[PartResult]:
         """Search all active sources and merge results.
 
+        Generates equivalent unit variants (e.g. 0.1µF → 100nF) and
+        searches each variant, deduplicating by MPN.
+
         TODO:
         - Run searches in parallel (QThread workers)
-        - Deduplicate by MPN
         - Calculate confidence score per result
         - Apply parameter template filtering
         """
-        results = []
-        for source in self.active_sources:
-            source_results = source.search(query, filters, limit)
-            results.extend(source_results)
+        variants = generate_query_variants(query)
+        seen_mpns: set[str] = set()
+        results: list[PartResult] = []
+
+        for variant in variants:
+            for source in self.active_sources:
+                source_results = source.search(variant, filters, limit)
+                for part in source_results:
+                    key = (part.mpn, part.source)
+                    if key not in seen_mpns:
+                        seen_mpns.add(key)
+                        results.append(part)
+
         return results
 
     def verify_mpn(self, mpn: str, manufacturer: str = "") -> PartResult | None:

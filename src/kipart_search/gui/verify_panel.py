@@ -68,6 +68,7 @@ class VerifyPanel(QWidget):
         )
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSortingEnabled(True)
         self.table.setAlternatingRowColors(True)
         self.table.setStyleSheet(
             "QTableWidget { gridline-color: #d0d0d0; }"
@@ -107,6 +108,9 @@ class VerifyPanel(QWidget):
         self._components = list(components)
         self._mpn_statuses = dict(mpn_statuses)
         self._detail.clear()
+
+        # Disable sorting during insertion to avoid mid-build reorder
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(len(components))
 
         has_mpn = 0
@@ -130,16 +134,19 @@ class VerifyPanel(QWidget):
             # Reference
             ref_item = QTableWidgetItem(comp.reference)
             ref_item.setBackground(bg_color)
+            ref_item.setData(Qt.ItemDataRole.UserRole, row)  # original index
             self.table.setItem(row, 0, ref_item)
 
             # Value
             val_item = QTableWidgetItem(comp.value)
             val_item.setBackground(bg_color)
+            val_item.setData(Qt.ItemDataRole.UserRole, row)
             self.table.setItem(row, 1, val_item)
 
             # MPN
             mpn_item = QTableWidgetItem(comp.mpn if comp.has_mpn else "(missing)")
             mpn_item.setBackground(bg_color)
+            mpn_item.setData(Qt.ItemDataRole.UserRole, row)
             self.table.setItem(row, 2, mpn_item)
 
             # MPN Status
@@ -150,15 +157,18 @@ class VerifyPanel(QWidget):
             }[status]
             status_item = QTableWidgetItem(status_text)
             status_item.setBackground(bg_color)
+            status_item.setData(Qt.ItemDataRole.UserRole, row)
             self.table.setItem(row, 3, status_item)
 
             # Footprint
             fp_item = QTableWidgetItem(comp.footprint_short)
             fp_color = COLORS[Confidence.GREEN] if comp.footprint else COLORS[Confidence.RED]
             fp_item.setBackground(fp_color)
+            fp_item.setData(Qt.ItemDataRole.UserRole, row)
             self.table.setItem(row, 4, fp_item)
 
         self.table.resizeColumnsToContents()
+        self.table.setSortingEnabled(True)
 
         # Update summary
         total = len(components)
@@ -178,10 +188,18 @@ class VerifyPanel(QWidget):
             self.summary_label.setText("No components found")
             self.health_bar.setVisible(False)
 
+    def _original_index(self, row: int) -> int | None:
+        """Return the original component index stored in a visual row."""
+        item = self.table.item(row, 0)
+        if item is None:
+            return None
+        return item.data(Qt.ItemDataRole.UserRole)
+
     def get_component(self, row: int) -> BoardComponent | None:
-        """Return the BoardComponent for a given row index."""
-        if 0 <= row < len(self._components):
-            return self._components[row]
+        """Return the BoardComponent for a given visual row (sort-safe)."""
+        idx = self._original_index(row)
+        if idx is not None and 0 <= idx < len(self._components):
+            return self._components[idx]
         return None
 
     def _on_cell_clicked(self, row: int, _col: int):
