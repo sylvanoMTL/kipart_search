@@ -43,7 +43,8 @@
       "WebFetch(domain:nexar.com)",
       "WebFetch(domain:pypi.org)",
       "WebFetch(domain:developer.digikey.com)",
-      "WebFetch(domain:support.nexar.com)"
+      "WebFetch(domain:support.nexar.com)",
+      "Bash(find /c/Git_Repo_Clones/kipart-search -type f -name *bmad* -o -name *BMAD*)"
     ]
   }
 }
