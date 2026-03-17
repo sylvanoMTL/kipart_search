@@ -31,7 +31,12 @@
       "Bash(PYTHONIOENCODING=utf-8 .env/Scripts/python.exe -c \":*)",
       "Bash(PYTHONIOENCODING=utf-8 .env/Scripts/python.exe -c \"from kipart_search.gui.main_window import MainWindow; print\\(''OK''\\)\")",
       "Bash(find c:/Git_Repo_Clones/kipart-search/src -type d -name __pycache__ -exec rm -rf {} +)",
-      "Bash(PYTHONIOENCODING=utf-8 timeout 30 .env/Scripts/python.exe -c \":*)"
+      "Bash(PYTHONIOENCODING=utf-8 timeout 30 .env/Scripts/python.exe -c \":*)",
+      "WebFetch(domain:docs.bmad-method.org)",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, ''src''\\); from kipart_search.core.units import parse_value, equivalent_values, generate_query_variants; v = parse_value\\(''0.1 \\\\u00b5F''\\); print\\(f''Parse 0.1uF: {v}''\\); print\\(f''Equivalents: {equivalent_values\\(v\\)}''\\); v = parse_value\\(''100nF''\\); print\\(f''Parse 100nF: {v}''\\); print\\(f''Equivalents: {equivalent_values\\(v\\)}''\\); v = parse_value\\(''1 k\\\\u03a9''\\); print\\(f''Parse 1kOhm: {v}''\\); print\\(f''Equivalents: {equivalent_values\\(v\\)}''\\); v = parse_value\\(''1000 \\\\u03a9''\\); print\\(f''Parse 1000Ohm: {v}''\\); print\\(f''Equivalents: {equivalent_values\\(v\\)}''\\); v = parse_value\\(''4.7 \\\\u00b5F''\\); print\\(f''Parse 4.7uF: {v}''\\); print\\(f''Equivalents: {equivalent_values\\(v\\)}''\\); v = parse_value\\(''10kohm''\\); print\\(f''Parse 10kohm: {v}''\\); print\\(f''Equivalents: {equivalent_values\\(v\\)}''\\); print\\(\\); print\\(''Query variants:''\\); [print\\(f''  {q!r} -> {generate_query_variants\\(q\\)}''\\) for q in [''0.1 \\\\u00b5F capacitor 0805'', ''1 k\\\\u03a9 resistor 0805'', ''100nF'', ''LM7805 voltage regulator'']]\")",
+      "Bash(python test_units.py)",
+      "Bash(PYTHONIOENCODING=utf-8 python test_units.py)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c \":*)"
     ]
   }
 }
