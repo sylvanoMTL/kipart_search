@@ -262,11 +262,13 @@ None — clean implementation, all 79 tests passed on first run.
 - **Fixed**: `import logging` placement — moved into stdlib block per project import convention
 - **Added**: `test_toolbar_has_object_name` test to prevent regression
 - All 80 tests pass (69 existing + 11 new), zero regressions
+- **Fixed**: `set_results()` with 0 components didn't restore centered alignment and muted style on "No components found" — inconsistent with empty-state pattern after a previous successful scan
 
 ### Change Log
 
 - 2026-03-18: Implemented Story 1.4 — layout persistence via QSettings and empty-state guidance for all panels
 - 2026-03-18: Code review fixes — toolbar objectName, targeted settings removal, import ordering
+- 2026-03-18: Code review fix — restore empty-state styling in set_results() zero-component branch
 
 ### File List
 

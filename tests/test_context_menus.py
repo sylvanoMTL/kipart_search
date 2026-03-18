@@ -59,6 +59,12 @@ def sample_components():
             footprint="Package_QFP:LQFP-64",
             mpn="STM32F405RGT6",
         ),
+        BoardComponent(
+            reference="U2",
+            value="MAX232",
+            footprint="Package_SO:SOIC-16",
+            mpn="MAX232CSE+",
+        ),
     ]
 
 
@@ -68,6 +74,7 @@ def sample_statuses():
         "C1": Confidence.GREEN,
         "R1": Confidence.RED,
         "U1": Confidence.AMBER,
+        "U2": Confidence.RED,  # has MPN but not found in any source
     }
 
 
@@ -229,6 +236,7 @@ class TestAccessibilityLabels:
         assert "Verified" in status_texts
         assert "Needs attention" in status_texts
         assert "Missing MPN" in status_texts
+        assert "Not found" in status_texts  # MPN present but not in any source
         # Ensure old terse labels are NOT present
         assert "OK" not in status_texts
         assert "?" not in status_texts
@@ -240,10 +248,11 @@ class TestAccessibilityLabels:
             if item and item.toolTip():
                 tooltips.append(item.toolTip())
 
-        assert len(tooltips) == 3
+        assert len(tooltips) == 4
         assert any("verified" in t.lower() for t in tooltips)
         assert any("attention" in t.lower() for t in tooltips)
         assert any("no mpn assigned" in t.lower() for t in tooltips)
+        assert any("not found in any" in t.lower() for t in tooltips)
 
     def test_table_accessible_names(
         self, verify_panel: VerifyPanel, results_table: ResultsTable

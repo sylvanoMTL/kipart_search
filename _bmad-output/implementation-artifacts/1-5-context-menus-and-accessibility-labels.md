@@ -1,6 +1,6 @@
 # Story 1.5: Context Menus and Accessibility Labels
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -285,6 +285,7 @@ Claude Opus 4.6 (1M context)
 ### Change Log
 
 - 2026-03-18: Implemented Story 1.5 — context menus and accessibility labels (all 9 tasks, 5 ACs satisfied)
+- 2026-03-18: Code review fixes — replaced private `_components` access with `table.rowCount()` in main_window, added "Not found" status label test coverage (U2 with MPN + RED confidence)
 
 ### File List
 

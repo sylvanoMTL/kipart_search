@@ -535,7 +535,7 @@ class MainWindow(QMainWindow):
         # Update assign target if search panel is open
         if self.dock_search.isVisible():
             # Find the component by reference
-            for i in range(len(self.verify_panel._components)):
+            for i in range(self.verify_panel.table.rowCount()):
                 comp = self.verify_panel.get_component(i)
                 if comp and comp.reference == reference:
                     self._assign_target = comp

@@ -208,6 +208,8 @@ class VerifyPanel(QWidget):
             self.health_bar.setVisible(True)
         else:
             self.summary_label.setText("No components found")
+            self.summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.summary_label.setStyleSheet("color: #888;")
             self.health_bar.setVisible(False)
 
     def _original_index(self, row: int) -> int | None:
