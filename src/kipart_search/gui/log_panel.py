@@ -5,7 +5,16 @@ from __future__ import annotations
 from datetime import datetime
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QMenuBar,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class LogPanel(QWidget):
@@ -16,6 +25,27 @@ class LogPanel(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        # ── Toolbar row: menu bar + copy button ──
+        toolbar = QHBoxLayout()
+        toolbar.setContentsMargins(0, 0, 0, 0)
+
+        self._menubar = QMenuBar()
+        self._menubar.setFixedHeight(24)
+        file_menu = self._menubar.addMenu("File")
+        copy_action = QAction("Copy Log", self)
+        copy_action.triggered.connect(self.copy_log)
+        file_menu.addAction(copy_action)
+        toolbar.addWidget(self._menubar)
+
+        toolbar.addStretch()
+
+        self._copy_btn = QPushButton("Copy Log")
+        self._copy_btn.setFixedHeight(22)
+        self._copy_btn.clicked.connect(self.copy_log)
+        toolbar.addWidget(self._copy_btn)
+
+        layout.addLayout(toolbar)
 
         self._text = QTextEdit()
         self._text.setReadOnly(True)
@@ -44,6 +74,11 @@ class LogPanel(QWidget):
             f"[{ts}] ── {title} ──</div>"
         )
         self._scroll_to_bottom()
+
+    def copy_log(self):
+        """Copy the full log text to the clipboard."""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self._text.toPlainText())
 
     def clear(self):
         """Clear all log entries."""
