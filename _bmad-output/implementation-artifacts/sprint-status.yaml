@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-18  # story 2-3 done
+last_updated: 2026-03-18  # story 2-4 ready-for-dev
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -43,12 +43,13 @@ story_location: "{project-root}/_bmad-output/implementation-artifacts"
 
 development_status:
   # Epic 1: GUI Modernization & Panel Architecture
-  epic-1: done
+  epic-1: in-progress
   1-1-migrate-main-window-to-qdockwidget-panel-architecture: done
   1-2-toolbar-status-bar-and-view-menu: done
   1-3-detail-panel-for-part-inspection: done
   1-4-layout-persistence-and-empty-states: done
   1-5-context-menus-and-accessibility-labels: done
+  1-6-persistent-session-log: ready-for-dev
   epic-1-retrospective: optional
 
   # Epic 2: Production-Ready BOM Export
@@ -56,7 +57,7 @@ development_status:
   2-1-bom-export-engine-with-pcbway-template: done
   2-2-preset-cm-templates-jlcpcb-newbury-electronics: done
   2-3-health-summary-bar-with-live-updates: done
-  2-4-bom-export-dialog-with-template-selection-and-preview: backlog
+  2-4-bom-export-dialog-with-template-selection-and-preview: ready-for-dev
   epic-2-retrospective: optional
 
   # Epic 3: Search & Verification Enhancements
