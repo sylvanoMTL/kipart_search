@@ -26,8 +26,8 @@ class LogPanel(QWidget):
         )
         self._text.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
         self._text.setStyleSheet("font-family: Consolas, monospace; font-size: 11px;")
-        self._text.setPlaceholderText("Activity log ...")
         layout.addWidget(self._text)
+        self.log("Ready")
 
     def log(self, msg: str):
         """Append a timestamped line."""

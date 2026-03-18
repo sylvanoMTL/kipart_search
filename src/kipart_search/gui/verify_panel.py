@@ -29,6 +29,8 @@ COLORS = {
     Confidence.RED: QColor(255, 200, 200),      # Light red
 }
 
+_EMPTY_GUIDANCE = "Scan a project or open a BOM to begin"
+
 VERIFY_COLUMNS = ["Reference", "Value", "MPN", "MPN Status", "Footprint"]
 
 
@@ -45,7 +47,9 @@ class VerifyPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Summary bar
-        self.summary_label = QLabel("")
+        self.summary_label = QLabel(_EMPTY_GUIDANCE)
+        self.summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.summary_label.setStyleSheet("color: #888;")
         layout.addWidget(self.summary_label)
 
         # Health bar
@@ -174,6 +178,8 @@ class VerifyPanel(QWidget):
         # Update summary
         total = len(components)
         if total > 0:
+            self.summary_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            self.summary_label.setStyleSheet("")
             pct = int(has_mpn / total * 100)
             self.summary_label.setText(
                 f"Components: {total} total | "
@@ -218,7 +224,9 @@ class VerifyPanel(QWidget):
     def clear(self):
         """Clear the verification table."""
         self.table.setRowCount(0)
-        self.summary_label.setText("")
+        self.summary_label.setText(_EMPTY_GUIDANCE)
+        self.summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.summary_label.setStyleSheet("color: #888;")
         self.health_bar.setVisible(False)
         self._detail.clear()
 

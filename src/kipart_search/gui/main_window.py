@@ -6,8 +6,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QThread, Signal, Qt
-from PySide6.QtGui import QAction
+import logging
+
+from PySide6.QtCore import QSettings, QThread, Signal, Qt
+from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -19,6 +21,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+log = logging.getLogger(__name__)
 
 from kipart_search import __version__
 from kipart_search.core.models import Confidence
@@ -225,6 +229,26 @@ class MainWindow(QMainWindow):
         self._init_jlcpcb_source()
         self._update_status()
 
+        # ── Restore saved layout (must come after all docks exist) ──
+        settings = QSettings("kipart-search", "kipart-search")
+        geometry = settings.value("geometry")
+        state = settings.value("windowState")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+        if state is not None:
+            if not self.restoreState(state):
+                log.warning("Failed to restore window state, using defaults")
+                self._reset_layout()
+
+    # --- Close / persistence ---
+
+    def closeEvent(self, event: QCloseEvent):
+        """Save window geometry and dock state before closing."""
+        settings = QSettings("kipart-search", "kipart-search")
+        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("windowState", self.saveState())
+        event.accept()
+
     # --- Menu bar ---
 
     def _build_menus(self):
@@ -302,6 +326,7 @@ class MainWindow(QMainWindow):
             self.addDockWidget(area, dock)
             dock.setFloating(False)
             dock.show()
+        QSettings("kipart-search", "kipart-search").clear()
 
     # --- Init & status ---
 

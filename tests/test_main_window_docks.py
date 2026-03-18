@@ -8,7 +8,7 @@ import pytest
 
 PySide6 = pytest.importorskip("PySide6", reason="PySide6 required for GUI tests")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QApplication, QDockWidget, QToolBar, QWidget
 
 # Ensure a QApplication exists before any widget tests
@@ -283,3 +283,55 @@ class TestResetLayout:
         window.dock_search.setFloating(True)
         window._reset_layout()
         assert not window.dock_search.isFloating()
+
+
+class TestLayoutPersistence:
+    """Story 1.4: QSettings layout persistence."""
+
+    @pytest.fixture(autouse=True)
+    def clear_settings(self):
+        """Ensure clean QSettings before and after each test."""
+        QSettings("kipart-search", "kipart-search").clear()
+        yield
+        QSettings("kipart-search", "kipart-search").clear()
+
+    def test_close_event_saves_state(self, window: MainWindow):
+        """Closing the window saves geometry and windowState to QSettings."""
+        window.close()
+        settings = QSettings("kipart-search", "kipart-search")
+        assert settings.value("geometry") is not None
+        assert settings.value("windowState") is not None
+
+    def test_restore_state_on_init(self, window: MainWindow):
+        """State saved from one window is restored in a new window."""
+        # Save state from current window
+        window.close()
+        # Create a new window — it should restore without crashing
+        w2 = MainWindow()
+        settings = QSettings("kipart-search", "kipart-search")
+        assert settings.value("geometry") is not None
+        w2.close()
+
+    def test_first_launch_no_saved_state(self):
+        """With no saved state, window launches with default layout (no crash)."""
+        QSettings("kipart-search", "kipart-search").clear()
+        w = MainWindow()
+        # Default positions should be intact
+        assert w.dockWidgetArea(w.dock_verify) == Qt.DockWidgetArea.LeftDockWidgetArea
+        assert w.dockWidgetArea(w.dock_search) == Qt.DockWidgetArea.RightDockWidgetArea
+        w.close()
+
+    def test_reset_layout_clears_settings(self, window: MainWindow):
+        """_reset_layout() clears QSettings so next launch uses defaults."""
+        # First, save some state
+        window.close()
+        settings = QSettings("kipart-search", "kipart-search")
+        assert settings.value("geometry") is not None
+
+        # Now create a new window and reset
+        w2 = MainWindow()
+        w2._reset_layout()
+        settings2 = QSettings("kipart-search", "kipart-search")
+        assert settings2.value("geometry") is None
+        assert settings2.value("windowState") is None
+        w2.close()

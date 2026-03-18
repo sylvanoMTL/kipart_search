@@ -22,6 +22,11 @@ from kipart_search.core.models import PartResult
 from kipart_search.gui.detail_panel import render_part_html
 
 
+_EMPTY_GUIDANCE = (
+    '<p style="text-align:center; color:#888; margin-top:40%;">'
+    "Search for components using the query bar above</p>"
+)
+
 COLUMNS = ["MPN", "Manufacturer", "Description", "Package", "Category", "Source"]
 
 
@@ -95,6 +100,9 @@ class ResultsTable(QWidget):
 
         layout.addWidget(splitter)
 
+        # Show empty-state guidance
+        self._detail.setHtml(_EMPTY_GUIDANCE)
+
     def set_results(self, results: list[PartResult]) -> None:
         """Populate the table and filter dropdowns from search results."""
         self._results = list(results)
@@ -155,7 +163,7 @@ class ResultsTable(QWidget):
         """Clear all results from the table."""
         self._results.clear()
         self.table.setRowCount(0)
-        self._detail.clear()
+        self._detail.setHtml(_EMPTY_GUIDANCE)
         self._count_label.setText("")
 
     # ── Filtering ──
