@@ -1,4 +1,4 @@
-"""Tests for the BOM export engine (Story 2.1)."""
+"""Tests for the BOM export engine (Stories 2.1, 2.2)."""
 
 from __future__ import annotations
 
@@ -346,6 +346,24 @@ class TestJLCPCBTemplate:
 
         assert rows[1][3] == ""  # Empty JLCPCB Part #
 
+    def test_export_with_lcsc_fallback_alias(self, tmp_path):
+        comps = [
+            BoardComponent(
+                reference="C1", value="100nF",
+                footprint="Capacitor_SMD:C_0402_1005Metric",
+                mpn="GRM155R71C104KA88D",
+                extra_fields={"manufacturer": "Murata", "lcsc": "C67890"},
+            ),
+        ]
+        out = tmp_path / "jlcpcb_lcsc_alias.csv"
+        export_bom(comps, JLCPCB_TEMPLATE, out)
+
+        with open(out, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+
+        assert rows[1][3] == "C67890"  # Populated via "lcsc" fallback alias
+
 
 # ── Newbury Template Tests ──
 
@@ -417,6 +435,30 @@ class TestNewburyTemplate:
         rows = list(ws.iter_rows(min_row=2, values_only=True))
 
         assert rows[0][1] == "10k"  # Description falls back to value
+
+    def test_supplier_fallback_aliases(self, tmp_path):
+        comps = [
+            BoardComponent(
+                reference="U1", value="STM32F103",
+                footprint="Package_QFP:LQFP-48_7x7mm_P0.5mm",
+                mpn="STM32F103C8T6",
+                extra_fields={
+                    "manufacturer": "STMicroelectronics",
+                    "Supplier": "Newark",
+                    "Supplier Part": "789-012",
+                },
+            ),
+        ]
+        out = tmp_path / "newbury_fallback.xlsx"
+        export_bom(comps, NEWBURY_TEMPLATE, out)
+
+        from openpyxl import load_workbook
+        wb = load_workbook(out)
+        ws = wb.active
+        rows = list(ws.iter_rows(min_row=2, values_only=True))
+
+        assert rows[0][5] == "Newark"   # Supplier Name via "Supplier" fallback
+        assert rows[0][6] == "789-012"  # Supplier Part Number via "Supplier Part" fallback
 
 
 # ── Preset Templates Tests ──
