@@ -168,6 +168,26 @@ class TestUpdateComponentStatus:
         assert found, "C3 row not found in table"
         panel.close()
 
+    def test_updates_mpn_cell_text(self):
+        """After assignment, MPN column should show the assigned MPN, not '(missing)'."""
+        panel = VerifyPanel()
+        comps = _make_components(5, mpn_count=2)
+        panel.set_results(comps, _make_statuses(comps))
+        # Simulate what main_window does: update comp.mpn, then call update_component_status
+        comps[2].mpn = "ASSIGNED-MPN-123"
+        panel.update_component_status("C3", Confidence.GREEN)
+        # Find the visual row for C3 and check its MPN cell text
+        found = False
+        for row in range(panel.table.rowCount()):
+            item = panel.table.item(row, 0)
+            if item and item.text() == "C3":
+                mpn_cell = panel.table.item(row, 2)
+                assert mpn_cell.text() == "ASSIGNED-MPN-123"
+                found = True
+                break
+        assert found, "C3 row not found in table"
+        panel.close()
+
     def test_color_changes_on_threshold_crossing(self):
         """When update crosses 50% threshold, bar color should change."""
         panel = VerifyPanel()

@@ -1,6 +1,6 @@
 # Story 2.3: Health Summary Bar with Live Updates
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -231,6 +231,7 @@ Files to modify in this story:
 ## Change Log
 
 - 2026-03-18: Implemented health summary bar color-coding, accessibility, live updates, and tests (Story 2.3)
+- 2026-03-18: Code review fixes — update MPN cell text on live assignment, extract duplicated summary/status helpers, fix task-number comments, add MPN cell text test
 
 ## Dev Agent Record
 

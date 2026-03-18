@@ -606,14 +606,14 @@ class MainWindow(QMainWindow):
 
             if written > 0:
                 self.log_panel.log(f"Wrote {written} field(s) to {ref}")
-                # Task 5: Update component in-memory
+                # Update component in-memory so has_mpn reflects the assignment
                 comp = self._assign_target
                 if comp and "MPN" in fields:
                     comp.mpn = fields["MPN"]
                 if comp:
                     for fname, fval in fields.items():
                         comp.extra_fields[fname.lower()] = fval
-                # Task 4: Live-update the verify panel
+                # Live-update the verify panel without a full re-scan
                 self.verify_panel.update_component_status(ref, Confidence.GREEN)
                 self.log_panel.log(f"{ref} status updated to Verified")
             else:

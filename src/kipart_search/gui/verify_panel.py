@@ -40,6 +40,18 @@ _COLOR_HEX = {
     Confidence.RED: "#FFC8C8",
 }
 
+_STATUS_LABELS = {
+    Confidence.GREEN: "Verified",
+    Confidence.AMBER: "Needs attention",
+    Confidence.RED: "Not found",
+}
+
+_STATUS_TOOLTIPS = {
+    Confidence.GREEN: "Part verified — found in configured source",
+    Confidence.AMBER: "Needs attention — verify MPN manually",
+    Confidence.RED: "MPN not found in any configured source",
+}
+
 VERIFY_COLUMNS = ["Reference", "Value", "MPN", "MPN Status", "Footprint"]
 
 
@@ -172,20 +184,12 @@ class VerifyPanel(QWidget):
             self.table.setItem(row, 2, mpn_item)
 
             # MPN Status — descriptive labels + tooltips + accessibility
-            status_text = {
-                Confidence.GREEN: "Verified",
-                Confidence.AMBER: "Needs attention",
-                Confidence.RED: "Missing MPN" if not comp.has_mpn else "Not found",
-            }[status]
-            tooltip = {
-                Confidence.GREEN: "Part verified — found in configured source",
-                Confidence.AMBER: "Needs attention — verify MPN manually",
-                Confidence.RED: (
-                    "No MPN assigned — right-click to search or assign"
-                    if not comp.has_mpn
-                    else "MPN not found in any configured source"
-                ),
-            }[status]
+            if status == Confidence.RED and not comp.has_mpn:
+                status_text = "Missing MPN"
+                tooltip = "No MPN assigned — right-click to search or assign"
+            else:
+                status_text = _STATUS_LABELS[status]
+                tooltip = _STATUS_TOOLTIPS[status]
             status_item = QTableWidgetItem(status_text)
             status_item.setBackground(bg_color)
             status_item.setToolTip(tooltip)
@@ -208,15 +212,9 @@ class VerifyPanel(QWidget):
             self.summary_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
             self.summary_label.setStyleSheet("")
             pct = int(has_mpn / total * 100)
-            summary = (
-                f"Components: {total} total | "
-                f"Valid MPN: {has_mpn} | "
-                f"Needs attention: {issues} | "
-                f"Missing MPN: {missing_mpn}"
+            self.summary_label.setText(
+                self._build_summary(total, has_mpn, issues, missing_mpn, pct)
             )
-            if pct >= 100:
-                summary += " — Ready for export"
-            self.summary_label.setText(summary)
             self.health_bar.setMaximum(total)
             self.health_bar.setValue(has_mpn)
             self.health_bar.setFormat(f"Ready: {pct}%")
@@ -250,21 +248,15 @@ class VerifyPanel(QWidget):
                         cell = self.table.item(row, col)
                         if cell:
                             cell.setBackground(new_bg)
+                    # Update MPN cell text (column 2) if MPN was assigned
+                    mpn_item = self.table.item(row, 2)
+                    if mpn_item and comp.has_mpn:
+                        mpn_item.setText(comp.mpn)
                     # Update MPN Status cell text and tooltip (column 3)
                     status_item = self.table.item(row, 3)
                     if status_item:
-                        status_text = {
-                            Confidence.GREEN: "Verified",
-                            Confidence.AMBER: "Needs attention",
-                            Confidence.RED: "Not found",
-                        }[new_status]
-                        tooltip = {
-                            Confidence.GREEN: "Part verified — found in configured source",
-                            Confidence.AMBER: "Needs attention — verify MPN manually",
-                            Confidence.RED: "MPN not found in any configured source",
-                        }[new_status]
-                        status_item.setText(status_text)
-                        status_item.setToolTip(tooltip)
+                        status_item.setText(_STATUS_LABELS[new_status])
+                        status_item.setToolTip(_STATUS_TOOLTIPS[new_status])
                     break
 
         # Recompute counts from _mpn_statuses
@@ -283,18 +275,25 @@ class VerifyPanel(QWidget):
         total = len(self._components)
         if total > 0:
             pct = int(has_mpn / total * 100)
-            summary = (
-                f"Components: {total} total | "
-                f"Valid MPN: {has_mpn} | "
-                f"Needs attention: {issues} | "
-                f"Missing MPN: {missing_mpn}"
+            self.summary_label.setText(
+                self._build_summary(total, has_mpn, issues, missing_mpn, pct)
             )
-            if pct >= 100:
-                summary += " — Ready for export"
-            self.summary_label.setText(summary)
             self.health_bar.setValue(has_mpn)
             self.health_bar.setFormat(f"Ready: {pct}%")
             self._update_health_bar_style(pct)
+
+    @staticmethod
+    def _build_summary(total: int, has_mpn: int, issues: int, missing_mpn: int, pct: int) -> str:
+        """Build the health summary text."""
+        summary = (
+            f"Components: {total} total | "
+            f"Valid MPN: {has_mpn} | "
+            f"Needs attention: {issues} | "
+            f"Missing MPN: {missing_mpn}"
+        )
+        if pct >= 100:
+            summary += " — Ready for export"
+        return summary
 
     def _update_health_bar_style(self, pct: int) -> None:
         """Apply color-coded stylesheet to the health bar based on percentage."""
