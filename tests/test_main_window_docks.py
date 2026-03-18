@@ -5,6 +5,9 @@ from __future__ import annotations
 import sys
 
 import pytest
+
+PySide6 = pytest.importorskip("PySide6", reason="PySide6 required for GUI tests")
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDockWidget, QWidget
 

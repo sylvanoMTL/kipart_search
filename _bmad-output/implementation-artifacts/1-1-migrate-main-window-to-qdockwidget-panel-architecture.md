@@ -229,9 +229,11 @@ Claude Opus 4.6 (1M context)
 ### File List
 
 - `src/kipart_search/gui/main_window.py` — modified (QSplitter → QDockWidget migration + View menu)
+- `src/kipart_search/gui/log_panel.py` — modified (removed setMaximumHeight(90) — fixed height incompatible with resizable QDockWidget)
 - `tests/test_main_window_docks.py` — new (27 tests for dock widget structure, View menu, and behavior)
 
 ## Change Log
 
 - **2026-03-18**: Migrated MainWindow from QSplitter layout to QDockWidget panel architecture. Replaced monolithic splitter with three independent dockable panels (Verify left, Search right, Log bottom). Added 24 unit tests. All acceptance criteria satisfied.
 - **2026-03-18**: Code review fix — Added View menu with `toggleViewAction()` for each dock panel (Verify, Search, Log). Users can now re-show any panel closed via the dock title bar. Added 3 tests for View menu. Total: 27 tests passing.
+- **2026-03-18**: Code review fix — Added `log_panel.py` to File List (was changed but undocumented). Added `pytest.importorskip("PySide6")` guard to test module so tests skip gracefully when PySide6 is unavailable.
