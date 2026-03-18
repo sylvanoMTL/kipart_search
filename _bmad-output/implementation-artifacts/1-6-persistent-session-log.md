@@ -1,6 +1,6 @@
 # Story 1.6: Persistent Session Log
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

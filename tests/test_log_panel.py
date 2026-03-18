@@ -63,15 +63,11 @@ def test_log_preserves_previous_entries(panel):
 
 def test_context_menu_has_clear_action(panel):
     """The custom context menu should include a 'Clear Log' action."""
-    # Verify context menu policy is set to custom
     assert (
         panel._text.contextMenuPolicy()
         == Qt.ContextMenuPolicy.CustomContextMenu
     )
-    # Build a standard menu and verify we can add to it (smoke test)
-    menu = panel._text.createStandardContextMenu()
+    menu = panel._build_context_menu()
     action_texts = [a.text() for a in menu.actions()]
+    assert "Clear Log" in action_texts
     menu.deleteLater()
-    # The standard menu won't have "Clear Log" — that's added by _on_context_menu.
-    # We test that the policy is correct and the handler is connected.
-    assert panel._text.contextMenuPolicy() == Qt.ContextMenuPolicy.CustomContextMenu

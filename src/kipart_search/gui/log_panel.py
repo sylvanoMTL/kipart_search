@@ -54,10 +54,15 @@ class LogPanel(QWidget):
         sb = self._text.verticalScrollBar()
         sb.setValue(sb.maximum())
 
-    def _on_context_menu(self, pos):
-        """Show the default context menu with an appended Clear Log action."""
+    def _build_context_menu(self):
+        """Build the context menu with a Clear Log action appended."""
         menu = self._text.createStandardContextMenu()
         menu.addSeparator()
         clear_action = menu.addAction("Clear Log")
         clear_action.triggered.connect(self.clear)
+        return menu
+
+    def _on_context_menu(self, pos):
+        """Show the context menu at the requested position."""
+        menu = self._build_context_menu()
         menu.exec(self._text.mapToGlobal(pos))
