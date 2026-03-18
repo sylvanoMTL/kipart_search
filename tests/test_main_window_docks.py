@@ -42,6 +42,12 @@ class TestDockWidgetStructure:
     def test_dock_search_object_name(self, window: MainWindow):
         assert window.dock_search.objectName() == "dock_search"
 
+    def test_dock_detail_exists(self, window: MainWindow):
+        assert isinstance(window.dock_detail, QDockWidget)
+
+    def test_dock_detail_object_name(self, window: MainWindow):
+        assert window.dock_detail.objectName() == "dock_detail"
+
     def test_dock_log_object_name(self, window: MainWindow):
         assert window.dock_log.objectName() == "dock_log"
 
@@ -49,9 +55,10 @@ class TestDockWidgetStructure:
         names = {
             window.dock_verify.objectName(),
             window.dock_search.objectName(),
+            window.dock_detail.objectName(),
             window.dock_log.objectName(),
         }
-        assert len(names) == 3
+        assert len(names) == 4
 
 
 class TestDefaultDockPositions:
@@ -63,6 +70,10 @@ class TestDefaultDockPositions:
 
     def test_search_docked_right(self, window: MainWindow):
         area = window.dockWidgetArea(window.dock_search)
+        assert area == Qt.DockWidgetArea.RightDockWidgetArea
+
+    def test_detail_docked_right(self, window: MainWindow):
+        area = window.dockWidgetArea(window.dock_detail)
         assert area == Qt.DockWidgetArea.RightDockWidgetArea
 
     def test_log_docked_bottom(self, window: MainWindow):
@@ -146,7 +157,7 @@ class TestMenuStructure:
         view_action = [a for a in window.menuBar().actions() if a.text() == "View"][0]
         view_menu = view_action.menu()
         actions = [a for a in view_menu.actions() if not a.isSeparator()]
-        assert len(actions) == 4  # 3 toggles + Reset Layout
+        assert len(actions) == 5  # 4 toggles + Reset Layout
         labels = [a.text() for a in actions]
         assert "Reset Layout" in labels
 
@@ -254,11 +265,18 @@ class TestResetLayout:
         window._reset_layout()
         assert not window.dock_log.isHidden()
 
+    def test_reset_layout_restores_detail(self, window: MainWindow):
+        window.dock_detail.hide()
+        assert window.dock_detail.isHidden()
+        window._reset_layout()
+        assert not window.dock_detail.isHidden()
+
     def test_reset_layout_restores_positions(self, window: MainWindow):
         """After reset, docks are in their default areas."""
         window._reset_layout()
         assert window.dockWidgetArea(window.dock_verify) == Qt.DockWidgetArea.LeftDockWidgetArea
         assert window.dockWidgetArea(window.dock_search) == Qt.DockWidgetArea.RightDockWidgetArea
+        assert window.dockWidgetArea(window.dock_detail) == Qt.DockWidgetArea.RightDockWidgetArea
         assert window.dockWidgetArea(window.dock_log) == Qt.DockWidgetArea.BottomDockWidgetArea
 
     def test_reset_layout_unfloats_docks(self, window: MainWindow):

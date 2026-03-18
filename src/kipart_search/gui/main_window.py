@@ -26,6 +26,7 @@ from kipart_search.core.sources import JLCPCBSource
 from kipart_search.core.search import SearchOrchestrator
 from kipart_search.core.units import generate_query_variants
 from kipart_search.gui.kicad_bridge import BoardComponent, KiCadBridge
+from kipart_search.gui.detail_panel import DetailPanel
 from kipart_search.gui.log_panel import LogPanel
 from kipart_search.gui.search_bar import SearchBar
 from kipart_search.gui.results_table import ResultsTable
@@ -143,6 +144,10 @@ class MainWindow(QMainWindow):
 
         self.results_table = ResultsTable()
         self.results_table.part_selected.connect(self._on_part_selected)
+        self.results_table.part_clicked.connect(self._on_part_clicked)
+
+        self.detail_panel = DetailPanel()
+        self.detail_panel.assign_requested.connect(self._on_detail_assign)
 
         self.log_panel = LogPanel()
 
@@ -170,6 +175,9 @@ class MainWindow(QMainWindow):
         )
         self.dock_search = self._create_dock(
             "Search", search_container, Qt.DockWidgetArea.RightDockWidgetArea
+        )
+        self.dock_detail = self._create_dock(
+            "Detail", self.detail_panel, Qt.DockWidgetArea.RightDockWidgetArea
         )
         self.dock_log = self._create_dock(
             "Log", self.log_panel, Qt.DockWidgetArea.BottomDockWidgetArea
@@ -244,6 +252,7 @@ class MainWindow(QMainWindow):
         view_menu = menubar.addMenu("View")
         view_menu.addAction(self.dock_verify.toggleViewAction())
         view_menu.addAction(self.dock_search.toggleViewAction())
+        view_menu.addAction(self.dock_detail.toggleViewAction())
         view_menu.addAction(self.dock_log.toggleViewAction())
         view_menu.addSeparator()
         reset_action = QAction("Reset Layout", self)
@@ -282,10 +291,11 @@ class MainWindow(QMainWindow):
         return dock
 
     def _reset_layout(self):
-        """Restore default dock positions: Verify left, Search right, Log bottom."""
+        """Restore default dock positions: Verify left, Search+Detail right, Log bottom."""
         for dock, area in [
             (self.dock_verify, Qt.DockWidgetArea.LeftDockWidgetArea),
             (self.dock_search, Qt.DockWidgetArea.RightDockWidgetArea),
+            (self.dock_detail, Qt.DockWidgetArea.RightDockWidgetArea),
             (self.dock_log, Qt.DockWidgetArea.BottomDockWidgetArea),
         ]:
             self.removeDockWidget(dock)
@@ -370,6 +380,7 @@ class MainWindow(QMainWindow):
     def _on_results(self, results):
         """Display search results."""
         self.results_table.set_results(results)
+        self.detail_panel.set_part(None)
         self.search_bar.search_button.setEnabled(True)
         self._set_action_status(f"{len(results)} results found")
 
@@ -378,6 +389,25 @@ class MainWindow(QMainWindow):
         self.log_panel.log(f"Search error: {error_msg}")
         self.search_bar.search_button.setEnabled(True)
         self._set_action_status("Search failed")
+
+    # --- Detail panel ---
+
+    def _on_part_clicked(self, row: int):
+        """Show part detail in the detail panel on single-click."""
+        part = self.results_table.get_result(row)
+        if part:
+            self.detail_panel.set_part(part)
+
+    def _on_detail_assign(self):
+        """Handle assign button click from the detail panel."""
+        part = self.detail_panel.current_part
+        if part is None:
+            return
+        # Find the row for this part so we can reuse _on_part_selected
+        for row in range(self.results_table.table.rowCount()):
+            if self.results_table.get_result(row) is part:
+                self._on_part_selected(row)
+                return
 
     # --- Scan Project ---
 
@@ -446,6 +476,7 @@ class MainWindow(QMainWindow):
                 if comp and comp.reference == reference:
                     self._assign_target = comp
                     self._search_target_label.setText(f"Assigning to: {comp.reference}")
+                    self.detail_panel.set_assign_target(comp.reference)
                     break
 
     # --- Guided search & assign ---
@@ -460,6 +491,7 @@ class MainWindow(QMainWindow):
         self.dock_search.show()
         self.dock_search.raise_()
         self._search_target_label.setText(f"Assigning to: {comp.reference}")
+        self.detail_panel.set_assign_target(comp.reference)
         raw_query = comp.build_search_query()
         self.log_panel.log(
             f"Guided search for {comp.reference}: "
@@ -512,6 +544,7 @@ class MainWindow(QMainWindow):
 
             self._assign_target = None
             self._search_target_label.setText("")
+            self.detail_panel.set_assign_target(None)
 
     # --- Database ---
 
