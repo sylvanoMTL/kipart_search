@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction
+from PySide6.QtCore import QUrl, Qt, Signal
+from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QHBoxLayout,
     QHeaderView,
@@ -40,6 +41,7 @@ class ResultsTable(QWidget):
         super().__init__(parent)
 
         self._results: list[PartResult] = []
+        self._assign_target: str | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -82,6 +84,7 @@ class ResultsTable(QWidget):
         )
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSortingEnabled(True)
+        self.table.setAccessibleName("Search results table")
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._on_context_menu)
         self.table.cellClicked.connect(self._on_click)
@@ -208,21 +211,48 @@ class ResultsTable(QWidget):
         """Emit part_selected for assignment."""
         self.part_selected.emit(row)
 
+    def set_assign_target(self, reference: str | None) -> None:
+        """Set the current assignment target reference designator."""
+        self._assign_target = reference
+
     def _on_context_menu(self, pos):
         """Show right-click context menu."""
         item = self.table.itemAt(pos)
         if item is None:
             return
         row = item.row()
+        menu = self._build_context_menu(row)
+        if menu:
+            menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _build_context_menu(self, row: int) -> QMenu | None:
+        """Build context menu for the given row. Returns None if row is invalid."""
         part = self.get_result(row)
         if part is None:
-            return
+            return None
 
         menu = QMenu(self)
 
-        assign_action = QAction("Assign to component", self)
-        assign_action.triggered.connect(lambda: self.part_selected.emit(row))
-        menu.addAction(assign_action)
+        if self._assign_target:
+            assign_action = QAction(f"Assign to {self._assign_target}", self)
+            assign_action.triggered.connect(lambda: self.part_selected.emit(row))
+            menu.addAction(assign_action)
 
-        menu.exec(self.table.viewport().mapToGlobal(pos))
+        copy_action = QAction("Copy MPN", self)
+        if part.mpn:
+            copy_action.triggered.connect(
+                lambda: QApplication.clipboard().setText(part.mpn)
+            )
+        else:
+            copy_action.setEnabled(False)
+        menu.addAction(copy_action)
+
+        if part.datasheet_url:
+            ds_action = QAction("Open Datasheet", self)
+            ds_action.triggered.connect(
+                lambda: QDesktopServices.openUrl(QUrl(part.datasheet_url))
+            )
+            menu.addAction(ds_action)
+
+        return menu
 

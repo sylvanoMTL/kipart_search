@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from html import escape
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
+    QApplication,
     QHeaderView,
     QLabel,
+    QMenu,
     QProgressBar,
     QSplitter,
     QTableWidget,
@@ -79,6 +81,9 @@ class VerifyPanel(QWidget):
             "QTableWidget::item:selected { background-color: #3399ff; color: white; }"
             "QTableWidget::item:hover { background-color: #e0eeff; }"
         )
+        self.table.setAccessibleName("Component verification table")
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_context_menu)
         self.table.cellClicked.connect(self._on_cell_clicked)
         self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         splitter.addWidget(self.table)
@@ -154,14 +159,24 @@ class VerifyPanel(QWidget):
             mpn_item.setData(Qt.ItemDataRole.UserRole, row)
             self.table.setItem(row, 2, mpn_item)
 
-            # MPN Status
+            # MPN Status — descriptive labels + tooltips + accessibility
             status_text = {
-                Confidence.GREEN: "OK",
-                Confidence.AMBER: "?",
-                Confidence.RED: "Missing" if not comp.has_mpn else "Not found",
+                Confidence.GREEN: "Verified",
+                Confidence.AMBER: "Needs attention",
+                Confidence.RED: "Missing MPN" if not comp.has_mpn else "Not found",
+            }[status]
+            tooltip = {
+                Confidence.GREEN: "Part verified — found in configured source",
+                Confidence.AMBER: "Needs attention — verify MPN manually",
+                Confidence.RED: (
+                    "No MPN assigned — right-click to search or assign"
+                    if not comp.has_mpn
+                    else "MPN not found in any configured source"
+                ),
             }[status]
             status_item = QTableWidgetItem(status_text)
             status_item.setBackground(bg_color)
+            status_item.setToolTip(tooltip)
             status_item.setData(Qt.ItemDataRole.UserRole, row)
             self.table.setItem(row, 3, status_item)
 
@@ -220,6 +235,42 @@ class VerifyPanel(QWidget):
         """Double-click any row to open guided search for that component."""
         if 0 <= row < len(self._components):
             self.search_for_component.emit(row)
+
+    def _on_context_menu(self, pos: QPoint):
+        """Show right-click context menu for a verification table row."""
+        item = self.table.itemAt(pos)
+        if item is None:
+            return
+        row = item.row()
+        menu = self._build_context_menu(row)
+        if menu:
+            menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _build_context_menu(self, row: int) -> QMenu | None:
+        """Build context menu for the given row. Returns None if row is invalid."""
+        comp = self.get_component(row)
+        if comp is None:
+            return None
+
+        menu = QMenu(self)
+
+        search_action = QAction("Search for this component", self)
+        search_action.triggered.connect(lambda: self.search_for_component.emit(row))
+        menu.addAction(search_action)
+
+        assign_action = QAction("Assign MPN", self)
+        assign_action.triggered.connect(lambda: self.component_clicked.emit(comp.reference))
+        menu.addAction(assign_action)
+
+        copy_action = QAction("Copy MPN", self)
+        mpn = comp.mpn if comp.has_mpn else ""
+        if mpn:
+            copy_action.triggered.connect(lambda: QApplication.clipboard().setText(mpn))
+        else:
+            copy_action.setEnabled(False)
+        menu.addAction(copy_action)
+
+        return menu
 
     def clear(self):
         """Clear the verification table."""

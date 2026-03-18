@@ -114,6 +114,9 @@ class DetailPanel(QWidget):
         """Show or hide the assign button based on whether a target is set."""
         if reference:
             self._assign_btn.setText(f"Assign to {reference}")
+            self._assign_btn.setAccessibleDescription(
+                "Assign the selected search result to this component"
+            )
             self._assign_btn.setVisible(True)
         else:
             self._assign_btn.setVisible(False)

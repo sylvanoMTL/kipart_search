@@ -224,8 +224,11 @@ class MainWindow(QMainWindow):
         # ── Status bar with 3 zones ──
         self.status_bar = QStatusBar()
         self._mode_label = QLabel("  Standalone  ")
+        self._mode_label.setAccessibleName("Connection mode")
         self._sources_label = QLabel("")
+        self._sources_label.setAccessibleName("Active sources")
         self._action_label = QLabel("Ready")
+        self._action_label.setAccessibleName("Current action")
         self.status_bar.addWidget(self._mode_label)
         self.status_bar.addWidget(self._sources_label, 1)
         self.status_bar.addPermanentWidget(self._action_label)
@@ -538,6 +541,7 @@ class MainWindow(QMainWindow):
                     self._assign_target = comp
                     self._search_target_label.setText(f"Assigning to: {comp.reference}")
                     self.detail_panel.set_assign_target(comp.reference)
+                    self.results_table.set_assign_target(comp.reference)
                     break
 
     # --- Guided search & assign ---
@@ -553,6 +557,7 @@ class MainWindow(QMainWindow):
         self.dock_search.raise_()
         self._search_target_label.setText(f"Assigning to: {comp.reference}")
         self.detail_panel.set_assign_target(comp.reference)
+        self.results_table.set_assign_target(comp.reference)
         raw_query = comp.build_search_query()
         self.log_panel.log(
             f"Guided search for {comp.reference}: "
@@ -606,6 +611,7 @@ class MainWindow(QMainWindow):
             self._assign_target = None
             self._search_target_label.setText("")
             self.detail_panel.set_assign_target(None)
+            self.results_table.set_assign_target(None)
 
     # --- Database ---
 
