@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
 
-import logging
-
-from PySide6.QtCore import QSettings, QThread, Signal, Qt
+from PySide6.QtCore import QSettings, QThread, QTimer, Signal, Qt
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -16,6 +15,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QSizePolicy,
     QStatusBar,
     QToolBar,
     QVBoxLayout,
@@ -134,8 +134,10 @@ class MainWindow(QMainWindow):
         self._assign_target: BoardComponent | None = None
 
         # ── Hidden central widget (QDockWidgets fill around it) ──
+        # Dock-only layout: central widget shrinks to zero but stays resizable
+        # so Qt's internal splitters between dock areas can function.
         placeholder = QWidget()
-        placeholder.setMaximumSize(0, 0)
+        placeholder.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.setCentralWidget(placeholder)
 
         # ── Panel widgets ──
@@ -183,12 +185,16 @@ class MainWindow(QMainWindow):
         self.dock_detail = self._create_dock(
             "Detail", self.detail_panel, Qt.DockWidgetArea.RightDockWidgetArea
         )
+        self.dock_detail.hide()  # hidden by default; available via View menu
         self.dock_log = self._create_dock(
             "Log", self.log_panel, Qt.DockWidgetArea.BottomDockWidgetArea
         )
 
+        self._first_show = True
+
         # ── Toolbar ──
         self.toolbar = QToolBar("Main Toolbar", self)
+        self.toolbar.setObjectName("main_toolbar")
         self.toolbar.setMovable(False)
         self.addToolBar(self.toolbar)
 
@@ -239,8 +245,17 @@ class MainWindow(QMainWindow):
             if not self.restoreState(state):
                 log.warning("Failed to restore window state, using defaults")
                 self._reset_layout()
+            else:
+                self._first_show = False  # skip default sizing, user has saved layout
 
-    # --- Close / persistence ---
+    # --- Show / Close / persistence ---
+
+    def showEvent(self, event):
+        """Apply default dock sizes on first show, deferred so layout is finalised."""
+        super().showEvent(event)
+        if self._first_show:
+            self._first_show = False
+            QTimer.singleShot(0, self._apply_default_dock_sizes)
 
     def closeEvent(self, event: QCloseEvent):
         """Save window geometry and dock state before closing."""
@@ -314,8 +329,25 @@ class MainWindow(QMainWindow):
         self.addDockWidget(area, dock)
         return dock
 
+    def _apply_default_dock_sizes(self):
+        """Set default dock proportions: Verify 50% | Search 50%, Log 20% height."""
+        h = self.height()
+        w = self.width()
+        # Vertical: top panels 80%, log 20%
+        self.resizeDocks(
+            [self.dock_verify, self.dock_log],
+            [int(h * 0.80), int(h * 0.20)],
+            Qt.Orientation.Vertical,
+        )
+        # Horizontal: verify 50%, search 50%
+        self.resizeDocks(
+            [self.dock_verify, self.dock_search],
+            [int(w * 0.50), int(w * 0.50)],
+            Qt.Orientation.Horizontal,
+        )
+
     def _reset_layout(self):
-        """Restore default dock positions: Verify left, Search+Detail right, Log bottom."""
+        """Restore default dock positions: Verify left, Search right, Log bottom, Detail hidden."""
         for dock, area in [
             (self.dock_verify, Qt.DockWidgetArea.LeftDockWidgetArea),
             (self.dock_search, Qt.DockWidgetArea.RightDockWidgetArea),
@@ -326,7 +358,11 @@ class MainWindow(QMainWindow):
             self.addDockWidget(area, dock)
             dock.setFloating(False)
             dock.show()
-        QSettings("kipart-search", "kipart-search").clear()
+        self.dock_detail.hide()  # hidden by default
+        QTimer.singleShot(0, self._apply_default_dock_sizes)
+        settings = QSettings("kipart-search", "kipart-search")
+        settings.remove("geometry")
+        settings.remove("windowState")
 
     # --- Init & status ---
 

@@ -1,6 +1,6 @@
 # Story 1.4: Layout Persistence and Empty States
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -255,15 +255,24 @@ None — clean implementation, all 79 tests passed on first run.
 - Created `tests/test_empty_states.py` (6 tests) covering all 4 panels' empty-state guidance
 - All 79 tests pass (69 existing + 10 new), zero regressions
 
+### Code Review Fixes
+
+- **Fixed**: Toolbar missing `objectName` — caused `QMainWindow::saveState()` warning, breaking layout persistence. Added `toolbar.setObjectName("main_toolbar")`
+- **Fixed**: `_reset_layout()` used `settings.clear()` which wipes ALL app settings — replaced with targeted `settings.remove("geometry")` + `settings.remove("windowState")` to preserve future user preferences
+- **Fixed**: `import logging` placement — moved into stdlib block per project import convention
+- **Added**: `test_toolbar_has_object_name` test to prevent regression
+- All 80 tests pass (69 existing + 11 new), zero regressions
+
 ### Change Log
 
 - 2026-03-18: Implemented Story 1.4 — layout persistence via QSettings and empty-state guidance for all panels
+- 2026-03-18: Code review fixes — toolbar objectName, targeted settings removal, import ordering
 
 ### File List
 
-- src/kipart_search/gui/main_window.py (modified — QSettings import, closeEvent, restore logic, clear in _reset_layout)
+- src/kipart_search/gui/main_window.py (modified — QSettings import, closeEvent, restore logic, targeted remove in _reset_layout, toolbar objectName)
 - src/kipart_search/gui/verify_panel.py (modified — _EMPTY_GUIDANCE constant, centered/muted style, clear() update)
 - src/kipart_search/gui/results_table.py (modified — _EMPTY_GUIDANCE HTML constant, init guidance, clear_results update)
 - src/kipart_search/gui/log_panel.py (modified — replaced placeholderText with self.log("Ready"))
-- tests/test_main_window_docks.py (modified — QSettings import, TestLayoutPersistence class with 4 tests)
+- tests/test_main_window_docks.py (modified — QSettings import, TestLayoutPersistence class with 4 tests, toolbar objectName test)
 - tests/test_empty_states.py (new — 6 tests for empty-state guidance across all panels)

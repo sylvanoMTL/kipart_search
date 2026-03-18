@@ -9,7 +9,7 @@ import pytest
 PySide6 = pytest.importorskip("PySide6", reason="PySide6 required for GUI tests")
 
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtWidgets import QApplication, QDockWidget, QToolBar, QWidget
+from PySide6.QtWidgets import QApplication, QDockWidget, QSizePolicy, QToolBar, QWidget
 
 # Ensure a QApplication exists before any widget tests
 app = QApplication.instance() or QApplication(sys.argv)
@@ -72,9 +72,10 @@ class TestDefaultDockPositions:
         area = window.dockWidgetArea(window.dock_search)
         assert area == Qt.DockWidgetArea.RightDockWidgetArea
 
-    def test_detail_docked_right(self, window: MainWindow):
+    def test_detail_docked_right_hidden(self, window: MainWindow):
         area = window.dockWidgetArea(window.dock_detail)
         assert area == Qt.DockWidgetArea.RightDockWidgetArea
+        assert window.dock_detail.isHidden()
 
     def test_log_docked_bottom(self, window: MainWindow):
         area = window.dockWidgetArea(window.dock_log)
@@ -90,11 +91,11 @@ class TestSplitterRemoved:
     def test_no_search_panel_attribute(self, window: MainWindow):
         assert not hasattr(window, "_search_panel")
 
-    def test_central_widget_is_hidden_placeholder(self, window: MainWindow):
+    def test_central_widget_is_shrinkable_placeholder(self, window: MainWindow):
         cw = window.centralWidget()
         assert cw is not None
-        assert cw.maximumWidth() == 0
-        assert cw.maximumHeight() == 0
+        assert cw.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+        assert cw.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Ignored
 
 
 class TestPanelWidgetsPreserved:
@@ -222,6 +223,10 @@ class TestToolbar:
         """Push to KiCad disabled when not connected."""
         assert not window._act_push.isEnabled()
 
+    def test_toolbar_has_object_name(self, window: MainWindow):
+        """Toolbar needs objectName for QMainWindow::saveState() to work."""
+        assert window.toolbar.objectName() == "main_toolbar"
+
 
 class TestStatusBar3Zones:
     """Story 1.2 AC #2: QStatusBar with 3 zones."""
@@ -265,11 +270,12 @@ class TestResetLayout:
         window._reset_layout()
         assert not window.dock_log.isHidden()
 
-    def test_reset_layout_restores_detail(self, window: MainWindow):
-        window.dock_detail.hide()
-        assert window.dock_detail.isHidden()
-        window._reset_layout()
+    def test_reset_layout_keeps_detail_hidden(self, window: MainWindow):
+        """Detail dock is hidden by default, stays hidden after reset."""
+        window.dock_detail.show()
         assert not window.dock_detail.isHidden()
+        window._reset_layout()
+        assert window.dock_detail.isHidden()
 
     def test_reset_layout_restores_positions(self, window: MainWindow):
         """After reset, docks are in their default areas."""
