@@ -12,12 +12,11 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
-    QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
-    QPushButton,
     QStatusBar,
+    QToolBar,
     QVBoxLayout,
     QWidget,
 )
@@ -148,34 +147,21 @@ class MainWindow(QMainWindow):
 
         self.log_panel = LogPanel()
 
-        # ── Verify dock container (Scan button + verify panel) ──
+        # ── Verify dock container ──
         verify_container = QWidget()
         verify_layout = QVBoxLayout(verify_container)
         verify_layout.setContentsMargins(0, 0, 0, 0)
         verify_layout.setSpacing(4)
-
-        self.scan_btn = QPushButton("Scan Project")
-        self.scan_btn.setToolTip("Connect to KiCad and verify BOM")
-        self.scan_btn.clicked.connect(self._on_scan)
-        verify_layout.addWidget(self.scan_btn)
         verify_layout.addWidget(self.verify_panel)
 
-        # ── Search dock container (DB button + search bar + results) ──
+        # ── Search dock container ──
         search_container = QWidget()
         search_layout = QVBoxLayout(search_container)
         search_layout.setContentsMargins(0, 0, 0, 0)
         search_layout.setSpacing(4)
 
-        search_toolbar = QHBoxLayout()
-        self.db_btn = QPushButton("Download Database")
-        self.db_btn.setToolTip("Download or update the JLCPCB parts database")
-        self.db_btn.clicked.connect(self._on_download_db)
-        search_toolbar.addWidget(self.db_btn)
-        search_toolbar.addStretch()
         self._search_target_label = QLabel("")
-        search_toolbar.addWidget(self._search_target_label)
-        search_layout.addLayout(search_toolbar)
-
+        search_layout.addWidget(self._search_target_label)
         search_layout.addWidget(self.search_bar)
         search_layout.addWidget(self.results_table)
 
@@ -190,13 +176,42 @@ class MainWindow(QMainWindow):
             "Log", self.log_panel, Qt.DockWidgetArea.BottomDockWidgetArea
         )
 
+        # ── Toolbar ──
+        self.toolbar = QToolBar("Main Toolbar", self)
+        self.toolbar.setMovable(False)
+        self.addToolBar(self.toolbar)
+
+        self._act_scan = QAction("Scan Project", self)
+        self._act_scan.setToolTip("Connect to KiCad and verify BOM")
+        self._act_scan.triggered.connect(self._on_scan)
+        self.toolbar.addAction(self._act_scan)
+
+        self._act_export = QAction("Export BOM", self)
+        self._act_export.setEnabled(False)
+        self._act_export.setToolTip("Export BOM (not yet implemented)")
+        self.toolbar.addAction(self._act_export)
+
+        self._act_push = QAction("Push to KiCad", self)
+        self._act_push.setEnabled(False)
+        self._act_push.setToolTip("Push changes to KiCad (requires connection)")
+        self.toolbar.addAction(self._act_push)
+
+        self._act_prefs = QAction("Preferences", self)
+        self._act_prefs.setEnabled(False)
+        self._act_prefs.setToolTip("Preferences (not yet implemented)")
+        self.toolbar.addAction(self._act_prefs)
+
         # ── Menus (order: File, View, Help) ──
         self._build_menus()
 
-        # ── Status bar with mode indicator ──
+        # ── Status bar with 3 zones ──
         self.status_bar = QStatusBar()
-        self._mode_label = QLabel()
-        self.status_bar.addPermanentWidget(self._mode_label)
+        self._mode_label = QLabel("  Standalone  ")
+        self._sources_label = QLabel("")
+        self._action_label = QLabel("Ready")
+        self.status_bar.addWidget(self._mode_label)
+        self.status_bar.addWidget(self._sources_label, 1)
+        self.status_bar.addPermanentWidget(self._action_label)
         self.setStatusBar(self.status_bar)
 
         # Try to load existing database
@@ -231,6 +246,10 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.dock_verify.toggleViewAction())
         view_menu.addAction(self.dock_search.toggleViewAction())
         view_menu.addAction(self.dock_log.toggleViewAction())
+        view_menu.addSeparator()
+        reset_action = QAction("Reset Layout", self)
+        reset_action.triggered.connect(self._reset_layout)
+        view_menu.addAction(reset_action)
 
         # Help menu (last)
         help_menu = menubar.addMenu("Help")
@@ -263,6 +282,18 @@ class MainWindow(QMainWindow):
         self.addDockWidget(area, dock)
         return dock
 
+    def _reset_layout(self):
+        """Restore default dock positions: Verify left, Search right, Log bottom."""
+        for dock, area in [
+            (self.dock_verify, Qt.DockWidgetArea.LeftDockWidgetArea),
+            (self.dock_search, Qt.DockWidgetArea.RightDockWidgetArea),
+            (self.dock_log, Qt.DockWidgetArea.BottomDockWidgetArea),
+        ]:
+            self.removeDockWidget(dock)
+            self.addDockWidget(area, dock)
+            dock.setFloating(False)
+            dock.show()
+
     # --- Init & status ---
 
     def _init_jlcpcb_source(self):
@@ -273,39 +304,43 @@ class MainWindow(QMainWindow):
             self._orchestrator.add_source(self._jlcpcb_source)
 
     def _update_status(self):
-        """Update the status bar with data source info and mode badge."""
-        parts = []
+        """Update the status bar 3 zones: mode badge, sources, action."""
+        # Left zone: mode badge
+        if self._bridge.is_connected:
+            self._mode_label.setText("  Connected to KiCad  ")
+            self._mode_label.setStyleSheet(
+                "background-color: #2d7d46; color: white; padding: 2px 8px; "
+                "border-radius: 8px; font-weight: bold; font-size: 11px;"
+            )
+        else:
+            self._mode_label.setText("  Standalone  ")
+            self._mode_label.setStyleSheet(
+                "background-color: #6b7280; color: white; padding: 2px 8px; "
+                "border-radius: 8px; font-weight: bold; font-size: 11px;"
+            )
+
+        # Center zone: active source names
+        sources: list[str] = []
         if self._jlcpcb_source and self._jlcpcb_source.is_configured():
             db_path = self._jlcpcb_source.db_path
             try:
                 mtime = os.path.getmtime(db_path)
-                dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+                dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
                 size_mb = os.path.getsize(db_path) / (1024 * 1024)
-                parts.append(f"JLCPCB DB: {size_mb:.0f} MB, {dt}")
+                sources.append(f"JLCPCB ({size_mb:.0f} MB, {dt})")
             except OSError:
-                parts.append("JLCPCB DB: loaded")
-            self.db_btn.setText("Update Database")
-            # Mode badge: Local DB
-            self._mode_label.setText("  Local DB  ")
-            self._mode_label.setStyleSheet(
-                "background-color: #2d7d46; color: white; padding: 2px 6px; "
-                "border-radius: 3px; font-weight: bold; font-size: 11px;"
-            )
+                sources.append("JLCPCB")
+        if sources:
+            self._sources_label.setText(" + ".join(sources))
         else:
-            parts.append("JLCPCB DB: not loaded")
-            self.db_btn.setText("Download Database")
-            self._mode_label.setText("  No DB  ")
-            self._mode_label.setStyleSheet(
-                "background-color: #6b7280; color: white; padding: 2px 6px; "
-                "border-radius: 3px; font-weight: bold; font-size: 11px;"
-            )
+            self._sources_label.setText("No sources configured")
 
-        if self._bridge.is_connected:
-            parts.append("KiCad: connected")
-        else:
-            parts.append("KiCad: not connected")
+        # Update Push to KiCad button state
+        self._act_push.setEnabled(self._bridge.is_connected)
 
-        self.status_bar.showMessage(" | ".join(parts))
+    def _set_action_status(self, text: str):
+        """Update the right zone of the status bar with an action message."""
+        self._action_label.setText(text)
 
     # --- Search ---
 
@@ -337,11 +372,13 @@ class MainWindow(QMainWindow):
         """Display search results."""
         self.results_table.set_results(results)
         self.search_bar.search_button.setEnabled(True)
+        self._set_action_status(f"{len(results)} results found")
 
     def _on_search_error(self, error_msg: str):
         """Handle search error."""
         self.log_panel.log(f"Search error: {error_msg}")
         self.search_bar.search_button.setEnabled(True)
+        self._set_action_status("Search failed")
 
     # --- Scan Project ---
 
@@ -354,8 +391,8 @@ class MainWindow(QMainWindow):
                 return
 
         self._update_status()
-        self.scan_btn.setEnabled(False)
-        self.scan_btn.setText("Scanning...")
+        self._act_scan.setEnabled(False)
+        self._set_action_status("Scanning...")
         self.log_panel.clear()
 
         self._scan_worker = ScanWorker(self._bridge, self._orchestrator)
@@ -367,14 +404,14 @@ class MainWindow(QMainWindow):
     def _on_scan_complete(self, components, mpn_statuses):
         """Display scan/verification results."""
         self.verify_panel.set_results(components, mpn_statuses)
-        self.scan_btn.setEnabled(True)
-        self.scan_btn.setText("Scan Project")
+        self._act_scan.setEnabled(True)
+        self._set_action_status(f"Scan complete: {len(components)} components")
 
     def _on_scan_error(self, error_msg: str):
         """Handle scan error."""
         QMessageBox.warning(self, "Scan Error", error_msg)
-        self.scan_btn.setEnabled(True)
-        self.scan_btn.setText("Scan Project")
+        self._act_scan.setEnabled(True)
+        self._set_action_status("Scan failed")
 
     def _show_connection_error(self, error_msg: str):
         """Show a connection error dialog with copyable diagnostics."""

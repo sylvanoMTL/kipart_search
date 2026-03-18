@@ -9,7 +9,7 @@ import pytest
 PySide6 = pytest.importorskip("PySide6", reason="PySide6 required for GUI tests")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QDockWidget, QWidget
+from PySide6.QtWidgets import QApplication, QDockWidget, QToolBar, QWidget
 
 # Ensure a QApplication exists before any widget tests
 app = QApplication.instance() or QApplication(sys.argv)
@@ -103,22 +103,13 @@ class TestPanelWidgetsPreserved:
     def test_log_panel_is_dock_child(self, window: MainWindow):
         assert window.dock_log.widget() is window.log_panel
 
-    def test_scan_btn_in_verify_dock(self, window: MainWindow):
-        """Scan Project button is inside the verify dock, not search dock."""
-        assert window.scan_btn is not None
-        # Walk up parents to find the dock
-        parent = window.scan_btn.parent()
-        while parent and not isinstance(parent, QDockWidget):
-            parent = parent.parent()
-        assert parent is window.dock_verify
+    def test_scan_btn_removed(self, window: MainWindow):
+        """Scan button removed from verify dock — now a toolbar action."""
+        assert not hasattr(window, "scan_btn")
 
-    def test_db_btn_in_search_dock(self, window: MainWindow):
-        """Download Database button is inside the search dock."""
-        assert window.db_btn is not None
-        parent = window.db_btn.parent()
-        while parent and not isinstance(parent, QDockWidget):
-            parent = parent.parent()
-        assert parent is window.dock_search
+    def test_db_btn_removed(self, window: MainWindow):
+        """Download Database button removed from search dock — now a menu action."""
+        assert not hasattr(window, "db_btn")
 
     def test_search_target_label_exists(self, window: MainWindow):
         assert window._search_target_label is not None
@@ -151,11 +142,13 @@ class TestMenuStructure:
         menus = [a.text() for a in window.menuBar().actions()]
         assert menus[-1] == "Help"
 
-    def test_view_menu_has_three_toggle_actions(self, window: MainWindow):
+    def test_view_menu_has_toggles_and_reset(self, window: MainWindow):
         view_action = [a for a in window.menuBar().actions() if a.text() == "View"][0]
         view_menu = view_action.menu()
         actions = [a for a in view_menu.actions() if not a.isSeparator()]
-        assert len(actions) == 3
+        assert len(actions) == 4  # 3 toggles + Reset Layout
+        labels = [a.text() for a in actions]
+        assert "Reset Layout" in labels
 
     def test_toggle_action_can_reshow_closed_dock(self, window: MainWindow):
         action = window.dock_search.toggleViewAction()
@@ -186,3 +179,89 @@ class TestCreateDockHelper:
         dock = window._create_dock("Test", widget, Qt.DockWidgetArea.LeftDockWidgetArea)
         assert dock.widget() is widget
         window.removeDockWidget(dock)
+
+
+class TestToolbar:
+    """Story 1.2 AC #1: Fixed QToolBar with 4 actions."""
+
+    def test_toolbar_exists(self, window: MainWindow):
+        assert isinstance(window.toolbar, QToolBar)
+
+    def test_toolbar_not_movable(self, window: MainWindow):
+        assert not window.toolbar.isMovable()
+
+    def test_toolbar_has_four_actions(self, window: MainWindow):
+        actions = window.toolbar.actions()
+        assert len(actions) == 4
+
+    def test_toolbar_action_labels(self, window: MainWindow):
+        labels = [a.text() for a in window.toolbar.actions()]
+        assert labels == ["Scan Project", "Export BOM", "Push to KiCad", "Preferences"]
+
+    def test_export_bom_disabled(self, window: MainWindow):
+        assert not window._act_export.isEnabled()
+
+    def test_preferences_disabled(self, window: MainWindow):
+        assert not window._act_prefs.isEnabled()
+
+    def test_scan_project_enabled(self, window: MainWindow):
+        assert window._act_scan.isEnabled()
+
+    def test_push_to_kicad_disabled_standalone(self, window: MainWindow):
+        """Push to KiCad disabled when not connected."""
+        assert not window._act_push.isEnabled()
+
+
+class TestStatusBar3Zones:
+    """Story 1.2 AC #2: QStatusBar with 3 zones."""
+
+    def test_mode_label_exists(self, window: MainWindow):
+        assert window._mode_label is not None
+
+    def test_sources_label_exists(self, window: MainWindow):
+        assert window._sources_label is not None
+
+    def test_action_label_exists(self, window: MainWindow):
+        assert window._action_label is not None
+
+    def test_mode_label_standalone_text(self, window: MainWindow):
+        assert "Standalone" in window._mode_label.text()
+
+    def test_action_label_default_ready(self, window: MainWindow):
+        """Right zone defaults to 'Ready'."""
+        # After _update_status in __init__, action_label should still be 'Ready'
+        # unless a source was loaded — but the default init sets it
+        assert window._action_label.text() == "Ready"
+
+    def test_set_action_status(self, window: MainWindow):
+        window._set_action_status("5 results found")
+        assert window._action_label.text() == "5 results found"
+
+    def test_sources_label_no_db(self, window: MainWindow):
+        """Without a configured source, shows 'No sources configured'."""
+        # Force no source
+        window._jlcpcb_source = None
+        window._update_status()
+        assert window._sources_label.text() == "No sources configured"
+
+
+class TestResetLayout:
+    """Story 1.2 AC #3: Reset Layout restores default dock positions."""
+
+    def test_reset_layout_restores_hidden_dock(self, window: MainWindow):
+        window.dock_log.hide()
+        assert window.dock_log.isHidden()
+        window._reset_layout()
+        assert not window.dock_log.isHidden()
+
+    def test_reset_layout_restores_positions(self, window: MainWindow):
+        """After reset, docks are in their default areas."""
+        window._reset_layout()
+        assert window.dockWidgetArea(window.dock_verify) == Qt.DockWidgetArea.LeftDockWidgetArea
+        assert window.dockWidgetArea(window.dock_search) == Qt.DockWidgetArea.RightDockWidgetArea
+        assert window.dockWidgetArea(window.dock_log) == Qt.DockWidgetArea.BottomDockWidgetArea
+
+    def test_reset_layout_unfloats_docks(self, window: MainWindow):
+        window.dock_search.setFloating(True)
+        window._reset_layout()
+        assert not window.dock_search.isFloating()
