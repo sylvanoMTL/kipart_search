@@ -1,6 +1,6 @@
 # Story 1.2: Toolbar, Status Bar, and View Menu
 
-Status: review
+Status: done
 
 ## Story
 
@@ -257,6 +257,7 @@ Claude Opus 4.6 (1M context)
 ### Change Log
 
 - 2026-03-18: Implemented Story 1.2 — toolbar, 3-zone status bar, View menu Reset Layout, action status updates
+- 2026-03-18: Code review (AI) — 1 LOW finding fixed: replaced os.path.getmtime/getsize with pathlib.Path.stat() in _update_status(), removed unused os import. All 48 tests pass.
 
 ### File List
 

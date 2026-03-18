@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -324,9 +323,9 @@ class MainWindow(QMainWindow):
         if self._jlcpcb_source and self._jlcpcb_source.is_configured():
             db_path = self._jlcpcb_source.db_path
             try:
-                mtime = os.path.getmtime(db_path)
-                dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
-                size_mb = os.path.getsize(db_path) / (1024 * 1024)
+                stat = db_path.stat()
+                dt = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d")
+                size_mb = stat.st_size / (1024 * 1024)
                 sources.append(f"JLCPCB ({size_mb:.0f} MB, {dt})")
             except OSError:
                 sources.append("JLCPCB")
