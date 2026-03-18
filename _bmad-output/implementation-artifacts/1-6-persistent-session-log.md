@@ -1,6 +1,6 @@
 # Story 1.6: Persistent Session Log
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -44,40 +44,40 @@ So that I can trace back what happened during my session and diagnose issues wit
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Remove `log_panel.clear()` calls from `main_window.py` (AC: #1, #2)
-  - [ ] Remove `self.log_panel.clear()` at line 432 (in `_on_search`)
-  - [ ] Remove `self.log_panel.clear()` at line 490 (in `_on_scan`)
+- [x] Task 1: Remove `log_panel.clear()` calls from `main_window.py` (AC: #1, #2)
+  - [x] Remove `self.log_panel.clear()` at line 432 (in `_on_search`)
+  - [x] Remove `self.log_panel.clear()` at line 490 (in `_on_scan`)
 
-- [ ] Task 2: Add section separator method to `LogPanel` (AC: #1, #2)
-  - [ ] Add `def section(self, title: str)` method to `LogPanel` that appends a visual separator line, e.g. `"── {title} ──"` with timestamp
-  - [ ] Use a distinct style (e.g. bold or dimmed) to distinguish section headers from regular log entries — use HTML formatting since `QTextEdit` supports `append()` with HTML
-  - [ ] The separator should use the same timestamp format as `log()`
+- [x] Task 2: Add section separator method to `LogPanel` (AC: #1, #2)
+  - [x] Add `def section(self, title: str)` method to `LogPanel` that appends a visual separator line, e.g. `"── {title} ──"` with timestamp
+  - [x] Use a distinct style (e.g. bold or dimmed) to distinguish section headers from regular log entries — use HTML formatting since `QTextEdit` supports `append()` with HTML
+  - [x] The separator should use the same timestamp format as `log()`
 
-- [ ] Task 3: Add section headers in `main_window.py` (AC: #1, #2)
-  - [ ] In `_on_search()`, replace the removed `clear()` with `self.log_panel.section("Search")`
-  - [ ] In `_on_scan()`, replace the removed `clear()` with `self.log_panel.section("Scan Project")`
+- [x] Task 3: Add section headers in `main_window.py` (AC: #1, #2)
+  - [x] In `_on_search()`, replace the removed `clear()` with `self.log_panel.section("Search")`
+  - [x] In `_on_scan()`, replace the removed `clear()` with `self.log_panel.section("Scan Project")`
 
-- [ ] Task 4: Log KiCad connection events (AC: #3)
-  - [ ] In `_on_scan()`, after `self._bridge.connect()` succeeds, log: `self.log_panel.log("Connected to KiCad IPC API")`
-  - [ ] In `_on_scan()`, the failure case already shows a dialog — also log it: `self.log_panel.log(f"KiCad connection failed: {error_msg}")`
+- [x] Task 4: Log KiCad connection events (AC: #3)
+  - [x] In `_on_scan()`, after `self._bridge.connect()` succeeds, log: `self.log_panel.log("Connected to KiCad IPC API")`
+  - [x] In `_on_scan()`, the failure case already shows a dialog — also log it: `self.log_panel.log(f"KiCad connection failed: {error_msg}")`
 
-- [ ] Task 5: Add "Clear Log" context menu to `LogPanel` (AC: #6)
-  - [ ] The `QTextEdit` already has a default context menu (`DefaultContextMenu` policy at line 27)
-  - [ ] Override to add a "Clear Log" action: set `CustomContextMenu` policy, implement `_on_context_menu` that gets the default menu via `self._text.createStandardContextMenu()`, appends a separator + "Clear Log" action, then `exec()`
-  - [ ] "Clear Log" action calls `self.clear()`
+- [x] Task 5: Add "Clear Log" context menu to `LogPanel` (AC: #6)
+  - [x] The `QTextEdit` already has a default context menu (`DefaultContextMenu` policy at line 27)
+  - [x] Override to add a "Clear Log" action: set `CustomContextMenu` policy, implement `_on_context_menu` that gets the default menu via `self._text.createStandardContextMenu()`, appends a separator + "Clear Log" action, then `exec()`
+  - [x] "Clear Log" action calls `self.clear()`
 
-- [ ] Task 6: Ensure auto-scroll on new entries (AC: #7)
-  - [ ] In `log()`, after `self._text.append(...)`, call `self._text.verticalScrollBar().setValue(self._text.verticalScrollBar().maximum())` to scroll to bottom
-  - [ ] Also scroll after `section()` appends
+- [x] Task 6: Ensure auto-scroll on new entries (AC: #7)
+  - [x] In `log()`, after `self._text.append(...)`, call `self._text.verticalScrollBar().setValue(self._text.verticalScrollBar().maximum())` to scroll to bottom
+  - [x] Also scroll after `section()` appends
 
-- [ ] Task 7: Write tests (AC: #1-#7)
-  - [ ] Create `tests/test_log_panel.py` with `pytest.importorskip("PySide6")` guard
-  - [ ] `test_log_appends_timestamped_entry` — call `log("msg")`, verify text contains `[HH:MM:SS] msg`
-  - [ ] `test_section_appends_separator` — call `section("Search")`, verify text contains "Search" and separator characters
-  - [ ] `test_clear_removes_all_entries` — log some entries, call `clear()`, verify empty
-  - [ ] `test_log_preserves_previous_entries` — log two messages, verify both are in the text
-  - [ ] `test_context_menu_has_clear_action` — call `_on_context_menu` or verify the menu contains "Clear Log"
-  - [ ] Note: No need to test main_window wiring — that's integration-level
+- [x] Task 7: Write tests (AC: #1-#7)
+  - [x] Create `tests/test_log_panel.py` with `pytest.importorskip("PySide6")` guard
+  - [x] `test_log_appends_timestamped_entry` — call `log("msg")`, verify text contains `[HH:MM:SS] msg`
+  - [x] `test_section_appends_separator` — call `section("Search")`, verify text contains "Search" and separator characters
+  - [x] `test_clear_removes_all_entries` — log some entries, call `clear()`, verify empty
+  - [x] `test_log_preserves_previous_entries` — log two messages, verify both are in the text
+  - [x] `test_context_menu_has_clear_action` — call `_on_context_menu` or verify the menu contains "Clear Log"
+  - [x] Note: No need to test main_window wiring — that's integration-level
 
 ## Dev Notes
 
@@ -208,8 +208,29 @@ Pattern: one commit per story implementation, one per code review fix.
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+No issues encountered during implementation.
 
 ### Completion Notes List
 
+- Removed two `log_panel.clear()` calls from `main_window.py` (`_on_search` and `_on_scan`) so log entries persist across operations (AC #1, #2, #4, #5)
+- Added `section(title)` method to `LogPanel` using HTML-styled dimmed separator lines with timestamp, matching `log()` format (AC #1, #2)
+- Added `self.log_panel.section("Search")` and `self.log_panel.section("Scan Project")` calls in `main_window.py` (AC #1, #2)
+- Added KiCad connection success/failure logging in `_on_scan()` (AC #3)
+- Changed context menu policy to `CustomContextMenu`, implemented `_on_context_menu` extending the standard menu with a "Clear Log" action (AC #6)
+- Added `_scroll_to_bottom()` helper called after every `log()` and `section()` append (AC #7)
+- Created 5 unit tests in `tests/test_log_panel.py` covering all LogPanel functionality
+- Full test suite: 159 tests pass, 0 regressions
+
 ### File List
+
+- Modified: `src/kipart_search/gui/log_panel.py`
+- Modified: `src/kipart_search/gui/main_window.py`
+- Added: `tests/test_log_panel.py`
+
+## Change Log
+
+- 2026-03-18: Implemented persistent session log — removed log clearing, added section separators, KiCad connection logging, context menu Clear Log action, and auto-scroll

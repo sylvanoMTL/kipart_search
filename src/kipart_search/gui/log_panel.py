@@ -24,7 +24,8 @@ class LogPanel(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse
             | Qt.TextInteractionFlag.TextSelectableByKeyboard
         )
-        self._text.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
+        self._text.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._text.customContextMenuRequested.connect(self._on_context_menu)
         self._text.setStyleSheet("font-family: Consolas, monospace; font-size: 11px;")
         layout.addWidget(self._text)
         self.log("Ready")
@@ -33,7 +34,30 @@ class LogPanel(QWidget):
         """Append a timestamped line."""
         ts = datetime.now().strftime("%H:%M:%S")
         self._text.append(f"[{ts}] {msg}")
+        self._scroll_to_bottom()
+
+    def section(self, title: str) -> None:
+        """Append a visual section separator."""
+        ts = datetime.now().strftime("%H:%M:%S")
+        self._text.append(
+            f'<div style="color: #888; margin-top: 4px;">'
+            f"[{ts}] ── {title} ──</div>"
+        )
+        self._scroll_to_bottom()
 
     def clear(self):
         """Clear all log entries."""
         self._text.clear()
+
+    def _scroll_to_bottom(self):
+        """Scroll the log view to the latest entry."""
+        sb = self._text.verticalScrollBar()
+        sb.setValue(sb.maximum())
+
+    def _on_context_menu(self, pos):
+        """Show the default context menu with an appended Clear Log action."""
+        menu = self._text.createStandardContextMenu()
+        menu.addSeparator()
+        clear_action = menu.addAction("Clear Log")
+        clear_action.triggered.connect(self.clear)
+        menu.exec(self._text.mapToGlobal(pos))

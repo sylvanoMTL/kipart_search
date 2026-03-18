@@ -429,7 +429,7 @@ class MainWindow(QMainWindow):
             return
 
         self.search_bar.search_button.setEnabled(False)
-        self.log_panel.clear()
+        self.log_panel.section("Search")
 
         # Log query transformation if it happened
         raw = self.search_bar.query_input.text().strip()
@@ -481,13 +481,15 @@ class MainWindow(QMainWindow):
         if not self._bridge.is_connected:
             ok, error_msg = self._bridge.connect()
             if not ok:
+                self.log_panel.log(f"KiCad connection failed: {error_msg}")
                 self._show_connection_error(error_msg)
                 return
+            self.log_panel.log("Connected to KiCad IPC API")
 
         self._update_status()
         self._act_scan.setEnabled(False)
         self._set_action_status("Scanning...")
-        self.log_panel.clear()
+        self.log_panel.section("Scan Project")
 
         self._scan_worker = ScanWorker(self._bridge, self._orchestrator)
         self._scan_worker.log.connect(self.log_panel.log)
