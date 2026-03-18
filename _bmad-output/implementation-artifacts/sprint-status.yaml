@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-18
+last_updated: 2026-03-18  # code-review pass
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -46,7 +46,7 @@ development_status:
   epic-1: in-progress
   1-1-migrate-main-window-to-qdockwidget-panel-architecture: done
   1-2-toolbar-status-bar-and-view-menu: done
-  1-3-detail-panel-for-part-inspection: review
+  1-3-detail-panel-for-part-inspection: done
   1-4-layout-persistence-and-empty-states: backlog
   1-5-context-menus-and-accessibility-labels: backlog
   epic-1-retrospective: optional

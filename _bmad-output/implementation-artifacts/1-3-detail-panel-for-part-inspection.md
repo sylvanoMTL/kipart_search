@@ -1,6 +1,6 @@
 # Story 1.3: Detail Panel for Part Inspection
 
-Status: review
+Status: done
 
 ## Story
 

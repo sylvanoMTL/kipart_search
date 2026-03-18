@@ -44,7 +44,32 @@
       "WebFetch(domain:pypi.org)",
       "WebFetch(domain:developer.digikey.com)",
       "WebFetch(domain:support.nexar.com)",
-      "Bash(find /c/Git_Repo_Clones/kipart-search -type f -name *bmad* -o -name *BMAD*)"
+      "Bash(find /c/Git_Repo_Clones/kipart-search -type f -name *bmad* -o -name *BMAD*)",
+      "Bash(python -c \"import yaml; data = yaml.safe_load\\(open\\(''c:/Git_Repo_Clones/kipart-search/_bmad-output/implementation-artifacts/sprint-status.yaml''\\)\\); print\\(''Valid YAML''\\); print\\(f''Keys in development_status: {len\\(data[\"\"development_status\"\"]\\)}''\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''src/kipart_search/gui/main_window.py''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")",
+      "Bash(python -c \"import pytest; print\\(''pytest available''\\)\")",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest --version)",
+      "Bash(python -m pytest tests/test_main_window_docks.py -v)",
+      "Bash(python -c \"import PySide6; print\\(PySide6.__version__\\)\")",
+      "Bash(where python:*)",
+      "Bash(/c/Python/Python311/python -c \"import PySide6; print\\(PySide6.__version__\\)\")",
+      "Bash(/c/Python/Python311/python -m pytest --version)",
+      "Bash(/c/Python/Python311/python -m pip install pytest)",
+      "Bash(/c/Python/Python311/python -m pytest tests/test_main_window_docks.py -v)",
+      "Bash(/c/Python/Python311/python -m pip install -e .)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python -c \"import PySide6\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''src/kipart_search/gui/main_window.py''\\).read\\(\\)\\); print\\(''main_window.py: syntax OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''tests/test_main_window_docks.py''\\).read\\(\\)\\); print\\(''test file: syntax OK''\\)\")",
+      "Bash(C:/Python/Python311/python.exe -c \"import PySide6; print\\(''PySide6 OK''\\)\")",
+      "Bash(C:/Python/Python311/python.exe -m pytest tests/test_main_window_docks.py -v)",
+      "Bash(C:/Git_Repo_Clones/kipart-search/.env/Scripts/python.exe -m pytest tests/test_main_window_docks.py -v)",
+      "Bash(C:/Git_Repo_Clones/kipart-search/.env/Scripts/pip.exe install:*)",
+      "Bash(.env/Scripts/python.exe -m pytest tests/test_main_window_docks.py -v)",
+      "Bash(.env/Scripts/python.exe -m pytest tests/ -v)",
+      "Bash(timeout 5 .env/Scripts/python.exe -m kipart_search)"
     ]
   }
 }

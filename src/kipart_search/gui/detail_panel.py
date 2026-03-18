@@ -28,7 +28,8 @@ def render_part_html(part: PartResult) -> str:
     lines.append(f"<h2>{escape(part.mpn)}</h2>")
 
     if part.source_part_id:
-        lines.append(f"<b>LCSC:</b> {escape(part.source_part_id)}<br>")
+        label = escape(part.source) if part.source else "Part ID"
+        lines.append(f"<b>{label}:</b> {escape(part.source_part_id)}<br>")
     if part.manufacturer:
         lines.append(f"<b>Manufacturer:</b> {escape(part.manufacturer)}<br>")
     if part.category:
