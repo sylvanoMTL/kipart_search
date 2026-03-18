@@ -78,9 +78,9 @@
 | `parse_value()` | `core/units.py` | Parse "100nF" → EngineeringValue |
 | `equivalent_values()` | `core/units.py` | Generate all SI prefix variants |
 | `generate_query_variants()` | `core/units.py` | Replace value token in query with equivalents |
-| `_extract_ref_prefix()` | `gui/kicad_bridge.py` | "C3" → "C", "SW2" → "SW" |
-| `_extract_package_from_footprint()` | `gui/kicad_bridge.py` | "Capacitor_SMD:C_0805_2012Metric" → "0805" |
-| `_infer_value_with_unit()` | `gui/kicad_bridge.py` | "10u" + "C" → "10uF" |
+| `extract_ref_prefix()` | `core/models.py` | "C3" → "C", "SW2" → "SW" |
+| `extract_package_from_footprint()` | `core/models.py` | "Capacitor_SMD:C_0805_2012Metric" → "0805" |
+| `_infer_value_with_unit()` | `core/models.py` | "10u" + "C" → "10uF" |
 | `_check_mismatches()` | `gui/assign_dialog.py` | Detect type/package mismatches before assignment |
 | `_natural_sort_collation()` | `core/sources.py` | SQLite collation for C1 < C2 < C10 ordering |
 

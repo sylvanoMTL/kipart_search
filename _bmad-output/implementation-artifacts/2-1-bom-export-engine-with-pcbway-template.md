@@ -1,6 +1,6 @@
 # Story 2.1: BOM Export Engine with PCBWay Template
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -43,64 +43,64 @@ So that I can generate a production BOM my CM accepts without manual spreadsheet
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Move `BoardComponent` dataclass from `gui/kicad_bridge.py` to `core/models.py` (AC: #5)
-  - [ ] Cut the `BoardComponent` dataclass (and its properties: `has_mpn`, `footprint_short`, `build_search_query()`) from `gui/kicad_bridge.py`
-  - [ ] Paste it into `core/models.py` alongside `PartResult` — it's a data model, not GUI code
-  - [ ] In `gui/kicad_bridge.py`, replace with `from kipart_search.core.models import BoardComponent` — all existing code continues to work
-  - [ ] Update any other files that import `BoardComponent` from `kicad_bridge` (check `verify_panel.py`, `main_window.py`, `assign_dialog.py`)
-  - [ ] Run all 92 existing tests — zero regressions expected since the class interface is unchanged
+- [x] Task 1: Move `BoardComponent` dataclass from `gui/kicad_bridge.py` to `core/models.py` (AC: #5)
+  - [x] Cut the `BoardComponent` dataclass (and its properties: `has_mpn`, `footprint_short`, `build_search_query()`) from `gui/kicad_bridge.py`
+  - [x] Paste it into `core/models.py` alongside `PartResult` — it's a data model, not GUI code
+  - [x] In `gui/kicad_bridge.py`, replace with `from kipart_search.core.models import BoardComponent` — all existing code continues to work
+  - [x] Update any other files that import `BoardComponent` from `kicad_bridge` (check `verify_panel.py`, `main_window.py`, `assign_dialog.py`)
+  - [x] Run all 92 existing tests — zero regressions expected since the class interface is unchanged
 
-- [ ] Task 2: Add `openpyxl` to pyproject.toml (AC: #6)
-  - [ ] Add `openpyxl` to `[project] dependencies` list
-  - [ ] Run `pip install -e .` to verify installation
+- [x] Task 2: Add `openpyxl` to pyproject.toml (AC: #6)
+  - [x] Add `openpyxl` to `[project] dependencies` list
+  - [x] Run `pip install -e .` to verify installation
 
-- [ ] Task 3: Move `_extract_package_from_footprint()` to core/ (AC: #3)
-  - [ ] Create a public `extract_package_from_footprint(footprint: str) -> str` in `core/models.py`
-  - [ ] Move the logic from `gui/kicad_bridge.py` lines 76-99 to the new location
-  - [ ] In `gui/kicad_bridge.py`, import and delegate to the core function (backward-compatible)
-  - [ ] Add SMD/THT detection: `detect_mount_type(footprint: str) -> str` returning `"SMD"` or `"THT"`
+- [x] Task 3: Move `_extract_package_from_footprint()` to core/ (AC: #3)
+  - [x] Create a public `extract_package_from_footprint(footprint: str) -> str` in `core/models.py`
+  - [x] Move the logic from `gui/kicad_bridge.py` lines 76-99 to the new location
+  - [x] In `gui/kicad_bridge.py`, import and delegate to the core function (backward-compatible)
+  - [x] Add SMD/THT detection: `detect_mount_type(footprint: str) -> str` returning `"SMD"` or `"THT"`
     - SMD: footprints containing `_SMD`, `Capacitor_SMD`, `Resistor_SMD`, `Inductor_SMD`, `Package_SO`, `Package_QFP`, `Package_DFN_QFN`, `Package_BGA`, `Package_CSP`, `LED_SMD`, `Package_TO_SOT_SMD`, or passive sizes (0201-2512)
     - THT: footprints containing `_THT`, `Package_DIP`, `Package_TO_SOT_THT`, `Connector_PinHeader`, `Connector_PinSocket`, or `Package_TO_*THT*`
     - Default: `"SMD"` (conservative — most modern designs are SMD-dominant)
 
-- [ ] Task 4: Create `core/bom_export.py` with BOMTemplate/BOMColumn dataclasses (AC: #5, #7)
-  - [ ] Add `from __future__ import annotations` header
-  - [ ] Define `BOMColumn` dataclass: `header: str`, `field: str`, `transform: str | None = None`
-  - [ ] Define `BOMTemplate` dataclass: `name: str`, `columns: list[BOMColumn]`, `group_by: str = "mpn"`, `dnp_handling: str = "include_marked"`, `file_format: str = "xlsx"`
-  - [ ] Define `PCBWAY_TEMPLATE` constant with 9 columns matching the PCBWay format (see Dev Notes for exact columns)
+- [x] Task 4: Create `core/bom_export.py` with BOMTemplate/BOMColumn dataclasses (AC: #5, #7)
+  - [x] Add `from __future__ import annotations` header
+  - [x] Define `BOMColumn` dataclass: `header: str`, `field: str`, `transform: str | None = None`
+  - [x] Define `BOMTemplate` dataclass: `name: str`, `columns: list[BOMColumn]`, `group_by: str = "mpn"`, `dnp_handling: str = "include_marked"`, `file_format: str = "xlsx"`
+  - [x] Define `PCBWAY_TEMPLATE` constant with 9 columns matching the PCBWay format (see Dev Notes for exact columns)
 
-- [ ] Task 5: Implement the export engine function (AC: #1, #2, #3, #4)
-  - [ ] Define input type: accept `list[BoardComponent]` (from `core/models.py` after Task 1 move) — the export engine reads `.mpn`, `.manufacturer` (from extra_fields or a new field), `.value`, `.footprint`, `.reference`
-  - [ ] Implement `export_bom(components: list[BoardComponent], template: BOMTemplate, output_path: Path) -> Path`:
+- [x] Task 5: Implement the export engine function (AC: #1, #2, #3, #4)
+  - [x] Define input type: accept `list[BoardComponent]` (from `core/models.py` after Task 1 move) — the export engine reads `.mpn`, `.manufacturer` (from extra_fields or a new field), `.value`, `.footprint`, `.reference`
+  - [x] Implement `export_bom(components: list[BoardComponent], template: BOMTemplate, output_path: Path) -> Path`:
     1. Group components by `(mpn.upper(), manufacturer.upper())` — skip components with empty MPN (or group them as "UNASSIGNED" rows)
     2. For each group: combine designators sorted naturally (R1,R2,R14 not R1,R14,R2), count quantity
     3. Apply column transforms: `"package_extract"` calls `extract_package_from_footprint()`, `"smd_tht_detect"` calls `detect_mount_type()`
     4. Write to Excel via openpyxl: header row with `header` values from template, data rows with mapped fields
     5. Item # column: sequential 1, 2, 3...
     6. Return the output path
-  - [ ] Implement natural sort for designators: R1, R2, R10 (not R1, R10, R2)
-  - [ ] Handle edge cases: empty component list (write header-only file), components with no MPN (include with empty MPN cell or separate section)
+  - [x] Implement natural sort for designators: R1, R2, R10 (not R1, R10, R2)
+  - [x] Handle edge cases: empty component list (write header-only file), components with no MPN (include with empty MPN cell or separate section)
 
-- [ ] Task 6: Add CSV export support (AC: #1)
-  - [ ] Implement `_write_csv(rows: list[dict], template: BOMTemplate, output_path: Path) -> Path`
-  - [ ] `export_bom()` checks `template.file_format` and dispatches to xlsx or csv writer
-  - [ ] CSV uses stdlib `csv.writer` — no extra dependency
+- [x] Task 6: Add CSV export support (AC: #1)
+  - [x] Implement `_write_csv(rows: list[dict], template: BOMTemplate, output_path: Path) -> Path`
+  - [x] `export_bom()` checks `template.file_format` and dispatches to xlsx or csv writer
+  - [x] CSV uses stdlib `csv.writer` — no extra dependency
 
-- [ ] Task 7: Write tests in `tests/core/test_bom_export.py` (AC: #1-#7)
-  - [ ] `test_pcbway_template_columns` — verify PCBWAY_TEMPLATE has 9 columns with correct headers
-  - [ ] `test_grouping_by_mpn` — 3 components (R1, R2 same MPN; C1 different) → 2 rows, R1+R2 qty=2
-  - [ ] `test_designator_natural_sort` — R1,R10,R2 → "R1,R2,R10"
-  - [ ] `test_package_extraction` — C_0805_2012Metric → "0805", R_0402_1005Metric → "0402"
-  - [ ] `test_smd_tht_detection` — Resistor_SMD → "SMD", Package_DIP → "THT"
-  - [ ] `test_excel_output` — export to temp file, open with openpyxl, verify header and data rows
-  - [ ] `test_csv_output` — export to temp CSV, read back, verify content
-  - [ ] `test_empty_component_list` — export with no components → file with header only
-  - [ ] `test_no_gui_imports` — `import core.bom_export; assert 'PySide6' not in sys.modules`
+- [x] Task 7: Write tests in `tests/core/test_bom_export.py` (AC: #1-#7)
+  - [x] `test_pcbway_template_columns` — verify PCBWAY_TEMPLATE has 9 columns with correct headers
+  - [x] `test_grouping_by_mpn` — 3 components (R1, R2 same MPN; C1 different) → 2 rows, R1+R2 qty=2
+  - [x] `test_designator_natural_sort` — R1,R10,R2 → "R1,R2,R10"
+  - [x] `test_package_extraction` — C_0805_2012Metric → "0805", R_0402_1005Metric → "0402"
+  - [x] `test_smd_tht_detection` — Resistor_SMD → "SMD", Package_DIP → "THT"
+  - [x] `test_excel_output` — export to temp file, open with openpyxl, verify header and data rows
+  - [x] `test_csv_output` — export to temp CSV, read back, verify content
+  - [x] `test_empty_component_list` — export with no components → file with header only
+  - [x] `test_no_gui_imports` — `import core.bom_export; assert 'PySide6' not in sys.modules`
 
-- [ ] Task 8: Integration smoke test
-  - [ ] Launch app, scan a project (or mock), verify Export BOM button is still disabled (GUI wiring is Story 2.4)
-  - [ ] Run `python -c "from kipart_search.core.bom_export import export_bom, PCBWAY_TEMPLATE"` — imports cleanly
-  - [ ] Run all tests — no regressions
+- [x] Task 8: Integration smoke test
+  - [x] Launch app, scan a project (or mock), verify Export BOM button is still disabled (GUI wiring is Story 2.4)
+  - [x] Run `python -c "from kipart_search.core.bom_export import export_bom, PCBWAY_TEMPLATE"` — imports cleanly
+  - [x] Run all tests — no regressions
 
 ## Dev Notes
 
@@ -297,10 +297,38 @@ e157709 Code review fixes for Story 1.4
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (1M context)
 
 ### Debug Log References
 
+None — clean implementation, no debug issues encountered.
+
 ### Completion Notes List
 
+- Moved `BoardComponent`, `_extract_ref_prefix`, `_infer_value_with_unit`, `_extract_package_from_footprint` (renamed to `extract_package_from_footprint`), and all supporting constants from `gui/kicad_bridge.py` to `core/models.py`. Tasks 1 and 3 done together as same code move.
+- Added `detect_mount_type()` function in `core/models.py` — checks library prefix for `_SMD`/`_THT` suffixes, then specific library names, defaults to "SMD".
+- Created `core/bom_export.py` with `BOMColumn`, `BOMTemplate` dataclasses (ADR-02 compliant), `PCBWAY_TEMPLATE` constant (9 columns), and `export_bom()` engine function.
+- Export engine groups by `(mpn.upper(), manufacturer.upper())`, uses natural sort for designators, supports xlsx (openpyxl) and csv (stdlib) output.
+- Backward-compatible aliases in `kicad_bridge.py` for `_extract_package_from_footprint` and re-exports of `BoardComponent`, `MPN_FIELD_NAMES`, `_extract_ref_prefix`.
+- Updated imports in `verify_panel.py`, `main_window.py`, `assign_dialog.py`, `test_context_menus.py`.
+- Added `openpyxl` to `pyproject.toml` dependencies.
+- 27 new tests covering all ACs: template validation, grouping, natural sort, package extraction, SMD/THT detection, Excel output, CSV output, edge cases, no-GUI-import check.
+- All 119 tests pass (92 existing + 27 new), zero regressions.
+
 ### File List
+
+- `src/kipart_search/core/models.py` (modified — added BoardComponent, extract_package_from_footprint, detect_mount_type, helpers)
+- `src/kipart_search/core/bom_export.py` (new — BOMColumn, BOMTemplate, PCBWAY_TEMPLATE, export_bom)
+- `src/kipart_search/gui/kicad_bridge.py` (modified — replaced inline code with imports from core/models)
+- `src/kipart_search/gui/verify_panel.py` (modified — import BoardComponent from core/models)
+- `src/kipart_search/gui/main_window.py` (modified — import BoardComponent from core/models)
+- `src/kipart_search/gui/assign_dialog.py` (modified — import from core/models instead of kicad_bridge)
+- `tests/test_context_menus.py` (modified — import BoardComponent from core/models)
+- `tests/core/__init__.py` (new — package init)
+- `tests/core/test_bom_export.py` (new — 27 tests)
+- `pyproject.toml` (modified — added openpyxl dependency)
+
+## Change Log
+
+- 2026-03-18: Story 2.1 implemented — BOM export engine with PCBWay template, BoardComponent moved to core/models, 27 tests added (119 total passing)
+- 2026-03-18: Code review fixes — renamed `_extract_ref_prefix` → `extract_ref_prefix` (public API consistency), removed dead `_apply_transforms()`, moved `_THT_LIBS`/`_SMD_LIBS` to module level, updated stale docs
