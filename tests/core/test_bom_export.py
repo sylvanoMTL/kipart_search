@@ -9,7 +9,10 @@ from pathlib import Path
 import pytest
 
 from kipart_search.core.bom_export import (
+    JLCPCB_TEMPLATE,
+    NEWBURY_TEMPLATE,
     PCBWAY_TEMPLATE,
+    PRESET_TEMPLATES,
     BOMTemplate,
     export_bom,
     _natural_sort_key,
@@ -288,3 +291,201 @@ class TestNoGUIImports:
         content = source_path.read_text()
         assert "PySide6" not in content
         assert "from kipart_search.gui" not in content
+
+
+# ── JLCPCB Template Tests ──
+
+class TestJLCPCBTemplate:
+    def test_has_4_columns(self):
+        assert len(JLCPCB_TEMPLATE.columns) == 4
+
+    def test_column_headers(self):
+        headers = [c.header for c in JLCPCB_TEMPLATE.columns]
+        assert headers == ["Comment", "Designator", "Footprint", "JLCPCB Part #"]
+
+    def test_file_format_csv(self):
+        assert JLCPCB_TEMPLATE.file_format == "csv"
+
+    def test_export_with_lcsc_part(self, tmp_path):
+        comps = [
+            BoardComponent(
+                reference="C1", value="100nF",
+                footprint="Capacitor_SMD:C_0402_1005Metric",
+                mpn="GRM155R71C104KA88D",
+                extra_fields={"manufacturer": "Murata", "LCSC Part": "C12345"},
+            ),
+        ]
+        out = tmp_path / "jlcpcb.csv"
+        export_bom(comps, JLCPCB_TEMPLATE, out)
+
+        with open(out, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+
+        assert rows[0] == ["Comment", "Designator", "Footprint", "JLCPCB Part #"]
+        assert rows[1][0] == "100nF"       # Comment = value
+        assert rows[1][1] == "C1"          # Designator
+        assert rows[1][2] == "0402"        # Footprint = extracted package
+        assert rows[1][3] == "C12345"      # JLCPCB Part #
+
+    def test_export_without_lcsc_part(self, tmp_path):
+        comps = [
+            BoardComponent(
+                reference="R1", value="10k",
+                footprint="Resistor_SMD:R_0805_2012Metric",
+                mpn="RC0805FR-0710KL",
+                extra_fields={"manufacturer": "Yageo"},
+            ),
+        ]
+        out = tmp_path / "jlcpcb_no_lcsc.csv"
+        export_bom(comps, JLCPCB_TEMPLATE, out)
+
+        with open(out, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+
+        assert rows[1][3] == ""  # Empty JLCPCB Part #
+
+
+# ── Newbury Template Tests ──
+
+class TestNewburyTemplate:
+    def test_has_9_columns(self):
+        assert len(NEWBURY_TEMPLATE.columns) == 9
+
+    def test_column_headers(self):
+        headers = [c.header for c in NEWBURY_TEMPLATE.columns]
+        assert headers == [
+            "Item#", "Description", "Quantity", "Manufacturer Name",
+            "Manufacturer Part Number", "Supplier Name", "Supplier Part Number",
+            "Designator", "Notes",
+        ]
+
+    def test_file_format_xlsx(self):
+        assert NEWBURY_TEMPLATE.file_format == "xlsx"
+
+    def test_export_with_supplier_fields(self, tmp_path):
+        comps = [
+            BoardComponent(
+                reference="U1", value="STM32F103",
+                footprint="Package_QFP:LQFP-48_7x7mm_P0.5mm",
+                mpn="STM32F103C8T6",
+                extra_fields={
+                    "manufacturer": "STMicroelectronics",
+                    "supplier_name": "Farnell",
+                    "supplier_pn": "123-456",
+                    "description": "MCU ARM Cortex-M3 64KB Flash",
+                },
+            ),
+        ]
+        out = tmp_path / "newbury.xlsx"
+        export_bom(comps, NEWBURY_TEMPLATE, out)
+
+        from openpyxl import load_workbook
+        wb = load_workbook(out)
+        ws = wb.active
+        rows = list(ws.iter_rows(min_row=2, values_only=True))
+
+        assert len(rows) == 1
+        row = rows[0]
+        assert row[0] == 1                              # Item#
+        assert row[1] == "MCU ARM Cortex-M3 64KB Flash"  # Description
+        assert row[2] == 1                              # Quantity
+        assert row[3] == "STMicroelectronics"            # Manufacturer Name
+        assert row[4] == "STM32F103C8T6"                 # Manufacturer Part Number
+        assert row[5] == "Farnell"                       # Supplier Name
+        assert row[6] == "123-456"                       # Supplier Part Number
+        assert row[7] == "U1"                            # Designator
+        assert row[8] in ("", None)                      # Notes
+
+    def test_description_field(self, tmp_path):
+        # No description in extra_fields → falls back to value
+        comps = [
+            BoardComponent(
+                reference="R1", value="10k",
+                footprint="Resistor_SMD:R_0805_2012Metric",
+                mpn="RC0805FR-0710KL",
+                extra_fields={"manufacturer": "Yageo"},
+            ),
+        ]
+        out = tmp_path / "newbury_desc.xlsx"
+        export_bom(comps, NEWBURY_TEMPLATE, out)
+
+        from openpyxl import load_workbook
+        wb = load_workbook(out)
+        ws = wb.active
+        rows = list(ws.iter_rows(min_row=2, values_only=True))
+
+        assert rows[0][1] == "10k"  # Description falls back to value
+
+
+# ── Preset Templates Tests ──
+
+class TestPresetTemplates:
+    def test_preset_list_contains_all(self):
+        assert len(PRESET_TEMPLATES) == 3
+        assert PRESET_TEMPLATES[0] is PCBWAY_TEMPLATE
+        assert PRESET_TEMPLATES[1] is JLCPCB_TEMPLATE
+        assert PRESET_TEMPLATES[2] is NEWBURY_TEMPLATE
+
+    def test_preset_names(self):
+        names = [t.name for t in PRESET_TEMPLATES]
+        assert names == ["PCBWay", "JLCPCB", "Newbury Electronics"]
+
+
+# ── CSV Export All Templates Tests ──
+
+class TestCSVExportAllTemplates:
+    def test_jlcpcb_csv_output(self, tmp_path):
+        comps = [
+            BoardComponent(
+                reference="C1", value="100nF",
+                footprint="Capacitor_SMD:C_0402_1005Metric",
+                mpn="GRM155R71C104KA88D",
+                extra_fields={"manufacturer": "Murata", "LCSC Part": "C12345"},
+            ),
+            BoardComponent(
+                reference="C2", value="100nF",
+                footprint="Capacitor_SMD:C_0402_1005Metric",
+                mpn="GRM155R71C104KA88D",
+                extra_fields={"manufacturer": "Murata", "LCSC Part": "C12345"},
+            ),
+        ]
+        out = tmp_path / "jlcpcb_full.csv"
+        export_bom(comps, JLCPCB_TEMPLATE, out)
+
+        with open(out, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+
+        assert rows[0] == ["Comment", "Designator", "Footprint", "JLCPCB Part #"]
+        assert len(rows) == 2  # header + 1 grouped row
+        assert rows[1][0] == "100nF"
+        assert rows[1][1] == "C1,C2"
+        assert rows[1][3] == "C12345"
+
+    def test_newbury_csv_output(self, tmp_path):
+        comps = [
+            BoardComponent(
+                reference="R1", value="10k",
+                footprint="Resistor_SMD:R_0805_2012Metric",
+                mpn="RC0805FR-0710KL",
+                extra_fields={"manufacturer": "Yageo", "description": "RES 10K 1% 0805"},
+            ),
+        ]
+        csv_newbury = BOMTemplate(
+            name=NEWBURY_TEMPLATE.name,
+            columns=NEWBURY_TEMPLATE.columns,
+            file_format="csv",
+        )
+        out = tmp_path / "newbury.csv"
+        export_bom(comps, csv_newbury, out)
+
+        with open(out, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+
+        expected_headers = [c.header for c in NEWBURY_TEMPLATE.columns]
+        assert rows[0] == expected_headers
+        assert rows[1][1] == "RES 10K 1% 0805"  # Description from extra_fields
+        assert rows[1][4] == "RC0805FR-0710KL"   # MPN

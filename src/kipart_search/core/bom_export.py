@@ -51,6 +51,35 @@ PCBWAY_TEMPLATE = BOMTemplate(
     file_format="xlsx",
 )
 
+JLCPCB_TEMPLATE = BOMTemplate(
+    name="JLCPCB",
+    columns=[
+        BOMColumn(header="Comment", field="value"),
+        BOMColumn(header="Designator", field="designator"),
+        BOMColumn(header="Footprint", field="package", transform="package_extract"),
+        BOMColumn(header="JLCPCB Part #", field="lcsc_part"),
+    ],
+    file_format="csv",
+)
+
+NEWBURY_TEMPLATE = BOMTemplate(
+    name="Newbury Electronics",
+    columns=[
+        BOMColumn(header="Item#", field="item_number"),
+        BOMColumn(header="Description", field="description"),
+        BOMColumn(header="Quantity", field="quantity"),
+        BOMColumn(header="Manufacturer Name", field="manufacturer"),
+        BOMColumn(header="Manufacturer Part Number", field="mpn"),
+        BOMColumn(header="Supplier Name", field="supplier_name"),
+        BOMColumn(header="Supplier Part Number", field="supplier_pn"),
+        BOMColumn(header="Designator", field="designator"),
+        BOMColumn(header="Notes", field="notes"),
+    ],
+    file_format="xlsx",
+)
+
+PRESET_TEMPLATES: list[BOMTemplate] = [PCBWAY_TEMPLATE, JLCPCB_TEMPLATE, NEWBURY_TEMPLATE]
+
 
 def _natural_sort_key(ref: str) -> tuple:
     """Sort key that handles mixed alpha-numeric designators naturally."""
@@ -85,6 +114,10 @@ def _group_components(
             "package": extract_package_from_footprint(first.footprint),
             "mount_type": detect_mount_type(first.footprint),
             "notes": "",
+            "lcsc_part": first.extra_fields.get("LCSC Part", "") or first.extra_fields.get("lcsc", ""),
+            "description": first.extra_fields.get("description", "") or first.value,
+            "supplier_name": first.extra_fields.get("supplier_name", "") or first.extra_fields.get("Supplier", ""),
+            "supplier_pn": first.extra_fields.get("supplier_pn", "") or first.extra_fields.get("Supplier Part", ""),
         })
         item += 1
 

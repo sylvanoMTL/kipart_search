@@ -69,7 +69,25 @@
       "Bash(C:/Git_Repo_Clones/kipart-search/.env/Scripts/pip.exe install:*)",
       "Bash(.env/Scripts/python.exe -m pytest tests/test_main_window_docks.py -v)",
       "Bash(.env/Scripts/python.exe -m pytest tests/ -v)",
-      "Bash(timeout 5 .env/Scripts/python.exe -m kipart_search)"
+      "Bash(timeout 5 .env/Scripts/python.exe -m kipart_search)",
+      "Bash(git status:*)",
+      "Bash(.env/Scripts/python.exe -m pytest tests/ -v --tb=short)",
+      "Bash(find src/ -name \"__pycache__\" -type d -exec rm -rf {} +)",
+      "Bash(.env/Scripts/python.exe -m pytest tests/ --tb=short -q)",
+      "Bash(.env/Scripts/python.exe -c \"from PySide6.QtCore import QSettings; QSettings\\(''kipart-search'', ''kipart-search''\\).clear\\(\\); print\\(''QSettings cleared''\\)\")",
+      "Bash(find /c/Git_Repo_Clones/kipart-search -path *test* -name *.py -type f)",
+      "Bash(.env/Scripts/python.exe -m pytest tests/test_context_menus.py -v)",
+      "Bash(.env/Scripts/python.exe -m pytest -v)",
+      "Bash(.env/Scripts/python.exe -m pytest tests/test_main_window_docks.py tests/test_empty_states.py -v --tb=short)",
+      "Bash(python3:*)",
+      "Bash(unzip -p ExistingWorksOn/Sample_BOM_PCBWay.xlsx xl/sharedStrings.xml)",
+      "Bash(unzip -p ExistingWorksOn/Sample_BOM_PCBWay.xlsx xl/worksheets/sheet1.xml)",
+      "Bash(find /c/Git_Repo_Clones/kipart-search -name *export* -o -name *bom*)",
+      "Bash(.env/Scripts/python.exe -m pytest tests/core/test_bom_export.py -v)",
+      "Bash(.env/Scripts/python.exe -c \"from kipart_search.core.bom_export import export_bom, PCBWAY_TEMPLATE; print\\(''Import OK''\\); print\\(f''Template: {PCBWAY_TEMPLATE.name}, {len\\(PCBWAY_TEMPLATE.columns\\)} columns''\\)\")",
+      "Bash(.env/Scripts/python.exe:*)",
+      "Bash(chcp 65001)",
+      "Bash(/c/Git_Repo_Clones/kipart-search/.env/Scripts/python.exe -c \":*)"
     ]
   }
 }
