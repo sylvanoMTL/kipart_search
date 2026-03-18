@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from kipart_search.core.models import Confidence
-from kipart_search.gui.kicad_bridge import BoardComponent
+from kipart_search.core.models import BoardComponent
 
 
 # Colours for confidence levels

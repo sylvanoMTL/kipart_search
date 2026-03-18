@@ -16,10 +16,10 @@ from PySide6.QtWidgets import (
 )
 
 from kipart_search.core.models import PartResult
-from kipart_search.gui.kicad_bridge import (
+from kipart_search.core.models import (
     BoardComponent,
-    _extract_package_from_footprint,
-    _extract_ref_prefix,
+    extract_package_from_footprint as _extract_package_from_footprint,
+    extract_ref_prefix,
 )
 
 # Field mapping: (display name, source attribute on PartResult, KiCad field name)
@@ -56,7 +56,7 @@ def _check_mismatches(
     """Return a list of mismatch warnings between the component and part."""
     warnings: list[str] = []
 
-    ref_prefix = _extract_ref_prefix(component.reference)
+    ref_prefix = extract_ref_prefix(component.reference)
     haystack = f"{part.category} {part.description}".lower()
 
     # Check 1: does the part match what this component type expects?

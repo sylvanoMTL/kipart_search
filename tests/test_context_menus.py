@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QApplication
 app = QApplication.instance() or QApplication(sys.argv)
 
 from kipart_search.core.models import Confidence, PartResult
-from kipart_search.gui.kicad_bridge import BoardComponent
+from kipart_search.core.models import BoardComponent
 from kipart_search.gui.results_table import ResultsTable
 from kipart_search.gui.verify_panel import VerifyPanel
 

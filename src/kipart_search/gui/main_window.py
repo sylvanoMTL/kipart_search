@@ -29,7 +29,8 @@ from kipart_search.core.models import Confidence
 from kipart_search.core.sources import JLCPCBSource
 from kipart_search.core.search import SearchOrchestrator
 from kipart_search.core.units import generate_query_variants
-from kipart_search.gui.kicad_bridge import BoardComponent, KiCadBridge
+from kipart_search.core.models import BoardComponent
+from kipart_search.gui.kicad_bridge import KiCadBridge
 from kipart_search.gui.detail_panel import DetailPanel
 from kipart_search.gui.log_panel import LogPanel
 from kipart_search.gui.search_bar import SearchBar
