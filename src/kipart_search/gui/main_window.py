@@ -206,7 +206,8 @@ class MainWindow(QMainWindow):
 
         self._act_export = QAction("Export BOM", self)
         self._act_export.setEnabled(False)
-        self._act_export.setToolTip("Export BOM (not yet implemented)")
+        self._act_export.setToolTip("Export BOM to Excel or CSV")
+        self._act_export.triggered.connect(self._on_export_bom)
         self.toolbar.addAction(self._act_export)
 
         self._act_push = QAction("Push to KiCad", self)
@@ -280,6 +281,10 @@ class MainWindow(QMainWindow):
         scan_action = QAction("Scan Project", self)
         scan_action.triggered.connect(self._on_scan)
         file_menu.addAction(scan_action)
+
+        export_action = QAction("Export BOM...", self)
+        export_action.triggered.connect(self._on_export_bom)
+        file_menu.addAction(export_action)
 
         db_action = QAction("Download Database", self)
         db_action.triggered.connect(self._on_download_db)
@@ -501,6 +506,7 @@ class MainWindow(QMainWindow):
         """Display scan/verification results."""
         self.verify_panel.set_results(components, mpn_statuses)
         self._act_scan.setEnabled(True)
+        self._act_export.setEnabled(True)
         self._set_action_status(f"Scan complete: {len(components)} components")
 
     def _on_scan_error(self, error_msg: str):
@@ -508,6 +514,26 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "Scan Error", error_msg)
         self._act_scan.setEnabled(True)
         self._set_action_status("Scan failed")
+
+    def _on_export_bom(self):
+        """Open the BOM export dialog."""
+        components = self.verify_panel.get_components()
+        if not components:
+            QMessageBox.information(
+                self,
+                "No Components",
+                "Scan a KiCad project first before exporting BOM.",
+            )
+            return
+
+        from kipart_search.gui.export_dialog import ExportDialog
+
+        health_pct = self.verify_panel.get_health_percentage()
+        missing_count = self.verify_panel.get_missing_mpn_count()
+        self._export_dialog = ExportDialog(
+            components, health_pct, missing_count, parent=self,
+        )
+        self._export_dialog.show()  # Non-modal
 
     def _show_connection_error(self, error_msg: str):
         """Show a connection error dialog with copyable diagnostics."""

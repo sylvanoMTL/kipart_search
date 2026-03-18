@@ -369,6 +369,25 @@ class VerifyPanel(QWidget):
 
         return menu
 
+    def get_components(self) -> list[BoardComponent]:
+        """Return the list of board components from the last scan."""
+        return list(self._components)
+
+    def get_health_percentage(self) -> int:
+        """Return the current BOM health percentage (0-100)."""
+        total = len(self._components)
+        if total == 0:
+            return 0
+        has_mpn = sum(
+            1 for c in self._components
+            if self._mpn_statuses.get(c.reference) == Confidence.GREEN
+        )
+        return int(has_mpn / total * 100)
+
+    def get_missing_mpn_count(self) -> int:
+        """Return the count of components missing an MPN."""
+        return sum(1 for c in self._components if not c.has_mpn)
+
     def clear(self):
         """Clear the verification table."""
         self.table.setRowCount(0)

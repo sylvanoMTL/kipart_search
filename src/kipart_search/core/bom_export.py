@@ -87,7 +87,7 @@ def _natural_sort_key(ref: str) -> tuple:
     return tuple(int(p) if p.isdigit() else p for p in parts)
 
 
-def _group_components(
+def group_components(
     components: list[BoardComponent],
 ) -> list[dict[str, str | int]]:
     """Group components by (MPN, manufacturer) and build row dicts."""
@@ -171,7 +171,7 @@ def export_bom(
 
     Returns the output path.
     """
-    rows = _group_components(components)
+    rows = group_components(components)
 
     if template.file_format == "csv":
         return _write_csv(rows, template, output_path)
