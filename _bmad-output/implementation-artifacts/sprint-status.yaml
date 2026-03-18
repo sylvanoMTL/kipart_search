@@ -1,0 +1,90 @@
+# generated: 2026-03-17
+# last_updated: 2026-03-17
+# project: kipart-search
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-03-17
+last_updated: 2026-03-18
+project: kipart-search
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  # Epic 1: GUI Modernization & Panel Architecture
+  epic-1: in-progress
+  1-1-migrate-main-window-to-qdockwidget-panel-architecture: done
+  1-2-toolbar-status-bar-and-view-menu: backlog
+  1-3-detail-panel-for-part-inspection: backlog
+  1-4-layout-persistence-and-empty-states: backlog
+  1-5-context-menus-and-accessibility-labels: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Production-Ready BOM Export
+  epic-2: backlog
+  2-1-bom-export-engine-with-pcbway-template: backlog
+  2-2-preset-cm-templates-jlcpcb-newbury-electronics: backlog
+  2-3-health-summary-bar-with-live-updates: backlog
+  2-4-bom-export-dialog-with-template-selection-and-preview: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Search & Verification Enhancements
+  epic-3: backlog
+  3-1-dynamic-filter-row: backlog
+  3-2-two-mode-search-architecture-specific-vs-unified: backlog
+  3-3-verification-dashboard-enhancements: backlog
+  3-4-stale-data-indicators: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Caching & Offline Resilience
+  epic-4: backlog
+  4-1-sqlite-query-cache: backlog
+  4-2-jlcpcb-database-download-and-refresh: backlog
+  4-3-full-offline-operation: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Safe KiCad Write-Back & Assignment
+  epic-5: backlog
+  5-1-kicad-connection-and-board-scan: backlog
+  5-2-click-to-highlight-cross-probe: backlog
+  5-3-mpn-assignment-with-preview-dialog: backlog
+  5-4-write-back-safety-guards: backlog
+  5-5-backup-system-and-undo-log: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Source Configuration & First-Run Experience
+  epic-6: backlog
+  6-1-source-preferences-dialog: backlog
+  6-2-welcome-first-run-dialog: backlog
+  epic-6-retrospective: optional

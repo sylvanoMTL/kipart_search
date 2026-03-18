@@ -11,12 +11,12 @@ from PySide6.QtCore import QThread, Signal, Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
+    QDockWidget,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
-    QSplitter,
     QStatusBar,
     QVBoxLayout,
     QWidget,
@@ -130,85 +130,68 @@ class MainWindow(QMainWindow):
         self._bridge = KiCadBridge()
         self._assign_target: BoardComponent | None = None
 
-        self._build_menus()
+        # ── Hidden central widget (QDockWidgets fill around it) ──
+        placeholder = QWidget()
+        placeholder.setMaximumSize(0, 0)
+        self.setCentralWidget(placeholder)
 
-        # Central widget
-        central = QWidget()
-        self.setCentralWidget(central)
-        root_layout = QVBoxLayout(central)
-        root_layout.setContentsMargins(4, 4, 4, 0)
-        root_layout.setSpacing(4)
-
-        # ── Toolbar ──
-        toolbar = QHBoxLayout()
-        self.scan_btn = QPushButton("Scan Project")
-        self.scan_btn.setToolTip("Connect to KiCad and verify BOM")
-        self.scan_btn.clicked.connect(self._on_scan)
-        toolbar.addWidget(self.scan_btn)
-
-        self.db_btn = QPushButton("Download Database")
-        self.db_btn.setToolTip("Download or update the JLCPCB parts database")
-        self.db_btn.clicked.connect(self._on_download_db)
-        toolbar.addWidget(self.db_btn)
-
-        self.search_toggle_btn = QPushButton("Search Parts >>")
-        self.search_toggle_btn.setToolTip("Show/hide the part search panel")
-        self.search_toggle_btn.setCheckable(True)
-        self.search_toggle_btn.clicked.connect(self._toggle_search_panel)
-        toolbar.addWidget(self.search_toggle_btn)
-
-        toolbar.addStretch()
-        root_layout.addLayout(toolbar)
-
-        # ── Splitter: BOM (left) | Search (right) ──
-        self._splitter = QSplitter(Qt.Orientation.Horizontal)
-
-        # Left side: BOM verification
+        # ── Panel widgets ──
         self.verify_panel = VerifyPanel()
         self.verify_panel.component_clicked.connect(self._on_component_clicked)
         self.verify_panel.search_for_component.connect(self._on_guided_search)
-        self._splitter.addWidget(self.verify_panel)
-
-        # Right side: Search panel (collapsible)
-        self._search_panel = QWidget()
-        search_layout = QVBoxLayout(self._search_panel)
-        search_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Search panel header with close button
-        search_header = QHBoxLayout()
-        search_header.addWidget(QLabel("<b>Part Search</b>"))
-        search_header.addStretch()
-        self._search_target_label = QLabel("")
-        search_header.addWidget(self._search_target_label)
-        close_search_btn = QPushButton("X")
-        close_search_btn.setFixedWidth(28)
-        close_search_btn.setToolTip("Close search panel")
-        close_search_btn.clicked.connect(self._hide_search_panel)
-        search_header.addWidget(close_search_btn)
-        search_layout.addLayout(search_header)
 
         self.search_bar = SearchBar()
         self.search_bar.search_requested.connect(self._on_search)
-        search_layout.addWidget(self.search_bar)
 
         self.results_table = ResultsTable()
         self.results_table.part_selected.connect(self._on_part_selected)
+
+        self.log_panel = LogPanel()
+
+        # ── Verify dock container (Scan button + verify panel) ──
+        verify_container = QWidget()
+        verify_layout = QVBoxLayout(verify_container)
+        verify_layout.setContentsMargins(0, 0, 0, 0)
+        verify_layout.setSpacing(4)
+
+        self.scan_btn = QPushButton("Scan Project")
+        self.scan_btn.setToolTip("Connect to KiCad and verify BOM")
+        self.scan_btn.clicked.connect(self._on_scan)
+        verify_layout.addWidget(self.scan_btn)
+        verify_layout.addWidget(self.verify_panel)
+
+        # ── Search dock container (DB button + search bar + results) ──
+        search_container = QWidget()
+        search_layout = QVBoxLayout(search_container)
+        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.setSpacing(4)
+
+        search_toolbar = QHBoxLayout()
+        self.db_btn = QPushButton("Download Database")
+        self.db_btn.setToolTip("Download or update the JLCPCB parts database")
+        self.db_btn.clicked.connect(self._on_download_db)
+        search_toolbar.addWidget(self.db_btn)
+        search_toolbar.addStretch()
+        self._search_target_label = QLabel("")
+        search_toolbar.addWidget(self._search_target_label)
+        search_layout.addLayout(search_toolbar)
+
+        search_layout.addWidget(self.search_bar)
         search_layout.addWidget(self.results_table)
 
-        self._splitter.addWidget(self._search_panel)
+        # ── Dock widgets ──
+        self.dock_verify = self._create_dock(
+            "Verify", verify_container, Qt.DockWidgetArea.LeftDockWidgetArea
+        )
+        self.dock_search = self._create_dock(
+            "Search", search_container, Qt.DockWidgetArea.RightDockWidgetArea
+        )
+        self.dock_log = self._create_dock(
+            "Log", self.log_panel, Qt.DockWidgetArea.BottomDockWidgetArea
+        )
 
-        # Splitter proportions: BOM gets ~60%, search gets ~40%
-        self._splitter.setStretchFactor(0, 3)
-        self._splitter.setStretchFactor(1, 2)
-
-        root_layout.addWidget(self._splitter, stretch=1)
-
-        # Start with search panel hidden
-        self._search_panel.setVisible(False)
-
-        # ── Log panel ──
-        self.log_panel = LogPanel()
-        root_layout.addWidget(self.log_panel, stretch=0)
+        # ── Menus (order: File, View, Help) ──
+        self._build_menus()
 
         # ── Status bar with mode indicator ──
         self.status_bar = QStatusBar()
@@ -223,9 +206,33 @@ class MainWindow(QMainWindow):
     # --- Menu bar ---
 
     def _build_menus(self):
+        """Build all menus in order: File, View, Help."""
         menubar = self.menuBar()
 
-        # Help menu
+        # File menu
+        file_menu = menubar.addMenu("File")
+
+        scan_action = QAction("Scan Project", self)
+        scan_action.triggered.connect(self._on_scan)
+        file_menu.addAction(scan_action)
+
+        db_action = QAction("Download Database", self)
+        db_action.triggered.connect(self._on_download_db)
+        file_menu.addAction(db_action)
+
+        file_menu.addSeparator()
+
+        quit_action = QAction("Close", self)
+        quit_action.triggered.connect(self.close)
+        file_menu.addAction(quit_action)
+
+        # View menu
+        view_menu = menubar.addMenu("View")
+        view_menu.addAction(self.dock_verify.toggleViewAction())
+        view_menu.addAction(self.dock_search.toggleViewAction())
+        view_menu.addAction(self.dock_log.toggleViewAction())
+
+        # Help menu (last)
         help_menu = menubar.addMenu("Help")
 
         about_action = QAction("About", self)
@@ -244,27 +251,17 @@ class MainWindow(QMainWindow):
             "github.com/sylvanoMTL/kipart-search</a></p>",
         )
 
-    # --- Search panel visibility ---
+    # --- Dock helpers ---
 
-    def _show_search_panel(self):
-        """Expand the search panel."""
-        self._search_panel.setVisible(True)
-        self.search_toggle_btn.setChecked(True)
-        self.search_toggle_btn.setText("<< Search Parts")
-
-    def _hide_search_panel(self):
-        """Collapse the search panel."""
-        self._search_panel.setVisible(False)
-        self.search_toggle_btn.setChecked(False)
-        self.search_toggle_btn.setText("Search Parts >>")
-        self._assign_target = None
-        self._search_target_label.setText("")
-
-    def _toggle_search_panel(self):
-        if self._search_panel.isVisible():
-            self._hide_search_panel()
-        else:
-            self._show_search_panel()
+    def _create_dock(
+        self, title: str, widget: QWidget, area: Qt.DockWidgetArea
+    ) -> QDockWidget:
+        """Create a QDockWidget wrapping *widget* and add it to *area*."""
+        dock = QDockWidget(title, self)
+        dock.setWidget(widget)
+        dock.setObjectName(f"dock_{title.lower().replace(' ', '_')}")
+        self.addDockWidget(area, dock)
+        return dock
 
     # --- Init & status ---
 
@@ -406,7 +403,7 @@ class MainWindow(QMainWindow):
         self._bridge.select_component(reference)
 
         # Update assign target if search panel is open
-        if self._search_panel.isVisible():
+        if self.dock_search.isVisible():
             # Find the component by reference
             for i in range(len(self.verify_panel._components)):
                 comp = self.verify_panel.get_component(i)
@@ -424,7 +421,8 @@ class MainWindow(QMainWindow):
             return
 
         self._assign_target = comp
-        self._show_search_panel()
+        self.dock_search.show()
+        self.dock_search.raise_()
         self._search_target_label.setText(f"Assigning to: {comp.reference}")
         raw_query = comp.build_search_query()
         self.log_panel.log(
