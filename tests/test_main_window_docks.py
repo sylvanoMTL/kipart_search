@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QDockWidget, QSizePolicy, QToolBar, 
 # Ensure a QApplication exists before any widget tests
 app = QApplication.instance() or QApplication(sys.argv)
 
+from kipart_search.core.search import SearchOrchestrator
 from kipart_search.gui.main_window import MainWindow
 
 
@@ -255,8 +256,9 @@ class TestStatusBar3Zones:
 
     def test_sources_label_no_db(self, window: MainWindow):
         """Without a configured source, shows 'No sources configured'."""
-        # Force no source
+        # Force no source — clear both the source reference and the orchestrator
         window._jlcpcb_source = None
+        window._orchestrator = SearchOrchestrator(cache=window._cache)
         window._update_status()
         assert window._sources_label.text() == "No sources configured"
 

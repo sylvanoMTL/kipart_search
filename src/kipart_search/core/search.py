@@ -90,7 +90,16 @@ class SearchOrchestrator:
                     continue
 
                 # Cache miss — query source
-                parts = source.search(variant, filters, limit)
+                try:
+                    parts = source.search(variant, filters, limit)
+                except (OSError, ConnectionError) as e:
+                    # Network errors (httpx.ConnectError, httpx.TimeoutException,
+                    # httpx.NetworkError all inherit from these base classes)
+                    # — fall back to empty results.  Local sources
+                    # (sqlite3.OperationalError) are already caught inside
+                    # JLCPCBSource.search().
+                    log.warning("%s: offline — %s", source.name, e)
+                    parts = []
 
                 # Store in cache
                 if self._cache and parts:
@@ -132,7 +141,12 @@ class SearchOrchestrator:
                 result.confidence = Confidence.AMBER
                 return result
 
-            result = source.get_part(mpn, manufacturer)
+            try:
+                result = source.get_part(mpn, manufacturer)
+            except (OSError, ConnectionError) as e:
+                # Network error from API source — skip this source
+                log.warning("%s: offline — %s", source.name, e)
+                continue
             if result:
                 result.confidence = Confidence.AMBER  # Single source
                 # Store in cache
