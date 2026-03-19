@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from html import escape
 
 from PySide6.QtCore import QPoint, Qt, Signal
@@ -22,8 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kipart_search.core.models import Confidence
-from kipart_search.core.models import BoardComponent
+from kipart_search.core.models import BoardComponent, Confidence, is_stale
 
 
 # Colours for confidence levels
@@ -58,10 +58,16 @@ _STATUS_TOOLTIPS = {
     Confidence.RED: "MPN not found in any configured source",
 }
 
-VERIFY_COLUMNS = ["Reference", "Value", "MPN", "MPN Status", "Footprint"]
+VERIFY_COLUMNS = ["Reference", "Value", "MPN", "MPN Status", "Freshness", "Footprint"]
 
 # Sort order for status: red first, then amber, then green
 _SORT_ORDER = {Confidence.RED: 0, Confidence.AMBER: 1, Confidence.GREEN: 2}
+
+# Freshness column constants
+_STALE_LABEL = "Stale"
+
+# Freshness sort: stale sorts before current (stale=0, current=1, n/a=2)
+_FRESHNESS_SORT = {"stale": 0, "current": 1, "na": 2}
 
 
 class _StatusItem(QTableWidgetItem):
@@ -159,12 +165,14 @@ class VerifyPanel(QWidget):
         self._components: list[BoardComponent] = []
         self._mpn_statuses: dict[str, Confidence] = {}
         self._has_active_sources: bool = True
+        self._db_mtime: float | None = None
 
     def set_results(
         self,
         components: list[BoardComponent],
         mpn_statuses: dict[str, Confidence],
         has_active_sources: bool = True,
+        db_mtime: float | None = None,
     ) -> None:
         """Populate the verification table.
 
@@ -172,19 +180,25 @@ class VerifyPanel(QWidget):
             components: List of board components from KiCad
             mpn_statuses: Map of reference -> confidence level from MPN verification
             has_active_sources: Whether any data sources were available for verification
+            db_mtime: Database file modification time for stale detection
         """
         self._components = list(components)
         self._mpn_statuses = dict(mpn_statuses)
         self._has_active_sources = has_active_sources
+        self._db_mtime = db_mtime
         self._detail.clear()
 
         # Disable sorting during insertion to avoid mid-build reorder
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(components))
 
+        freshness_col = VERIFY_COLUMNS.index("Freshness")
+        footprint_col = VERIFY_COLUMNS.index("Footprint")
+
         has_mpn = 0
         missing_mpn = 0
         issues = 0
+        stale_count = 0
 
         for row, comp in enumerate(components):
             status = mpn_statuses.get(comp.reference, Confidence.RED)
@@ -197,6 +211,14 @@ class VerifyPanel(QWidget):
                 has_mpn += 1
             else:
                 issues += 1
+
+            # Stale detection (only for non-RED components with a verified_at)
+            comp_is_stale = (
+                status != Confidence.RED
+                and is_stale(comp, db_mtime)
+            )
+            if comp_is_stale:
+                stale_count += 1
 
             # Resolve status label/tooltip — may downgrade status (e.g. Unverified)
             if status == Confidence.RED and not comp.has_mpn:
@@ -235,12 +257,17 @@ class VerifyPanel(QWidget):
             status_item.setData(Qt.ItemDataRole.UserRole + 1, _SORT_ORDER[status])
             self.table.setItem(row, 3, status_item)
 
+            # Freshness
+            freshness_item = self._make_freshness_item(comp, comp_is_stale)
+            freshness_item.setData(Qt.ItemDataRole.UserRole, row)
+            self.table.setItem(row, freshness_col, freshness_item)
+
             # Footprint
             fp_item = QTableWidgetItem(comp.footprint_short)
             fp_color = COLORS[Confidence.GREEN] if comp.footprint else COLORS[Confidence.RED]
             fp_item.setBackground(fp_color)
             fp_item.setData(Qt.ItemDataRole.UserRole, row)
-            self.table.setItem(row, 4, fp_item)
+            self.table.setItem(row, footprint_col, fp_item)
 
         self.table.resizeColumnsToContents()
         self.table.setSortingEnabled(True)
@@ -256,13 +283,13 @@ class VerifyPanel(QWidget):
             self.summary_label.setStyleSheet("")
             pct = int(has_mpn / total * 100)
             self.summary_label.setText(
-                self._build_summary(total, has_mpn, issues, missing_mpn, pct)
+                self._build_summary(total, has_mpn, issues, missing_mpn, stale_count, pct)
             )
             self.health_bar.setMaximum(total)
             self.health_bar.setValue(has_mpn)
             self.health_bar.setFormat(f"Ready: {pct}%")
             self.health_bar.setVisible(True)
-            self._update_health_bar_style(pct)
+            self._update_health_bar_style(pct, stale_count)
             self.reverify_button.setVisible(True)
         else:
             self.summary_label.setText("No components found")
@@ -270,6 +297,33 @@ class VerifyPanel(QWidget):
             self.summary_label.setStyleSheet("color: #888;")
             self.health_bar.setVisible(False)
             self.reverify_button.setVisible(False)
+
+    def _make_freshness_item(self, comp: BoardComponent, comp_is_stale: bool) -> _StatusItem:
+        """Create a Freshness column cell for a component."""
+        if comp.verified_at is None:
+            # Never verified — no freshness indicator
+            item = _StatusItem("")
+            item.setData(Qt.ItemDataRole.UserRole + 1, _FRESHNESS_SORT["na"])
+            return item
+
+        if comp_is_stale:
+            verified_date = datetime.fromtimestamp(comp.verified_at).strftime("%Y-%m-%d")
+            stale_tooltip = (
+                f"Last verified: {verified_date} — database updated since. "
+                "Re-scan recommended."
+            )
+            item = _StatusItem(_STALE_LABEL)
+            item.setBackground(COLORS[Confidence.AMBER])
+            item.setToolTip(stale_tooltip)
+            # Store accessible description via UserRole+2 (QTableWidgetItem has no setAccessibleDescription)
+            item.setData(Qt.ItemDataRole.UserRole + 2, stale_tooltip)
+            item.setData(Qt.ItemDataRole.UserRole + 1, _FRESHNESS_SORT["stale"])
+            return item
+
+        # Current — no special indicator
+        item = _StatusItem("")
+        item.setData(Qt.ItemDataRole.UserRole + 1, _FRESHNESS_SORT["current"])
+        return item
 
     def update_component_status(self, reference: str, new_status: Confidence) -> None:
         """Update a single component's MPN status and refresh the health bar.
@@ -312,6 +366,7 @@ class VerifyPanel(QWidget):
         has_mpn = 0
         missing_mpn = 0
         issues = 0
+        stale_count = 0
         for comp in self._components:
             status = self._mpn_statuses.get(comp.reference, Confidence.RED)
             if not comp.has_mpn and status == Confidence.RED:
@@ -320,19 +375,23 @@ class VerifyPanel(QWidget):
                 has_mpn += 1
             else:
                 issues += 1
+            if status != Confidence.RED and is_stale(comp, self._db_mtime):
+                stale_count += 1
 
         total = len(self._components)
         if total > 0:
             pct = int(has_mpn / total * 100)
             self.summary_label.setText(
-                self._build_summary(total, has_mpn, issues, missing_mpn, pct)
+                self._build_summary(total, has_mpn, issues, missing_mpn, stale_count, pct)
             )
             self.health_bar.setValue(has_mpn)
             self.health_bar.setFormat(f"Ready: {pct}%")
-            self._update_health_bar_style(pct)
+            self._update_health_bar_style(pct, stale_count)
 
     @staticmethod
-    def _build_summary(total: int, has_mpn: int, issues: int, missing_mpn: int, pct: int) -> str:
+    def _build_summary(
+        total: int, has_mpn: int, issues: int, missing_mpn: int, stale: int, pct: int,
+    ) -> str:
         """Build the health summary text."""
         summary = (
             f"Components: {total} total | "
@@ -340,13 +399,15 @@ class VerifyPanel(QWidget):
             f"Needs attention: {issues} | "
             f"Missing MPN: {missing_mpn}"
         )
-        if pct >= 100:
+        if stale > 0:
+            summary += f" | Stale: {stale}"
+        if pct >= 100 and stale == 0:
             summary += " — Ready for export"
         return summary
 
-    def _update_health_bar_style(self, pct: int) -> None:
+    def _update_health_bar_style(self, pct: int, stale_count: int = 0) -> None:
         """Apply color-coded stylesheet to the health bar based on percentage."""
-        if pct >= 100:
+        if pct >= 100 and stale_count == 0:
             color = _COLOR_HEX[Confidence.GREEN]
         elif pct >= 50:
             color = _COLOR_HEX[Confidence.AMBER]

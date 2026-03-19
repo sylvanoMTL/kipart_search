@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-19  # story 3-3 done
+last_updated: 2026-03-19  # story 3-4 done (code review passed)
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -65,7 +65,7 @@ development_status:
   3-1-dynamic-filter-row: done
   3-2-two-mode-search-architecture-specific-vs-unified: done
   3-3-verification-dashboard-enhancements: done
-  3-4-stale-data-indicators: backlog
+  3-4-stale-data-indicators: done
   epic-3-retrospective: optional
 
   # Epic 4: Caching & Offline Resilience

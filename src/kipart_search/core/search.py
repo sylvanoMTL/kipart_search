@@ -68,6 +68,13 @@ class SearchOrchestrator:
 
         return results
 
+    def get_db_modified_time(self, source_name: str) -> float | None:
+        """Return the database modified time for a named source."""
+        source = next((s for s in self._sources if s.name == source_name), None)
+        if source is None:
+            return None
+        return source.get_db_modified_time()
+
     def verify_mpn(self, mpn: str, manufacturer: str = "") -> PartResult | None:
         """Look up MPN across all sources for verification.
 

@@ -268,6 +268,8 @@ class BoardComponent:
     mpn: str = ""         # Manufacturer Part Number (may be empty)
     datasheet: str = ""   # Datasheet URL (may be empty)
     extra_fields: dict[str, str] = field(default_factory=dict)
+    verified_at: float | None = None    # time.time() when MPN verification completed
+    verified_source: str | None = None  # source name used for verification (e.g. "JLCPCB")
 
     @property
     def has_mpn(self) -> bool:
@@ -314,3 +316,22 @@ class BoardComponent:
             parts.append(info[0])
 
         return " ".join(parts)
+
+
+def is_stale(component: BoardComponent, db_mtime: float | None) -> bool:
+    """Check if a component's verification is stale (verified before last DB update).
+
+    Only checks the temporal relationship between verified_at and db_mtime.
+    Callers should filter out components that already need action (e.g. RED
+    confidence) before treating the result as a stale indicator.
+
+    Rules:
+    - Never-verified (verified_at is None) → NOT stale
+    - No database (db_mtime is None) → NOT stale
+    - verified_at < db_mtime → STALE
+    """
+    if component.verified_at is None:
+        return False
+    if db_mtime is None:
+        return False
+    return component.verified_at < db_mtime

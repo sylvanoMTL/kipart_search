@@ -78,7 +78,7 @@ class SearchWorker(QThread):
 class ScanWorker(QThread):
     """Background thread for scanning and verifying a KiCad project."""
 
-    scan_complete = Signal(list, dict, float)  # components, mpn_statuses, db_mtime
+    scan_complete = Signal(list, dict, object)  # components, mpn_statuses, db_mtime (float|None)
     error = Signal(str)
     log = Signal(str)
 
@@ -98,7 +98,7 @@ class ScanWorker(QThread):
             self.log.emit(f"Read {len(components)} components. Verifying MPNs ...")
 
             # Capture database mtime at scan time for stale detection
-            db_mtime = self.orchestrator.get_db_modified_time("JLCPCB") or 0.0
+            db_mtime = self.orchestrator.get_db_modified_time("JLCPCB")
 
             mpn_statuses: dict[str, Confidence] = {}
             green = 0
@@ -553,7 +553,7 @@ class MainWindow(QMainWindow):
 
         has_sources = bool(self._orchestrator.active_sources)
         self.verify_panel.set_results(
-            components, mpn_statuses, has_sources, db_mtime=db_mtime or None,
+            components, mpn_statuses, has_sources, db_mtime=db_mtime,
         )
         self._act_scan.setEnabled(True)
         self.verify_panel.reverify_button.setEnabled(True)
@@ -562,11 +562,10 @@ class MainWindow(QMainWindow):
         self._set_action_status(f"Scan complete: {len(components)} components")
 
         # Log stale detection results
-        effective_mtime = db_mtime if db_mtime else None
         stale_count = sum(
             1 for c in components
             if mpn_statuses.get(c.reference) != Confidence.RED
-            and is_stale(c, effective_mtime)
+            and is_stale(c, db_mtime)
         )
         if stale_count > 0:
             self.log_panel.log(

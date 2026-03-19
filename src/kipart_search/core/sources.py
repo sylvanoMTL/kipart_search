@@ -6,6 +6,7 @@ Each distributor/database is a subclass of DataSource with a common interface.
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -52,6 +53,10 @@ class DataSource(ABC):
     def is_configured(self) -> bool:
         """Return True if this source is ready to use."""
         return True
+
+    def get_db_modified_time(self) -> float | None:
+        """Return the database file modification time, or None if not applicable."""
+        return None
 
 
 class JLCPCBSource(DataSource):
@@ -113,6 +118,15 @@ class JLCPCBSource(DataSource):
     def is_configured(self) -> bool:
         """Database file must exist."""
         return self.db_path is not None and self.db_path.exists()
+
+    def get_db_modified_time(self) -> float | None:
+        """Return the mtime of the JLCPCB database file."""
+        if self.db_path is None or not self.db_path.exists():
+            return None
+        try:
+            return os.path.getmtime(self.db_path)
+        except OSError:
+            return None
 
     def search(
         self, query: str, filters: dict | None = None, limit: int = 50
