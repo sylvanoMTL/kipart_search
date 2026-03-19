@@ -142,7 +142,7 @@ class TestMenuStructure:
         file_menu = file_action.menu()
         labels = [a.text() for a in file_menu.actions() if not a.isSeparator()]
         assert "Scan Project" in labels
-        assert "Download Database" in labels
+        assert "Download / Refresh Database" in labels
 
     def test_file_menu_has_close(self, window: MainWindow):
         file_action = [a for a in window.menuBar().actions() if a.text() == "File"][0]

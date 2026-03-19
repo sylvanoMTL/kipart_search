@@ -307,7 +307,7 @@ class MainWindow(QMainWindow):
         self._menu_export.triggered.connect(self._on_export_bom)
         file_menu.addAction(self._menu_export)
 
-        db_action = QAction("Download Database", self)
+        db_action = QAction("Download / Refresh Database", self)
         db_action.triggered.connect(self._on_download_db)
         file_menu.addAction(db_action)
 
@@ -406,9 +406,47 @@ class MainWindow(QMainWindow):
             return None
 
     def _init_jlcpcb_source(self):
-        """Initialize JLCPCB source if database exists."""
+        """Initialize JLCPCB source if database exists.
+
+        On first run (no DB file), prompts the user to download.
+        If the DB file exists but is corrupted, prompts to re-download.
+        """
         db_path = JLCPCBSource.default_db_path()
         self._jlcpcb_source = JLCPCBSource(db_path)
+
+        if not db_path.exists():
+            # First-run: prompt to download
+            reply = QMessageBox.question(
+                self,
+                "JLCPCB Database",
+                "No JLCPCB parts database found.\n\n"
+                "Download now? (~500 MB, provides offline search for 1M+ parts)\n\n"
+                "You can also download later from File > Download Database.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._on_download_db()
+            self.search_bar.set_sources(self._orchestrator.get_source_names())
+            return
+
+        # Database exists — check integrity
+        ok, msg = JLCPCBSource.check_database_integrity(db_path)
+        if not ok:
+            log.warning("JLCPCB database integrity check failed: %s", msg)
+            reply = QMessageBox.warning(
+                self,
+                "Database Corrupted",
+                f"The JLCPCB database appears corrupted:\n{msg}\n\n"
+                "Download a fresh copy?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                db_path.unlink(missing_ok=True)
+                self._on_download_db()
+            self.search_bar.set_sources(self._orchestrator.get_source_names())
+            return
+
+        # Database is valid — add to orchestrator
         if self._jlcpcb_source.is_configured():
             self._orchestrator.add_source(self._jlcpcb_source)
         self.search_bar.set_sources(self._orchestrator.get_source_names())
@@ -429,19 +467,39 @@ class MainWindow(QMainWindow):
                 "border-radius: 8px; font-weight: bold; font-size: 11px;"
             )
 
-        # Center zone: active source names
-        sources: list[str] = []
-        if self._jlcpcb_source and self._jlcpcb_source.is_configured():
-            db_path = self._jlcpcb_source.db_path
-            try:
-                stat = db_path.stat()
-                dt = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d")
-                size_mb = stat.st_size / (1024 * 1024)
-                sources.append(f"JLCPCB ({size_mb:.0f} MB, {dt})")
-            except OSError:
-                sources.append("JLCPCB")
-        if sources:
-            self._sources_label.setText(" + ".join(sources))
+        # Center zone: source availability with local/online distinction
+        local_parts: list[str] = []
+        online_parts: list[str] = []
+        for source in self._orchestrator.active_sources:
+            if source.is_local:
+                # Show size + date for local database sources
+                mtime = source.get_db_modified_time()
+                if mtime is not None:
+                    try:
+                        dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+                        db_path = getattr(source, "db_path", None)
+                        if db_path is not None:
+                            size_mb = Path(db_path).stat().st_size / (1024 * 1024)
+                            local_parts.append(f"{source.name} ({size_mb:.0f} MB, {dt})")
+                        else:
+                            local_parts.append(f"{source.name} ({dt})")
+                    except OSError:
+                        local_parts.append(source.name)
+                else:
+                    local_parts.append(source.name)
+            else:
+                # Future API sources — placeholder for online/offline state
+                online_parts.append(source.name)
+
+        parts: list[str] = local_parts
+        if online_parts:
+            parts.append(f"{len(online_parts)} online source(s)")
+
+        if parts:
+            label = " + ".join(parts)
+            if not online_parts:
+                label += "  [Local DB]"
+            self._sources_label.setText(label)
         else:
             self._sources_label.setText("No sources configured")
 

@@ -47,14 +47,26 @@ class DownloadWorker(QThread):
     def __init__(self, target_dir: Path):
         super().__init__()
         self.target_dir = target_dir
+        self._cancelled = False
+
+    def cancel(self):
+        """Request cancellation of the download."""
+        self._cancelled = True
 
     def run(self):
         try:
             db_path = JLCPCBSource.download_database(
                 target_dir=self.target_dir,
                 progress_callback=lambda cur, total, msg: self.progress.emit(cur, total, msg),
+                cancel_check=lambda: self._cancelled,
             )
-            self.finished.emit(str(db_path))
+            if not self._cancelled:
+                self.finished.emit(str(db_path))
+        except RuntimeError as e:
+            if self._cancelled:
+                self.error.emit("Download cancelled")
+            else:
+                self.error.emit(str(e))
         except Exception as e:
             self.error.emit(str(e))
 
@@ -156,12 +168,25 @@ class DownloadDialog(QDialog):
         self.progress_bar.setVisible(True)
         self.status_label.setVisible(True)
 
+        # Rewire close button to cancel during download
+        self.close_btn.clicked.disconnect()
+        self.close_btn.clicked.connect(self._on_cancel)
+
         target_dir = self._db_path.parent
         self._worker = DownloadWorker(target_dir)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
         self._worker.start()
+
+    def _on_cancel(self):
+        """Cancel an in-progress download."""
+        if self._worker and self._worker.isRunning():
+            self._worker.cancel()
+            self.status_label.setText("Cancelling...")
+            self.close_btn.setEnabled(False)
+        else:
+            self.reject()
 
     def _on_progress(self, current: int, total: int, message: str):
         self.progress_bar.setMaximum(total)
@@ -171,11 +196,21 @@ class DownloadDialog(QDialog):
     def _on_finished(self, db_path: str):
         self.status_label.setText("Database downloaded successfully!")
         self.close_btn.setText("Close")
+        self.close_btn.setEnabled(True)
+        # Rewire close button back to reject
+        self.close_btn.clicked.disconnect()
+        self.close_btn.clicked.connect(self.reject)
         self.browse_btn.setEnabled(True)
         self.download_complete.emit(db_path)
 
     def _on_error(self, error_msg: str):
         self.status_label.setText(f"Error: {error_msg}")
+        self.browse_btn.setEnabled(True)
+        self.close_btn.setEnabled(True)
+        # Rewire close button back to reject
+        self.close_btn.clicked.disconnect()
+        self.close_btn.clicked.connect(self.reject)
         self.download_btn.setEnabled(True)
         self.download_btn.setText("Retry")
-        self.browse_btn.setEnabled(True)
+        if "cancelled" in error_msg.lower():
+            self.close_btn.setText("Close")

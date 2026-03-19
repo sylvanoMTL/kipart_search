@@ -50,6 +50,11 @@ class DataSource(ABC):
         """Look up a specific part by MPN."""
         ...
 
+    @property
+    def is_local(self) -> bool:
+        """Whether this source works without network access."""
+        return False
+
     def is_configured(self) -> bool:
         """Return True if this source is ready to use."""
         return True
@@ -69,6 +74,10 @@ class JLCPCBSource(DataSource):
 
     name = "JLCPCB"
     needs_key = False
+
+    @property
+    def is_local(self) -> bool:
+        return True
 
     # Database hosting
     URL_BASE = "https://bouni.github.io/kicad-jlcpcb-tools/"
@@ -234,6 +243,23 @@ class JLCPCBSource(DataSource):
         )
 
     @staticmethod
+    def check_database_integrity(db_path: Path | None = None) -> tuple[bool, str]:
+        """Check if the JLCPCB database is readable and has the expected structure."""
+        path = db_path or JLCPCBSource.default_db_path()
+        if not path.exists():
+            return False, "Database file not found"
+        conn = None
+        try:
+            conn = sqlite3.connect(str(path))
+            row = conn.execute("SELECT count(*) FROM parts LIMIT 1").fetchone()
+            return True, f"Database OK ({row[0]} parts)"
+        except sqlite3.DatabaseError as e:
+            return False, f"Database corrupted: {e}"
+        finally:
+            if conn:
+                conn.close()
+
+    @staticmethod
     def default_db_path() -> Path:
         """Default location for the JLCPCB database file."""
         return Path.home() / ".kipart-search" / "jlcpcb" / "parts-fts5.db"
@@ -332,19 +358,27 @@ class JLCPCBSource(DataSource):
     def download_database(
         target_dir: Path | None = None,
         progress_callback: Callable[[int, int, str], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> Path:
-        """Download the JLCPCB FTS5 database.
+        """Download the JLCPCB FTS5 database with atomic replacement.
+
+        Downloads to a temporary directory first, then swaps the database
+        file atomically. If an existing database is present, it is backed
+        up and only removed after the new one is successfully in place.
 
         Args:
             target_dir: Directory to save the database. Defaults to ~/.kipart-search/jlcpcb/
             progress_callback: Called with (current_step, total_steps, message)
+            cancel_check: Called between chunks; if it returns True, download
+                is aborted and partial files are cleaned up.
 
         Returns:
             Path to the downloaded database file.
 
         Raises:
-            RuntimeError: If download or extraction fails.
+            RuntimeError: If download, extraction, or cancellation occurs.
         """
+        import shutil
         import zipfile
 
         import httpx
@@ -352,64 +386,99 @@ class JLCPCBSource(DataSource):
         target_dir = target_dir or JLCPCBSource.default_db_path().parent
         target_dir.mkdir(parents=True, exist_ok=True)
 
+        tmp_dir = target_dir / ".download-tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
         db_file = target_dir / "parts-fts5.db"
-        zip_file = target_dir / "parts-fts5.db.zip"
+        zip_file = tmp_dir / "parts-fts5.db.zip"
 
         def _report(step: int, total: int, msg: str):
             if progress_callback:
                 progress_callback(step, total, msg)
             log.info("Download [%d/%d]: %s", step, total, msg)
 
-        # Step 1: Get chunk count and server build date
-        _report(0, 1, "Checking database version...")
-        with httpx.Client(timeout=60, follow_redirects=True) as client:
-            r = client.get(JLCPCBSource.URL_BASE + JLCPCBSource.CHUNK_COUNT_FILE)
-            r.raise_for_status()
-            total_chunks = int(r.text.strip())
-            remote_last_modified = r.headers.get("last-modified", "")
+        def _check_cancel():
+            if cancel_check and cancel_check():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                raise RuntimeError("Download cancelled")
 
-        _report(0, total_chunks + 2, f"Downloading {total_chunks} chunks...")
+        try:
+            # Step 1: Get chunk count and server build date
+            _report(0, 1, "Checking database version...")
+            _check_cancel()
+            with httpx.Client(timeout=60, follow_redirects=True) as client:
+                r = client.get(JLCPCBSource.URL_BASE + JLCPCBSource.CHUNK_COUNT_FILE)
+                r.raise_for_status()
+                total_chunks = int(r.text.strip())
+                remote_last_modified = r.headers.get("last-modified", "")
 
-        # Step 2: Download chunks
-        with httpx.Client(timeout=300, follow_redirects=True) as client:
-            for i in range(1, total_chunks + 1):
-                chunk_name = f"{JLCPCBSource.CHUNK_FILE_STUB}{i:03d}"
-                _report(i, total_chunks + 2, f"Downloading {chunk_name}...")
+            _report(0, total_chunks + 2, f"Downloading {total_chunks} chunks...")
 
-                chunk_path = target_dir / chunk_name
-                url = JLCPCBSource.URL_BASE + chunk_name
+            # Step 2: Download chunks to tmp_dir
+            with httpx.Client(timeout=300, follow_redirects=True) as client:
+                for i in range(1, total_chunks + 1):
+                    _check_cancel()
+                    chunk_name = f"{JLCPCBSource.CHUNK_FILE_STUB}{i:03d}"
+                    _report(i, total_chunks + 2, f"Downloading {chunk_name}...")
 
-                with client.stream("GET", url) as response:
-                    response.raise_for_status()
-                    with open(chunk_path, "wb") as f:
-                        for data in response.iter_bytes(chunk_size=1024 * 1024):
-                            f.write(data)
+                    chunk_path = tmp_dir / chunk_name
+                    url = JLCPCBSource.URL_BASE + chunk_name
 
-        # Step 3: Combine chunks into zip
-        _report(total_chunks + 1, total_chunks + 2, "Combining chunks...")
-        with open(zip_file, "wb") as combined:
-            for i in range(1, total_chunks + 1):
-                chunk_path = target_dir / f"{JLCPCBSource.CHUNK_FILE_STUB}{i:03d}"
-                with open(chunk_path, "rb") as chunk:
-                    while data := chunk.read(1024 * 1024):
-                        combined.write(data)
-                chunk_path.unlink()  # Delete chunk after merging
+                    with client.stream("GET", url) as response:
+                        response.raise_for_status()
+                        with open(chunk_path, "wb") as f:
+                            for data in response.iter_bytes(chunk_size=1024 * 1024):
+                                f.write(data)
 
-        # Step 4: Extract database from zip
-        _report(total_chunks + 2, total_chunks + 2, "Extracting database...")
-        with zipfile.ZipFile(zip_file, "r") as zf:
-            names = zf.namelist()
-            if not names:
-                raise RuntimeError("Empty zip archive")
-            zf.extract(names[0], target_dir)
-            # Rename if needed
-            extracted = target_dir / names[0]
-            if extracted != db_file:
-                if db_file.exists():
-                    db_file.unlink()
-                extracted.rename(db_file)
+            _check_cancel()
 
-        zip_file.unlink()  # Clean up zip
+            # Step 3: Combine chunks into zip
+            _report(total_chunks + 1, total_chunks + 2, "Combining chunks...")
+            with open(zip_file, "wb") as combined:
+                for i in range(1, total_chunks + 1):
+                    chunk_path = tmp_dir / f"{JLCPCBSource.CHUNK_FILE_STUB}{i:03d}"
+                    with open(chunk_path, "rb") as chunk:
+                        while data := chunk.read(1024 * 1024):
+                            combined.write(data)
+                    chunk_path.unlink()  # Delete chunk after merging
+
+            # Step 4: Extract database from zip into tmp_dir
+            _report(total_chunks + 2, total_chunks + 2, "Extracting database...")
+            with zipfile.ZipFile(zip_file, "r") as zf:
+                names = zf.namelist()
+                if not names:
+                    raise RuntimeError("Empty zip archive")
+                zf.extract(names[0], tmp_dir)
+
+            zip_file.unlink()
+
+            # Step 5: Atomic swap — backup old, move new, clean up
+            tmp_db = tmp_dir / names[0]
+            if tmp_db.name != "parts-fts5.db":
+                final_tmp = tmp_dir / "parts-fts5.db"
+                tmp_db.rename(final_tmp)
+                tmp_db = final_tmp
+
+            backup_db = target_dir / "parts-fts5.db.bak"
+            if db_file.exists():
+                db_file.rename(backup_db)
+            try:
+                tmp_db.rename(db_file)
+                if backup_db.exists():
+                    backup_db.unlink()
+            except Exception:
+                # Restore backup on failure
+                if backup_db.exists():
+                    backup_db.rename(db_file)
+                raise
+
+        except Exception:
+            # Clean up tmp_dir on any failure (including cancellation)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
+        else:
+            # Clean up tmp_dir on success
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
         JLCPCBSource._save_db_metadata(db_file, total_chunks, remote_last_modified)
         _report(total_chunks + 2, total_chunks + 2, "Database ready!")
