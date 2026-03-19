@@ -17,7 +17,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 
 from kipart_search.core.bom_export import PRESET_TEMPLATES, BOMTemplate
 from kipart_search.core.models import BoardComponent, Confidence
-from kipart_search.gui.export_dialog import ExportDialog, _is_dnp
+from kipart_search.gui.export_dialog import ExportDialog
 from kipart_search.gui.verify_panel import VerifyPanel
 
 
@@ -168,11 +168,11 @@ class TestDnpFiltering:
 
     def test_is_dnp_detects_dnp_field(self):
         comp = _make_dnp_component()
-        assert _is_dnp(comp) is True
+        assert comp.is_dnp is True
 
     def test_is_dnp_returns_false_for_normal(self):
         comp = _make_components(1, mpn_count=1)[0]
-        assert _is_dnp(comp) is False
+        assert comp.is_dnp is False
 
     def test_is_dnp_handles_false_values(self):
         comp = BoardComponent(
@@ -180,7 +180,7 @@ class TestDnpFiltering:
             footprint="Capacitor_SMD:C_0805_2012Metric",
             extra_fields={"dnp": "0"},
         )
-        assert _is_dnp(comp) is False
+        assert comp.is_dnp is False
 
 
 class TestWarningBanner:

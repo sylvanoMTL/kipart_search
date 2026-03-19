@@ -33,16 +33,6 @@ from kipart_search.core.models import BoardComponent
 
 log = logging.getLogger(__name__)
 
-_DNP_FIELD_NAMES = {"dnp", "do_not_populate", "do not populate", "dnf", "do_not_fit"}
-
-
-def _is_dnp(comp: BoardComponent) -> bool:
-    """Check if a component is marked as Do Not Populate."""
-    for key, val in comp.extra_fields.items():
-        if key.lower() in _DNP_FIELD_NAMES:
-            return val.strip().lower() not in ("", "0", "false", "no")
-    return False
-
 
 class ExportDialog(QDialog):
     """Non-modal dialog for BOM export with template selection and preview."""
@@ -87,7 +77,7 @@ class ExportDialog(QDialog):
         self._template_combo = QComboBox()
         for tmpl in PRESET_TEMPLATES:
             self._template_combo.addItem(tmpl.name, tmpl)
-        self._template_combo.currentIndexChanged.connect(self._refresh_preview)
+        self._template_combo.currentIndexChanged.connect(self._on_template_changed)
         controls.addWidget(self._template_combo)
 
         controls.addWidget(QLabel("DNP:"))
@@ -152,6 +142,11 @@ class ExportDialog(QDialog):
     def _selected_format(self) -> str:
         return self._format_combo.currentData()
 
+    def _on_template_changed(self) -> None:
+        """Sync format combo to template default and refresh preview."""
+        self._sync_format_to_template()
+        self._refresh_preview()
+
     def _sync_format_to_template(self) -> None:
         """Set the format combo to match the selected template's default."""
         tmpl = self._selected_template()
@@ -162,7 +157,7 @@ class ExportDialog(QDialog):
     def _filtered_components(self) -> list[BoardComponent]:
         """Return components filtered by DNP setting."""
         if self._selected_dnp() == "exclude":
-            return [c for c in self._components if not _is_dnp(c)]
+            return [c for c in self._components if not c.is_dnp]
         return self._components
 
     def _refresh_preview(self) -> None:
@@ -197,11 +192,7 @@ class ExportDialog(QDialog):
         fmt = self._selected_format()
         ext = "csv" if fmt == "csv" else "xlsx"
 
-        # Build default filename
         default_name = f"BOM.{ext}"
-        if self.parent() and hasattr(self.parent(), 'windowTitle'):
-            # Try to extract project name from parent window title
-            pass
 
         file_filter = (
             "CSV Files (*.csv)" if ext == "csv"

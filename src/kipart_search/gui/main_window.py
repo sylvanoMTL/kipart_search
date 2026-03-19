@@ -282,9 +282,10 @@ class MainWindow(QMainWindow):
         scan_action.triggered.connect(self._on_scan)
         file_menu.addAction(scan_action)
 
-        export_action = QAction("Export BOM...", self)
-        export_action.triggered.connect(self._on_export_bom)
-        file_menu.addAction(export_action)
+        self._menu_export = QAction("Export BOM...", self)
+        self._menu_export.setEnabled(False)
+        self._menu_export.triggered.connect(self._on_export_bom)
+        file_menu.addAction(self._menu_export)
 
         db_action = QAction("Download Database", self)
         db_action.triggered.connect(self._on_download_db)
@@ -507,6 +508,7 @@ class MainWindow(QMainWindow):
         self.verify_panel.set_results(components, mpn_statuses)
         self._act_scan.setEnabled(True)
         self._act_export.setEnabled(True)
+        self._menu_export.setEnabled(True)
         self._set_action_status(f"Scan complete: {len(components)} components")
 
     def _on_scan_error(self, error_msg: str):

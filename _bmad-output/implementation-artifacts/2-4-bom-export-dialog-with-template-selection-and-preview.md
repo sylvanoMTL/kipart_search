@@ -1,6 +1,6 @@
 # Story 2.4: BOM Export Dialog with Template Selection and Preview
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -300,8 +300,10 @@ Claude Opus 4.6 (1M context)
 - MODIFIED: `src/kipart_search/gui/main_window.py`
 - MODIFIED: `src/kipart_search/gui/verify_panel.py`
 - MODIFIED: `src/kipart_search/core/bom_export.py`
+- MODIFIED: `src/kipart_search/core/models.py`
 - NEW: `tests/test_export_dialog.py`
 
 ### Change Log
 
 - 2026-03-18: Story 2.4 implementation — BOM export dialog with template selection, preview table, DNP filtering, health warning banner, and 22 tests
+- 2026-03-19: Code review fixes — removed dead code block, synced File menu Export BOM enabled state, auto-sync format combo on template change, moved DNP detection to core/models.py as BoardComponent.is_dnp property

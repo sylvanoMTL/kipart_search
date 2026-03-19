@@ -114,6 +114,9 @@ PARAM_TEMPLATES: dict[str, list[ParamField]] = {
 MPN_FIELD_NAMES = {"mpn", "manf#", "mfr part", "mfr.part", "manufacturer part number",
                    "manufacturer_part_number", "part number", "pn"}
 
+# Common field names for Do Not Populate markers
+DNP_FIELD_NAMES = {"dnp", "do_not_populate", "do not populate", "dnf", "do_not_fit"}
+
 # Reference prefix → (component type keyword, default unit suffix)
 _REF_PREFIX_MAP: dict[str, tuple[str, str]] = {
     "C": ("capacitor", "F"),
@@ -269,6 +272,14 @@ class BoardComponent:
     @property
     def has_mpn(self) -> bool:
         return bool(self.mpn.strip())
+
+    @property
+    def is_dnp(self) -> bool:
+        """Check if this component is marked as Do Not Populate."""
+        for key, val in self.extra_fields.items():
+            if key.lower() in DNP_FIELD_NAMES:
+                return val.strip().lower() not in ("", "0", "false", "no")
+        return False
 
     @property
     def footprint_short(self) -> str:
