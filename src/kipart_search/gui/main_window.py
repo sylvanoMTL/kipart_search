@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 
 from kipart_search import __version__
 from kipart_search.core.models import Confidence
+from kipart_search.core.cache import QueryCache
 from kipart_search.core.sources import JLCPCBSource
 from kipart_search.core.search import SearchOrchestrator
 from kipart_search.core.units import generate_query_variants
@@ -141,7 +142,8 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1000, 600)
 
         # Core engine
-        self._orchestrator = SearchOrchestrator()
+        self._cache = self._init_cache()
+        self._orchestrator = SearchOrchestrator(cache=self._cache)
         self._jlcpcb_source: JLCPCBSource | None = None
         self._search_worker: SearchWorker | None = None
         self._scan_worker: ScanWorker | None = None
@@ -283,6 +285,8 @@ class MainWindow(QMainWindow):
         settings = QSettings("kipart-search", "kipart-search")
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("windowState", self.saveState(1))
+        if self._cache:
+            self._cache.close()
         event.accept()
 
     # --- Menu bar ---
@@ -391,6 +395,15 @@ class MainWindow(QMainWindow):
         settings.remove("windowState")
 
     # --- Init & status ---
+
+    @staticmethod
+    def _init_cache() -> QueryCache | None:
+        """Create the query cache, returning None if it fails."""
+        try:
+            return QueryCache()
+        except Exception:
+            log.warning("Failed to initialise query cache, continuing without cache")
+            return None
 
     def _init_jlcpcb_source(self):
         """Initialize JLCPCB source if database exists."""
@@ -733,7 +746,7 @@ class MainWindow(QMainWindow):
         if self._jlcpcb_source:
             self._jlcpcb_source.close()
 
-        self._orchestrator = SearchOrchestrator()
+        self._orchestrator = SearchOrchestrator(cache=self._cache)
         self._jlcpcb_source = JLCPCBSource(Path(db_path))
         if self._jlcpcb_source.is_configured():
             self._orchestrator.add_source(self._jlcpcb_source)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -61,6 +62,23 @@ class PartResult:
             if spec.name.lower() == name_lower:
                 return spec
         return None
+
+
+def part_result_to_dict(part: PartResult) -> dict:
+    """Serialize a PartResult to a JSON-compatible dict."""
+    d = dataclasses.asdict(part)
+    # Enum → string for JSON serialization
+    d["confidence"] = part.confidence.value
+    return d
+
+
+def part_result_from_dict(d: dict) -> PartResult:
+    """Reconstruct a PartResult from a dict (inverse of part_result_to_dict)."""
+    d = dict(d)  # shallow copy to avoid mutating caller's dict
+    d["specs"] = [ParametricValue(**pv) for pv in d.get("specs", [])]
+    d["price_breaks"] = [PriceBreak(**pb) for pb in d.get("price_breaks", [])]
+    d["confidence"] = Confidence(d["confidence"]) if d.get("confidence") else Confidence.AMBER
+    return PartResult(**d)
 
 
 # --- Parameter Templates ---
