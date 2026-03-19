@@ -1,6 +1,6 @@
 # Story 5.3: MPN Assignment with Preview Dialog
 
-Status: review
+Status: done
 
 ## Story
 
@@ -201,6 +201,7 @@ Follow the pattern from `tests/gui/test_kicad_bridge.py`:
 ## Change Log
 
 - 2026-03-19: Implemented manual entry mode, standalone assignment, and dual-mode constructor for AssignDialog. Added 28 tests. Refactored main_window assignment flow into `_apply_assignment()`.
+- 2026-03-19: Code review fixes — merged duplicate import, disabled QLineEdit for non-empty fields in manual mode (clearer UX).
 
 ## Dev Agent Record
 

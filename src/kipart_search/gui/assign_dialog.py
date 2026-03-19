@@ -16,9 +16,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from kipart_search.core.models import PartResult
 from kipart_search.core.models import (
     BoardComponent,
+    PartResult,
     extract_package_from_footprint as _extract_package_from_footprint,
     extract_ref_prefix,
 )
@@ -287,9 +287,13 @@ class AssignDialog(QDialog):
             current_item.setToolTip(current_display)
             self.table.setItem(row, 1, current_item)
 
-            # Editable new value (QLineEdit)
+            # Editable new value (QLineEdit) — disabled for non-empty fields
             edit = QLineEdit()
-            edit.setPlaceholderText(f"Enter {display_name}...")
+            if is_empty:
+                edit.setPlaceholderText(f"Enter {display_name}...")
+            else:
+                edit.setPlaceholderText("(field not empty)")
+                edit.setEnabled(False)
             edit.textChanged.connect(self._on_manual_field_changed)
             self._manual_edits[kicad_field] = edit
             self.table.setCellWidget(row, 2, edit)
