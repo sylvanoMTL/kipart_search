@@ -197,6 +197,7 @@ Claude Opus 4.6 (1M context)
 
 - 2026-03-19: Story 5.1 audit and test implementation. Created `tests/gui/test_kicad_bridge.py` (37 tests). No production code changes required — existing implementation fully meets ACs.
 - 2026-03-19: Code review fixes — removed dead `_extract_package_from_footprint` alias and unused `extract_package_from_footprint` import from `kicad_bridge.py`. Relocated `_import_blocker` helper to test helpers section.
+- 2026-03-19: Code review fix — replaced fragile `__builtins__.__import__` with `import builtins; builtins.__import__` in `_import_blocker` test helper.
 
 ### File List
 

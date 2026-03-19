@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-19  # story 5-1 code review done
+last_updated: 2026-03-19  # story 5-2 implementation complete
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -78,7 +78,7 @@ development_status:
   # Epic 5: Safe KiCad Write-Back & Assignment
   epic-5: in-progress
   5-1-kicad-connection-and-board-scan: done
-  5-2-click-to-highlight-cross-probe: ready-for-dev
+  5-2-click-to-highlight-cross-probe: review
   5-3-mpn-assignment-with-preview-dialog: backlog
   5-4-write-back-safety-guards: backlog
   5-5-backup-system-and-undo-log: backlog

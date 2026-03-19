@@ -66,7 +66,8 @@ def _make_bridge_with_mock_board(footprints: list[MagicMock] | None = None):
 
 def _import_blocker(blocked_module: str):
     """Return an __import__ replacement that blocks a specific module."""
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    import builtins
+    original_import = builtins.__import__
 
     def _blocked_import(name, *args, **kwargs):
         if name == blocked_module or name.startswith(blocked_module + "."):
@@ -590,3 +591,213 @@ class TestWriteField:
         result = bridge.write_field("C1", "NonExistentField", "value")
 
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Story 5.2: Click-to-highlight cross-probe tests
+# ---------------------------------------------------------------------------
+
+class TestSelectComponentEdgeCases:
+    """Story 5.2 — Edge case tests for select_component() cross-probe."""
+
+    def test_select_calls_clear_then_add_in_order(self):
+        """select_component() calls clear_selection before add_to_selection."""
+        fp = _make_mock_footprint(reference="R1")
+        bridge = _make_bridge_with_mock_board([fp])
+        bridge.get_components()
+
+        call_order = []
+        bridge._board.clear_selection.side_effect = lambda: call_order.append("clear")
+        bridge._board.add_to_selection.side_effect = lambda x: call_order.append("add")
+
+        bridge.select_component("R1")
+
+        assert call_order == ["clear", "add"]
+
+    def test_select_when_clear_selection_raises(self):
+        """select_component() returns False when clear_selection raises."""
+        fp = _make_mock_footprint(reference="C1")
+        bridge = _make_bridge_with_mock_board([fp])
+        bridge.get_components()
+
+        bridge._board.clear_selection.side_effect = Exception("IPC timeout")
+
+        result = bridge.select_component("C1")
+        assert result is False
+
+    def test_select_when_add_to_selection_raises(self):
+        """select_component() returns False when add_to_selection raises."""
+        fp = _make_mock_footprint(reference="C1")
+        bridge = _make_bridge_with_mock_board([fp])
+        bridge.get_components()
+
+        bridge._board.add_to_selection.side_effect = Exception("IPC error")
+
+        result = bridge.select_component("C1")
+        assert result is False
+
+    def test_select_not_connected_returns_false(self):
+        """select_component() returns False immediately when not connected."""
+        from kipart_search.gui.kicad_bridge import KiCadBridge
+        bridge = KiCadBridge()
+
+        result = bridge.select_component("C1")
+
+        assert result is False
+
+    def test_select_reference_not_in_cache(self):
+        """select_component() returns False for reference deleted after scan."""
+        fp = _make_mock_footprint(reference="C1")
+        bridge = _make_bridge_with_mock_board([fp])
+        bridge.get_components()
+
+        # Reference that was never on the board
+        result = bridge.select_component("C99")
+
+        assert result is False
+        bridge._board.clear_selection.assert_not_called()
+        bridge._board.add_to_selection.assert_not_called()
+
+    def test_select_multiple_components_sequentially(self):
+        """Selecting multiple components clears selection each time."""
+        fp1 = _make_mock_footprint(reference="C1")
+        fp2 = _make_mock_footprint(reference="R1")
+        bridge = _make_bridge_with_mock_board([fp1, fp2])
+        bridge.get_components()
+
+        bridge.select_component("C1")
+        bridge.select_component("R1")
+
+        assert bridge._board.clear_selection.call_count == 2
+        assert bridge._board.add_to_selection.call_count == 2
+
+    def test_footprint_cache_cleared_on_rescan(self):
+        """Footprint cache is cleared and repopulated on each get_components()."""
+        fp1 = _make_mock_footprint(reference="C1")
+        fp2 = _make_mock_footprint(reference="R1")
+
+        bridge = _make_bridge_with_mock_board([fp1])
+        bridge.get_components()
+        assert "C1" in bridge._footprint_cache
+
+        # Re-scan with different components
+        bridge._board.get_footprints.return_value = [fp2]
+        bridge.get_components()
+
+        assert "C1" not in bridge._footprint_cache
+        assert "R1" in bridge._footprint_cache
+
+    def test_select_after_rescan_uses_new_cache(self):
+        """After re-scan, select_component uses the new footprint cache."""
+        fp1 = _make_mock_footprint(reference="C1")
+        fp2 = _make_mock_footprint(reference="C1")  # Same ref, new fp object
+
+        bridge = _make_bridge_with_mock_board([fp1])
+        bridge.get_components()
+
+        # Re-scan replaces cache
+        bridge._board.get_footprints.return_value = [fp2]
+        bridge.get_components()
+
+        bridge.select_component("C1")
+        bridge._board.add_to_selection.assert_called_with(fp2)
+
+
+class TestOnComponentClickedSignalChain:
+    """Story 5.2 — Test the verify panel → main window → bridge signal chain."""
+
+    def test_on_component_clicked_calls_select(self):
+        """_on_component_clicked calls bridge.select_component with reference."""
+        from kipart_search.gui.kicad_bridge import KiCadBridge
+        from kipart_search.gui.main_window import MainWindow
+
+        window = MainWindow.__new__(MainWindow)
+        window._bridge = MagicMock(spec=KiCadBridge)
+        window.dock_search = MagicMock()
+        window.dock_search.isVisible.return_value = False
+
+        window._on_component_clicked("C1")
+
+        window._bridge.select_component.assert_called_once_with("C1")
+
+    def test_on_component_clicked_no_error_when_select_fails(self):
+        """_on_component_clicked does not raise when select_component returns False."""
+        from kipart_search.gui.kicad_bridge import KiCadBridge
+        from kipart_search.gui.main_window import MainWindow
+
+        window = MainWindow.__new__(MainWindow)
+        window._bridge = MagicMock(spec=KiCadBridge)
+        window._bridge.select_component.return_value = False
+        window.dock_search = MagicMock()
+        window.dock_search.isVisible.return_value = False
+
+        # Should not raise
+        window._on_component_clicked("C1")
+
+    def test_on_component_clicked_updates_assign_target(self):
+        """_on_component_clicked updates assign target when search dock is visible."""
+        from kipart_search.gui.kicad_bridge import KiCadBridge
+        from kipart_search.gui.main_window import MainWindow
+
+        comp = BoardComponent(reference="C1", value="100nF", footprint="C_0805", mpn="ABC")
+
+        window = MainWindow.__new__(MainWindow)
+        window._bridge = MagicMock(spec=KiCadBridge)
+        window.dock_search = MagicMock()
+        window.dock_search.isVisible.return_value = True
+        window._search_target_label = MagicMock()
+        window.detail_panel = MagicMock()
+        window.results_table = MagicMock()
+        window._assign_target = None
+
+        # Mock verify_panel table
+        mock_table = MagicMock()
+        mock_table.rowCount.return_value = 1
+        window.verify_panel = MagicMock()
+        window.verify_panel.table = mock_table
+        window.verify_panel.get_component.return_value = comp
+
+        window._on_component_clicked("C1")
+
+        assert window._assign_target is comp
+
+    def test_verify_panel_emits_reference_on_cell_click(self):
+        """VerifyPanel._on_cell_clicked emits component_clicked with reference."""
+        from kipart_search.gui.verify_panel import VerifyPanel
+        from kipart_search.core.models import Confidence
+
+        panel = VerifyPanel()
+        comp = BoardComponent(reference="R5", value="10k", footprint="R_0805", mpn="XYZ")
+        panel.set_results(
+            [comp],
+            {"R5": Confidence.GREEN},
+        )
+
+        emitted = []
+        panel.component_clicked.connect(emitted.append)
+
+        # Click first row, first column
+        panel._on_cell_clicked(0, 0)
+
+        assert len(emitted) == 1
+        assert emitted[0] == "R5"
+
+    def test_verify_panel_detail_updates_on_click(self):
+        """VerifyPanel detail browser updates on click regardless of bridge state."""
+        from kipart_search.gui.verify_panel import VerifyPanel
+        from kipart_search.core.models import Confidence
+
+        panel = VerifyPanel()
+        comp = BoardComponent(reference="U1", value="STM32", footprint="QFP-48", mpn="STM32F4")
+        panel.set_results(
+            [comp],
+            {"U1": Confidence.GREEN},
+        )
+
+        # Click the row
+        panel._on_cell_clicked(0, 0)
+
+        # Detail browser should have content (the panel updates its own detail)
+        html = panel._detail.toHtml()
+        assert "U1" in html
+        assert "STM32" in html
