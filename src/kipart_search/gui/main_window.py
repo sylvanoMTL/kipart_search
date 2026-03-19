@@ -162,6 +162,7 @@ class MainWindow(QMainWindow):
         self.verify_panel = VerifyPanel()
         self.verify_panel.component_clicked.connect(self._on_component_clicked)
         self.verify_panel.search_for_component.connect(self._on_guided_search)
+        self.verify_panel.manual_assign_requested.connect(self._on_manual_assign)
         self.verify_panel.reverify_requested.connect(self._on_reverify)
 
         self.search_bar = SearchBar()
@@ -740,14 +741,6 @@ class MainWindow(QMainWindow):
         if part is None:
             return
 
-        if not self._bridge.is_connected:
-            QMessageBox.information(
-                self,
-                "Not Connected",
-                "Connect to KiCad first (Scan Project) to assign parts.",
-            )
-            return
-
         if self._assign_target is None:
             QMessageBox.information(
                 self,
@@ -761,32 +754,66 @@ class MainWindow(QMainWindow):
 
         dialog = AssignDialog(self._assign_target, part, parent=self)
         if dialog.exec():
-            fields = dialog.fields_to_write
-            ref = self._assign_target.reference
-            written = 0
+            self._apply_assignment(dialog.fields_to_write)
+
+    def _on_manual_assign(self, reference: str):
+        """Open AssignDialog in manual-entry mode for the given component."""
+        # Find the component by reference in the verify panel
+        comp = None
+        for i in range(self.verify_panel.table.rowCount()):
+            c = self.verify_panel.get_component(i)
+            if c and c.reference == reference:
+                comp = c
+                break
+        if comp is None:
+            return
+
+        from kipart_search.gui.assign_dialog import AssignDialog
+
+        self._assign_target = comp
+        dialog = AssignDialog(comp, part=None, parent=self)
+        if dialog.exec():
+            self._apply_assignment(dialog.fields_to_write)
+
+    def _apply_assignment(self, fields: dict[str, str]):
+        """Write assignment fields via bridge (connected) or in-memory (standalone)."""
+        if not fields or self._assign_target is None:
+            return
+
+        ref = self._assign_target.reference
+        written = 0
+
+        # Connected mode: write via IPC API
+        if self._bridge.is_connected:
             for field_name, value in fields.items():
                 if self._bridge.write_field(ref, field_name, value):
                     written += 1
-
             if written > 0:
-                self.log_panel.log(f"Wrote {written} field(s) to {ref}")
-                # Update component in-memory so has_mpn reflects the assignment
-                comp = self._assign_target
-                if comp and "MPN" in fields:
-                    comp.mpn = fields["MPN"]
-                if comp:
-                    for fname, fval in fields.items():
-                        comp.extra_fields[fname.lower()] = fval
-                # Live-update the verify panel without a full re-scan
-                self.verify_panel.update_component_status(ref, Confidence.GREEN)
-                self.log_panel.log(f"{ref} status updated to Verified")
+                self.log_panel.log(f"Wrote {written} field(s) to {ref} via KiCad")
             else:
                 self.log_panel.log(f"No fields written to {ref}")
 
-            self._assign_target = None
-            self._search_target_label.setText("")
-            self.detail_panel.set_assign_target(None)
-            self.results_table.set_assign_target(None)
+        # Update component in-memory (both modes)
+        comp = self._assign_target
+        if comp and "MPN" in fields:
+            comp.mpn = fields["MPN"]
+        if comp:
+            for fname, fval in fields.items():
+                comp.extra_fields[fname.lower()] = fval
+            written_count = written if self._bridge.is_connected else len(fields)
+            if not self._bridge.is_connected:
+                self.log_panel.log(
+                    f"Assigned {len(fields)} field(s) to {ref} (in-memory)"
+                )
+
+        # Live-update the verify panel without a full re-scan
+        self.verify_panel.update_component_status(ref, Confidence.GREEN)
+        self.log_panel.log(f"{ref} status updated to Verified")
+
+        self._assign_target = None
+        self._search_target_label.setText("")
+        self.detail_panel.set_assign_target(None)
+        self.results_table.set_assign_target(None)
 
     # --- Database ---
 

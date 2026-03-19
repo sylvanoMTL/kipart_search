@@ -86,6 +86,7 @@ class VerifyPanel(QWidget):
 
     component_clicked = Signal(str)  # Emits reference when row clicked
     search_for_component = Signal(int)  # Emits row index on double-click missing MPN
+    manual_assign_requested = Signal(str)  # Emits reference for manual MPN assignment
     reverify_requested = Signal()  # Emitted when Re-verify button is clicked
 
     def __init__(self, parent: QWidget | None = None):
@@ -468,6 +469,10 @@ class VerifyPanel(QWidget):
         assign_action = QAction("Assign MPN", self)
         assign_action.triggered.connect(lambda: self.component_clicked.emit(comp.reference))
         menu.addAction(assign_action)
+
+        manual_action = QAction("Manual Assign", self)
+        manual_action.triggered.connect(lambda: self.manual_assign_requested.emit(comp.reference))
+        menu.addAction(manual_action)
 
         copy_action = QAction("Copy MPN", self)
         mpn = comp.mpn if comp.has_mpn else ""
