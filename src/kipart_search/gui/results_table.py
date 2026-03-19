@@ -30,6 +30,109 @@ _EMPTY_GUIDANCE = (
 
 COLUMNS = ["MPN", "Manufacturer", "Description", "Package", "Category", "Source"]
 
+# Field display name → PartResult attribute name, ordered by usefulness
+FILTERABLE_FIELDS: list[tuple[str, str]] = [
+    ("Manufacturer", "manufacturer"),
+    ("Package", "package"),
+    ("Category", "category"),
+]
+
+
+class FilterRow(QWidget):
+    """Dynamic filter row that creates/destroys QComboBox dropdowns based on results."""
+
+    filters_changed = Signal()
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._combos: dict[str, QComboBox] = {}
+        self._labels: list[QLabel] = []
+        self._count_label = QLabel("")
+        self._total = 0
+
+    def update_filters(self, results: list[PartResult]) -> None:
+        """Rebuild dropdowns based on the current result set."""
+        self._clear_widgets()
+        self._total = len(results)
+
+        if not results:
+            self.setVisible(False)
+            return
+
+        for display_name, attr_name in FILTERABLE_FIELDS:
+            values = sorted(
+                {getattr(p, attr_name, "") for p in results} - {""}
+            )
+            if len(values) < 2:
+                continue
+
+            label = QLabel(f"{display_name}:")
+            combo = QComboBox()
+            combo.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToContents
+            )
+            combo.blockSignals(True)
+            combo.addItem("All")
+            combo.addItems(values)
+            combo.blockSignals(False)
+            combo.currentIndexChanged.connect(self._on_combo_changed)
+
+            self._layout.addWidget(label)
+            self._layout.addWidget(combo)
+            self._labels.append(label)
+            self._combos[attr_name] = combo
+
+        self._layout.addStretch()
+        self._layout.addWidget(self._count_label)
+        self.setVisible(bool(self._combos))
+
+    def get_active_filters(self) -> dict[str, str]:
+        """Return dict of {attr_name: selected_value} for non-'All' selections."""
+        return {
+            attr: combo.currentText()
+            for attr, combo in self._combos.items()
+            if combo.currentText() != "All"
+        }
+
+    def update_count(self, visible: int) -> None:
+        """Update the result count label."""
+        if self._total == 0:
+            self._count_label.setText("")
+        elif visible == self._total:
+            self._count_label.setText(f"{self._total} results")
+        else:
+            self._count_label.setText(f"{visible} of {self._total} results")
+
+    def clear(self) -> None:
+        """Clear all filters and hide the row."""
+        self._clear_widgets()
+        self._total = 0
+        self._count_label.setText("")
+        self.setVisible(False)
+
+    def _on_combo_changed(self) -> None:
+        self.filters_changed.emit()
+
+    def _clear_widgets(self) -> None:
+        """Remove all combo boxes, labels, and stretch from the layout."""
+        for combo in self._combos.values():
+            self._layout.removeWidget(combo)
+            combo.deleteLater()
+        for label in self._labels:
+            self._layout.removeWidget(label)
+            label.deleteLater()
+        self._combos.clear()
+        self._labels.clear()
+        # Remove count label and stretch items from layout
+        self._layout.removeWidget(self._count_label)
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            # Stretch items have no widget; just discard
+            if item.widget() and item.widget() is not self._count_label:
+                item.widget().deleteLater()
+
 
 class ResultsTable(QWidget):
     """Table displaying component search results with filters and detail view."""
@@ -47,27 +150,10 @@ class ResultsTable(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # ── Filter row ──
-        filter_row = QHBoxLayout()
-
-        filter_row.addWidget(QLabel("Manufacturer:"))
-        self._filter_mfr = QComboBox()
-        self._filter_mfr.addItem("All")
-        self._filter_mfr.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self._filter_mfr.currentIndexChanged.connect(self._apply_filters)
-        filter_row.addWidget(self._filter_mfr)
-
-        filter_row.addWidget(QLabel("Package:"))
-        self._filter_pkg = QComboBox()
-        self._filter_pkg.addItem("All")
-        self._filter_pkg.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self._filter_pkg.currentIndexChanged.connect(self._apply_filters)
-        filter_row.addWidget(self._filter_pkg)
-
-        filter_row.addStretch()
-        self._count_label = QLabel("")
-        filter_row.addWidget(self._count_label)
-
-        layout.addLayout(filter_row)
+        self._filter_row = FilterRow()
+        self._filter_row.filters_changed.connect(self._apply_filters)
+        self._filter_row.setVisible(False)
+        layout.addWidget(self._filter_row)
 
         # ── Splitter: results table (top) | detail browser (bottom) ──
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -111,22 +197,8 @@ class ResultsTable(QWidget):
         self._results = list(results)
         self._detail.clear()
 
-        # Populate filter combos
-        self._filter_mfr.blockSignals(True)
-        self._filter_pkg.blockSignals(True)
-
-        self._filter_mfr.clear()
-        self._filter_mfr.addItem("All")
-        self._filter_pkg.clear()
-        self._filter_pkg.addItem("All")
-
-        manufacturers = sorted({p.manufacturer for p in results} - {""})
-        packages = sorted({p.package for p in results} - {""})
-        self._filter_mfr.addItems(manufacturers)
-        self._filter_pkg.addItems(packages)
-
-        self._filter_mfr.blockSignals(False)
-        self._filter_pkg.blockSignals(False)
+        # Rebuild dynamic filter row from new results
+        self._filter_row.update_filters(results)
 
         # Populate table (disable sorting during insertion to avoid mid-build reorder)
         self.table.setSortingEnabled(False)
@@ -167,36 +239,28 @@ class ResultsTable(QWidget):
         self._results.clear()
         self.table.setRowCount(0)
         self._detail.setHtml(_EMPTY_GUIDANCE)
-        self._count_label.setText("")
+        self._filter_row.clear()
 
     # ── Filtering ──
 
     def _apply_filters(self):
-        """Show/hide rows based on filter selection."""
-        mfr_filter = self._filter_mfr.currentText()
-        pkg_filter = self._filter_pkg.currentText()
+        """Show/hide rows based on dynamic filter selection."""
+        active = self._filter_row.get_active_filters()
         visible = 0
 
         for row in range(self.table.rowCount()):
             part = self.get_result(row)
             if part is None:
                 continue
-            hide = False
-            if mfr_filter != "All" and part.manufacturer != mfr_filter:
-                hide = True
-            if pkg_filter != "All" and part.package != pkg_filter:
-                hide = True
+            hide = any(
+                getattr(part, attr, "") != value
+                for attr, value in active.items()
+            )
             self.table.setRowHidden(row, hide)
             if not hide:
                 visible += 1
 
-        total = len(self._results)
-        if total == 0:
-            self._count_label.setText("")
-        elif visible == total:
-            self._count_label.setText(f"{total} results")
-        else:
-            self._count_label.setText(f"{visible} of {total} results")
+        self._filter_row.update_count(visible)
 
     # ── Selection ──
 

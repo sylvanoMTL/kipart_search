@@ -1,6 +1,6 @@
 # Story 3.1: Dynamic Filter Row
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -43,38 +43,38 @@ So that I can narrow results by manufacturer, package, category, or other fields
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Replace hardcoded filter row with dynamic `FilterRow` widget (AC: #1, #2, #3, #4)
-  - [ ] Create a `FilterRow` class (QWidget) that dynamically creates/destroys QComboBox dropdowns
-  - [ ] Define `FILTERABLE_FIELDS` mapping: field display name → PartResult attribute name (e.g. `{"Manufacturer": "manufacturer", "Package": "package", "Category": "category"}`)
-  - [ ] Implement `update_filters(results: list[PartResult])` — scans results, creates a dropdown for each field that has ≥2 unique non-empty values
-  - [ ] Each dropdown: label + QComboBox with "All" default + sorted unique values
-  - [ ] Add result count label at the right end: "X of Y results"
-  - [ ] Hide the entire filter row when no results exist (AC #2)
-  - [ ] Emit a signal (e.g. `filters_changed`) when any dropdown selection changes
+- [x] Task 1: Replace hardcoded filter row with dynamic `FilterRow` widget (AC: #1, #2, #3, #4)
+  - [x] Create a `FilterRow` class (QWidget) that dynamically creates/destroys QComboBox dropdowns
+  - [x] Define `FILTERABLE_FIELDS` mapping: field display name → PartResult attribute name (e.g. `{"Manufacturer": "manufacturer", "Package": "package", "Category": "category"}`)
+  - [x] Implement `update_filters(results: list[PartResult])` — scans results, creates a dropdown for each field that has ≥2 unique non-empty values
+  - [x] Each dropdown: label + QComboBox with "All" default + sorted unique values
+  - [x] Add result count label at the right end: "X of Y results"
+  - [x] Hide the entire filter row when no results exist (AC #2)
+  - [x] Emit a signal (e.g. `filters_changed`) when any dropdown selection changes
 
-- [ ] Task 2: Integrate FilterRow into ResultsTable (AC: #1, #5, #6)
-  - [ ] Remove the existing hardcoded `_filter_mfr` and `_filter_pkg` QComboBox code from `ResultsTable.__init__`
-  - [ ] Replace with `self._filter_row = FilterRow()` inserted at the same layout position
-  - [ ] Connect `FilterRow.filters_changed` → `ResultsTable._apply_filters`
-  - [ ] Update `set_results()` to call `self._filter_row.update_filters(results)` instead of manually populating combos
-  - [ ] Update `_apply_filters()` to read active filters from `FilterRow.get_active_filters() -> dict[str, str]` and apply all of them
-  - [ ] Update `clear_results()` to call `self._filter_row.clear()`
+- [x] Task 2: Integrate FilterRow into ResultsTable (AC: #1, #5, #6)
+  - [x] Remove the existing hardcoded `_filter_mfr` and `_filter_pkg` QComboBox code from `ResultsTable.__init__`
+  - [x] Replace with `self._filter_row = FilterRow()` inserted at the same layout position
+  - [x] Connect `FilterRow.filters_changed` → `ResultsTable._apply_filters`
+  - [x] Update `set_results()` to call `self._filter_row.update_filters(results)` instead of manually populating combos
+  - [x] Update `_apply_filters()` to read active filters from `FilterRow.get_active_filters() -> dict[str, str]` and apply all of them
+  - [x] Update `clear_results()` to call `self._filter_row.clear()`
 
-- [ ] Task 3: Update `_apply_filters` for dynamic multi-field filtering (AC: #1, #5)
-  - [ ] Replace the hardcoded mfr/pkg filter checks with a loop over `get_active_filters()` dict
-  - [ ] For each active filter `{attr_name: value}`, check `getattr(part, attr_name) == value`
-  - [ ] Maintain the result count label update: "X of Y results" (move count label ownership to FilterRow or keep in ResultsTable — either works, but keep a single source of truth)
+- [x] Task 3: Update `_apply_filters` for dynamic multi-field filtering (AC: #1, #5)
+  - [x] Replace the hardcoded mfr/pkg filter checks with a loop over `get_active_filters()` dict
+  - [x] For each active filter `{attr_name: value}`, check `getattr(part, attr_name) == value`
+  - [x] Maintain the result count label update: "X of Y results" (move count label ownership to FilterRow or keep in ResultsTable — either works, but keep a single source of truth)
 
-- [ ] Task 4: Write tests (AC: #1-#6)
-  - [ ] Test FilterRow creates correct dropdowns from varied PartResult data
-  - [ ] Test FilterRow hides when no results / shows when results arrive
-  - [ ] Test fields with <2 unique values are excluded
-  - [ ] Test empty-string values are excluded from dropdown options
-  - [ ] Test filters_changed signal emits when dropdown selection changes
-  - [ ] Test get_active_filters returns correct dict
-  - [ ] Test _apply_filters hides/shows correct rows with multi-field filtering
-  - [ ] Test filter row resets on new set_results call
-  - [ ] Follow `pytest.importorskip("PySide6")` pattern from `tests/test_export_dialog.py`
+- [x] Task 4: Write tests (AC: #1-#6)
+  - [x] Test FilterRow creates correct dropdowns from varied PartResult data
+  - [x] Test FilterRow hides when no results / shows when results arrive
+  - [x] Test fields with <2 unique values are excluded
+  - [x] Test empty-string values are excluded from dropdown options
+  - [x] Test filters_changed signal emits when dropdown selection changes
+  - [x] Test get_active_filters returns correct dict
+  - [x] Test _apply_filters hides/shows correct rows with multi-field filtering
+  - [x] Test filter row resets on new set_results call
+  - [x] Follow `pytest.importorskip("PySide6")` pattern from `tests/test_export_dialog.py`
 
 ## Dev Notes
 
@@ -261,10 +261,32 @@ Files to modify:
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (1M context)
 
 ### Debug Log References
 
+- One test initially failed due to `isVisible()` returning False when parent widget isn't shown — fixed by using `isHidden()` instead
+
 ### Completion Notes List
 
+- Created `FilterRow` class (QWidget) in `results_table.py` with dynamic QComboBox creation/destruction based on search results
+- Defined `FILTERABLE_FIELDS` as ordered list of tuples: Manufacturer, Package, Category
+- `update_filters()` scans results, creates dropdowns only for fields with ≥2 unique non-empty values
+- Each dropdown has "All" default + sorted unique values, with `blockSignals()` during population
+- `get_active_filters()` returns `dict[str, str]` for non-"All" selections
+- `update_count()` maintains "X of Y results" label (count label owned by FilterRow)
+- Replaced hardcoded `_filter_mfr`/`_filter_pkg` in `ResultsTable.__init__` with single `FilterRow` instance
+- Updated `set_results()`, `_apply_filters()`, and `clear_results()` to use FilterRow API
+- `_apply_filters()` now uses `getattr()` loop over active filters — extensible without code changes
+- 19 new tests covering all ACs: dropdown creation, visibility, empty-string exclusion, signal emission, active filters, multi-field filtering, reset on new results, clear behaviour
+- All 201 tests pass (181 existing + 20 new), zero regressions
+
 ### File List
+
+- MODIFIED: `src/kipart_search/gui/results_table.py` — replaced hardcoded filter row with dynamic FilterRow class
+- NEW: `tests/test_filter_row.py` — 19 tests for FilterRow and ResultsTable dynamic filtering
+
+## Change Log
+
+- 2026-03-19: Story 3.1 implemented — dynamic FilterRow replaces hardcoded manufacturer/package filters with extensible multi-field filtering. 19 tests added, 200 total pass.
+- 2026-03-19: Code review passed — 0 HIGH/MEDIUM issues. Added 1 test (zero-visible-results count label). 201 total pass.
