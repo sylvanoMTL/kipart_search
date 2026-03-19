@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -15,7 +16,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
-    QSizePolicy,
     QStatusBar,
     QToolBar,
     QVBoxLayout,
@@ -78,7 +78,7 @@ class SearchWorker(QThread):
 class ScanWorker(QThread):
     """Background thread for scanning and verifying a KiCad project."""
 
-    scan_complete = Signal(list, dict)  # components, mpn_statuses
+    scan_complete = Signal(list, dict, float)  # components, mpn_statuses, db_mtime
     error = Signal(str)
     log = Signal(str)
 
@@ -97,6 +97,9 @@ class ScanWorker(QThread):
 
             self.log.emit(f"Read {len(components)} components. Verifying MPNs ...")
 
+            # Capture database mtime at scan time for stale detection
+            db_mtime = self.orchestrator.get_db_modified_time("JLCPCB") or 0.0
+
             mpn_statuses: dict[str, Confidence] = {}
             green = 0
             red = 0
@@ -107,19 +110,23 @@ class ScanWorker(QThread):
                     continue
 
                 result = self.orchestrator.verify_mpn(comp.mpn)
+                now = time.time()
                 if result:
                     mpn_statuses[comp.reference] = result.confidence
+                    comp.verified_at = now
+                    comp.verified_source = result.source
                     if result.confidence == Confidence.GREEN:
                         green += 1
                 else:
                     mpn_statuses[comp.reference] = Confidence.RED
+                    comp.verified_at = now
                     red += 1
 
             self.log.emit(
                 f"Scan complete: {green} verified, {red} missing/not found, "
                 f"{len(components) - green - red} uncertain."
             )
-            self.scan_complete.emit(components, mpn_statuses)
+            self.scan_complete.emit(components, mpn_statuses, db_mtime)
         except Exception as e:
             self.log.emit(f"Scan error: {e}")
             self.error.emit(str(e))
@@ -142,10 +149,11 @@ class MainWindow(QMainWindow):
         self._assign_target: BoardComponent | None = None
 
         # ── Hidden central widget (QDockWidgets fill around it) ──
-        # Dock-only layout: central widget shrinks to zero but stays resizable
-        # so Qt's internal splitters between dock areas can function.
+        # Zero width so left/right docks fill the full window width.
+        # Height left unconstrained so the vertical splitter between
+        # top docks and the bottom log dock remains draggable.
         placeholder = QWidget()
-        placeholder.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        placeholder.setMaximumWidth(0)
         self.setCentralWidget(placeholder)
 
         # ── Panel widgets ──
@@ -255,7 +263,7 @@ class MainWindow(QMainWindow):
         if geometry is not None:
             self.restoreGeometry(geometry)
         if state is not None:
-            if not self.restoreState(state):
+            if not self.restoreState(state, 1):
                 log.warning("Failed to restore window state, using defaults")
                 self._reset_layout()
             else:
@@ -274,7 +282,7 @@ class MainWindow(QMainWindow):
         """Save window geometry and dock state before closing."""
         settings = QSettings("kipart-search", "kipart-search")
         settings.setValue("geometry", self.saveGeometry())
-        settings.setValue("windowState", self.saveState())
+        settings.setValue("windowState", self.saveState(1))
         event.accept()
 
     # --- Menu bar ---
@@ -539,15 +547,32 @@ class MainWindow(QMainWindow):
         self._scan_worker.error.connect(self._on_scan_error)
         self._scan_worker.start()
 
-    def _on_scan_complete(self, components, mpn_statuses):
+    def _on_scan_complete(self, components, mpn_statuses, db_mtime):
         """Display scan/verification results."""
+        from kipart_search.core.models import is_stale
+
         has_sources = bool(self._orchestrator.active_sources)
-        self.verify_panel.set_results(components, mpn_statuses, has_sources)
+        self.verify_panel.set_results(
+            components, mpn_statuses, has_sources, db_mtime=db_mtime or None,
+        )
         self._act_scan.setEnabled(True)
         self.verify_panel.reverify_button.setEnabled(True)
         self._act_export.setEnabled(True)
         self._menu_export.setEnabled(True)
         self._set_action_status(f"Scan complete: {len(components)} components")
+
+        # Log stale detection results
+        effective_mtime = db_mtime if db_mtime else None
+        stale_count = sum(
+            1 for c in components
+            if mpn_statuses.get(c.reference) != Confidence.RED
+            and is_stale(c, effective_mtime)
+        )
+        if stale_count > 0:
+            self.log_panel.log(
+                f"{stale_count} component(s) verified before last database update "
+                "— re-scan recommended"
+            )
 
     def _on_scan_error(self, error_msg: str):
         """Handle scan error."""

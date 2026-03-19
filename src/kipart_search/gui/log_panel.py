@@ -4,12 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
-    QMenuBar,
     QPushButton,
     QTextEdit,
     QVBoxLayout,
@@ -26,18 +24,9 @@ class LogPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # ── Toolbar row: menu bar + copy button ──
+        # ── Toolbar row: copy button ──
         toolbar = QHBoxLayout()
         toolbar.setContentsMargins(0, 0, 0, 0)
-
-        self._menubar = QMenuBar()
-        self._menubar.setFixedHeight(24)
-        file_menu = self._menubar.addMenu("File")
-        copy_action = QAction("Copy Log", self)
-        copy_action.triggered.connect(self.copy_log)
-        file_menu.addAction(copy_action)
-        toolbar.addWidget(self._menubar)
-
         toolbar.addStretch()
 
         self._copy_btn = QPushButton("Copy Log")
@@ -59,6 +48,10 @@ class LogPanel(QWidget):
         self._text.setStyleSheet("font-family: Consolas, monospace; font-size: 11px;")
         layout.addWidget(self._text)
         self.log("Ready")
+
+    def sizeHint(self) -> QSize:
+        """Suggest a compact height so the log dock doesn't dominate the layout."""
+        return QSize(super().sizeHint().width(), 120)
 
     def log(self, msg: str):
         """Append a timestamped line."""
