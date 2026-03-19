@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QSizePolicy,
     QStatusBar,
     QToolBar,
     QVBoxLayout,
@@ -156,6 +157,7 @@ class MainWindow(QMainWindow):
         # top docks and the bottom log dock remains draggable.
         placeholder = QWidget()
         placeholder.setMaximumWidth(0)
+        placeholder.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.setCentralWidget(placeholder)
 
         # ── Panel widgets ──
