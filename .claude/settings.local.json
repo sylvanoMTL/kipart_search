@@ -72,6 +72,7 @@
       "Bash(timeout 5 .env/Scripts/python.exe -m kipart_search)",
       "Bash(git status:*)",
       "Bash(git log -1:*)",
+      "Bash(git diff:*)",
       "Bash(.env/Scripts/python.exe -m pytest tests/ -v --tb=short)",
       "Bash(find src/ -name \"__pycache__\" -type d -exec rm -rf {} +)",
       "Bash(.env/Scripts/python.exe -m pytest tests/ --tb=short -q)",
@@ -90,7 +91,12 @@
       "Bash(chcp 65001)",
       "Bash(/c/Git_Repo_Clones/kipart-search/.env/Scripts/python.exe -c \":*)",
       "Bash(cat *)",
-      "Bash(grep *)"
+      "Bash(grep *)",
+      "Bash(cd *)",
+      "Bash(ls *)",
+      "Bash(type *)",
+      "Bash(dir *)",
+      "Bash(git log:*)"
     ]
   }
 }

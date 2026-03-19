@@ -1,6 +1,6 @@
 # Story 5.2: Click-to-Highlight Cross-Probe
 
-Status: review
+Status: done
 
 ## Story
 
@@ -232,3 +232,5 @@ None — no bugs or issues encountered during audit.
 ### File List
 
 - `tests/gui/test_kicad_bridge.py` (modified) — added TestSelectComponentEdgeCases and TestOnComponentClickedSignalChain test classes
+- `_bmad-output/implementation-artifacts/5-1-kicad-connection-and-board-scan.md` (modified) — updated status after 5.2 review
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified) — synced story 5.2 status
