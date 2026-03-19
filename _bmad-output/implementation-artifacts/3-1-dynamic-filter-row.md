@@ -290,3 +290,4 @@ Claude Opus 4.6 (1M context)
 
 - 2026-03-19: Story 3.1 implemented — dynamic FilterRow replaces hardcoded manufacturer/package filters with extensible multi-field filtering. 19 tests added, 200 total pass.
 - 2026-03-19: Code review passed — 0 HIGH/MEDIUM issues. Added 1 test (zero-visible-results count label). 201 total pass.
+- 2026-03-19: Code review #2 — 0 HIGH, 0 MEDIUM, 1 LOW (missing accessibility properties on FilterRow per UX-DR15). Fixed: added setAccessibleName/Description to FilterRow.__init__. All 20 tests pass.

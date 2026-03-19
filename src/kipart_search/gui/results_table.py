@@ -46,6 +46,10 @@ class FilterRow(QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        self.setAccessibleName("Search result filters")
+        self.setAccessibleDescription(
+            "Dynamic filter dropdowns that narrow search results by field values"
+        )
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._combos: dict[str, QComboBox] = {}
