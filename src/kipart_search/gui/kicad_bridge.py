@@ -11,12 +11,8 @@ import logging
 from kipart_search.core.models import (
     BoardComponent,
     MPN_FIELD_NAMES,
-    extract_package_from_footprint,
     extract_ref_prefix,
 )
-
-# Backward-compatible alias for callers using the private name
-_extract_package_from_footprint = extract_package_from_footprint
 
 log = logging.getLogger(__name__)
 
