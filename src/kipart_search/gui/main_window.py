@@ -831,15 +831,24 @@ class MainWindow(QMainWindow):
             return
 
         # Update component in-memory (both modes)
+        # In connected mode, only update fields that were actually written
         comp = self._assign_target
-        if comp and "MPN" in fields:
-            comp.mpn = fields["MPN"]
+        if self._bridge.is_connected:
+            failed_names = {fn for fn, _ in failed}
+            written_fields = {
+                fn: fv for fn, fv in fields.items() if fn not in failed_names
+            }
+        else:
+            written_fields = fields
+
+        if comp and "MPN" in written_fields:
+            comp.mpn = written_fields["MPN"]
         if comp:
-            for fname, fval in fields.items():
+            for fname, fval in written_fields.items():
                 comp.extra_fields[fname.lower()] = fval
             if not self._bridge.is_connected:
                 self.log_panel.log(
-                    f"Assigned {len(fields)} field(s) to {ref} (in-memory)"
+                    f"Assigned {len(written_fields)} field(s) to {ref} (in-memory)"
                 )
 
         # Live-update the verify panel — only GREEN if MPN was written

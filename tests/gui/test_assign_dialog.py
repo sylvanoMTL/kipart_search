@@ -785,10 +785,8 @@ class TestApplyAssignmentErrorHandling:
                 {"MPN": "ABC123", "Manufacturer": "Murata"}
             )
 
-        # In-memory update still happens (partial success)
-        # But no GREEN because MPN specifically failed
-        for call in window.verify_panel.update_component_status.call_args_list:
-            assert call[0][1] != Confidence.GREEN or "MPN" not in {"MPN": "ABC123"}
+        # MPN failed → status should NOT be set to GREEN
+        window.verify_panel.update_component_status.assert_not_called()
 
     def test_apply_assignment_with_overwrite_fields(self):
         """Overwrite fields pass allow_overwrite=True to bridge."""

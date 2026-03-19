@@ -213,11 +213,12 @@ class AssignDialog(QDialog):
         btn_layout.addStretch()
 
         self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setDefault(True)  # Default is Cancel for safety
         self.cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(self.cancel_btn)
 
         self.assign_btn = QPushButton("Assign")
-        self.assign_btn.setDefault(False)  # Default is Cancel for safety
+        self.assign_btn.setDefault(False)
         self.assign_btn.clicked.connect(self.accept)
         btn_layout.addWidget(self.assign_btn)
 

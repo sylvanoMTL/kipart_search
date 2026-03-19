@@ -1,6 +1,6 @@
 # Story 5.4: Write-Back Safety Guards
 
-Status: review
+Status: done
 
 ## Story
 
@@ -209,6 +209,7 @@ No issues encountered during implementation.
 ### Change Log
 
 - 2026-03-19: Implemented write-back safety guards — overwrite confirmation, mismatch acknowledgment gate, per-field error isolation (Story 5.4)
+- 2026-03-19: Code review fixes — fixed no-op test assertion in `test_partial_failure_mpn_fails_no_green`, fixed in-memory state divergence on partial write failure, set Cancel as default button for Enter-key safety
 
 ### File List
 
