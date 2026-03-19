@@ -8,10 +8,12 @@ from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
     QApplication,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QMenu,
     QProgressBar,
+    QPushButton,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -46,6 +48,10 @@ _STATUS_LABELS = {
     Confidence.RED: "Not found",
 }
 
+# Labels for components with MPN when no sources were available to verify
+_UNVERIFIED_LABEL = "Unverified"
+_UNVERIFIED_TOOLTIP = "MPN present but no sources were available to verify it"
+
 _STATUS_TOOLTIPS = {
     Confidence.GREEN: "Part verified — found in configured source",
     Confidence.AMBER: "Needs attention — verify MPN manually",
@@ -54,12 +60,27 @@ _STATUS_TOOLTIPS = {
 
 VERIFY_COLUMNS = ["Reference", "Value", "MPN", "MPN Status", "Footprint"]
 
+# Sort order for status: red first, then amber, then green
+_SORT_ORDER = {Confidence.RED: 0, Confidence.AMBER: 1, Confidence.GREEN: 2}
+
+
+class _StatusItem(QTableWidgetItem):
+    """Table item that sorts by confidence level rather than text."""
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:
+        my_order = self.data(Qt.ItemDataRole.UserRole + 1)
+        other_order = other.data(Qt.ItemDataRole.UserRole + 1)
+        if my_order is not None and other_order is not None:
+            return my_order < other_order
+        return super().__lt__(other)
+
 
 class VerifyPanel(QWidget):
     """Verification dashboard showing BOM health."""
 
     component_clicked = Signal(str)  # Emits reference when row clicked
     search_for_component = Signal(int)  # Emits row index on double-click missing MPN
+    reverify_requested = Signal()  # Emitted when Re-verify button is clicked
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -67,12 +88,22 @@ class VerifyPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Summary bar
+        # Summary row: label (stretch) + Re-verify button
+        summary_row = QHBoxLayout()
         self.summary_label = QLabel(_EMPTY_GUIDANCE)
         self.summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.summary_label.setStyleSheet("color: #888;")
         self.summary_label.setAccessibleName("BOM health summary")
-        layout.addWidget(self.summary_label)
+        summary_row.addWidget(self.summary_label, 1)
+
+        self.reverify_button = QPushButton("Re-verify")
+        self.reverify_button.setAccessibleName("Re-verify components")
+        self.reverify_button.setToolTip("Re-run verification against current component state")
+        self.reverify_button.setVisible(False)
+        self.reverify_button.clicked.connect(self.reverify_requested.emit)
+        summary_row.addWidget(self.reverify_button)
+
+        layout.addLayout(summary_row)
 
         # Health bar
         self.health_bar = QProgressBar()
@@ -127,20 +158,24 @@ class VerifyPanel(QWidget):
 
         self._components: list[BoardComponent] = []
         self._mpn_statuses: dict[str, Confidence] = {}
+        self._has_active_sources: bool = True
 
     def set_results(
         self,
         components: list[BoardComponent],
         mpn_statuses: dict[str, Confidence],
+        has_active_sources: bool = True,
     ) -> None:
         """Populate the verification table.
 
         Args:
             components: List of board components from KiCad
             mpn_statuses: Map of reference -> confidence level from MPN verification
+            has_active_sources: Whether any data sources were available for verification
         """
         self._components = list(components)
         self._mpn_statuses = dict(mpn_statuses)
+        self._has_active_sources = has_active_sources
         self._detail.clear()
 
         # Disable sorting during insertion to avoid mid-build reorder
@@ -163,6 +198,17 @@ class VerifyPanel(QWidget):
             else:
                 issues += 1
 
+            # Resolve status label/tooltip — may downgrade status (e.g. Unverified)
+            if status == Confidence.RED and not comp.has_mpn:
+                status_text = "Missing MPN"
+                tooltip = "No MPN assigned — right-click to search or assign"
+            elif status == Confidence.RED and comp.has_mpn and not has_active_sources:
+                status_text = _UNVERIFIED_LABEL
+                tooltip = _UNVERIFIED_TOOLTIP
+                status = Confidence.AMBER  # Downgrade: has MPN, just unverified
+            else:
+                status_text = _STATUS_LABELS[status]
+                tooltip = _STATUS_TOOLTIPS[status]
             bg_color = COLORS[status]
 
             # Reference
@@ -182,18 +228,11 @@ class VerifyPanel(QWidget):
             mpn_item.setBackground(bg_color)
             mpn_item.setData(Qt.ItemDataRole.UserRole, row)
             self.table.setItem(row, 2, mpn_item)
-
-            # MPN Status — descriptive labels + tooltips + accessibility
-            if status == Confidence.RED and not comp.has_mpn:
-                status_text = "Missing MPN"
-                tooltip = "No MPN assigned — right-click to search or assign"
-            else:
-                status_text = _STATUS_LABELS[status]
-                tooltip = _STATUS_TOOLTIPS[status]
-            status_item = QTableWidgetItem(status_text)
+            status_item = _StatusItem(status_text)
             status_item.setBackground(bg_color)
             status_item.setToolTip(tooltip)
             status_item.setData(Qt.ItemDataRole.UserRole, row)
+            status_item.setData(Qt.ItemDataRole.UserRole + 1, _SORT_ORDER[status])
             self.table.setItem(row, 3, status_item)
 
             # Footprint
@@ -205,6 +244,10 @@ class VerifyPanel(QWidget):
 
         self.table.resizeColumnsToContents()
         self.table.setSortingEnabled(True)
+
+        # Default sort: red first, then amber, then green
+        status_col = VERIFY_COLUMNS.index("MPN Status")
+        self.table.sortByColumn(status_col, Qt.SortOrder.AscendingOrder)
 
         # Update summary
         total = len(components)
@@ -220,11 +263,13 @@ class VerifyPanel(QWidget):
             self.health_bar.setFormat(f"Ready: {pct}%")
             self.health_bar.setVisible(True)
             self._update_health_bar_style(pct)
+            self.reverify_button.setVisible(True)
         else:
             self.summary_label.setText("No components found")
             self.summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.summary_label.setStyleSheet("color: #888;")
             self.health_bar.setVisible(False)
+            self.reverify_button.setVisible(False)
 
     def update_component_status(self, reference: str, new_status: Confidence) -> None:
         """Update a single component's MPN status and refresh the health bar.
@@ -257,6 +302,10 @@ class VerifyPanel(QWidget):
                     if status_item:
                         status_item.setText(_STATUS_LABELS[new_status])
                         status_item.setToolTip(_STATUS_TOOLTIPS[new_status])
+                        status_item.setData(
+                            Qt.ItemDataRole.UserRole + 1,
+                            _SORT_ORDER[new_status],
+                        )
                     break
 
         # Recompute counts from _mpn_statuses
@@ -395,6 +444,7 @@ class VerifyPanel(QWidget):
         self.summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.summary_label.setStyleSheet("color: #888;")
         self.health_bar.setVisible(False)
+        self.reverify_button.setVisible(False)
         self._detail.clear()
 
     @staticmethod

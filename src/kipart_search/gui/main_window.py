@@ -152,6 +152,7 @@ class MainWindow(QMainWindow):
         self.verify_panel = VerifyPanel()
         self.verify_panel.component_clicked.connect(self._on_component_clicked)
         self.verify_panel.search_for_component.connect(self._on_guided_search)
+        self.verify_panel.reverify_requested.connect(self._on_reverify)
 
         self.search_bar = SearchBar()
         self.search_bar.search_requested.connect(self._on_search)
@@ -515,10 +516,35 @@ class MainWindow(QMainWindow):
         self._scan_worker.error.connect(self._on_scan_error)
         self._scan_worker.start()
 
+    def _on_reverify(self):
+        """Re-run verification using fresh data from KiCad."""
+        if not self._bridge.is_connected:
+            QMessageBox.warning(
+                self, "Not Connected",
+                "KiCad connection lost. Use Scan Project to reconnect.",
+            )
+            return
+
+        self.verify_panel.reverify_button.setEnabled(False)
+        self._act_scan.setEnabled(False)
+        self._set_action_status("Re-verifying...")
+        self.log_panel.section("Re-verify")
+        self.log_panel.log(
+            f"Re-verifying {len(self.verify_panel.get_components())} components..."
+        )
+
+        self._scan_worker = ScanWorker(self._bridge, self._orchestrator)
+        self._scan_worker.log.connect(self.log_panel.log)
+        self._scan_worker.scan_complete.connect(self._on_scan_complete)
+        self._scan_worker.error.connect(self._on_scan_error)
+        self._scan_worker.start()
+
     def _on_scan_complete(self, components, mpn_statuses):
         """Display scan/verification results."""
-        self.verify_panel.set_results(components, mpn_statuses)
+        has_sources = bool(self._orchestrator.active_sources)
+        self.verify_panel.set_results(components, mpn_statuses, has_sources)
         self._act_scan.setEnabled(True)
+        self.verify_panel.reverify_button.setEnabled(True)
         self._act_export.setEnabled(True)
         self._menu_export.setEnabled(True)
         self._set_action_status(f"Scan complete: {len(components)} components")
@@ -527,6 +553,7 @@ class MainWindow(QMainWindow):
         """Handle scan error."""
         QMessageBox.warning(self, "Scan Error", error_msg)
         self._act_scan.setEnabled(True)
+        self.verify_panel.reverify_button.setEnabled(True)
         self._set_action_status("Scan failed")
 
     def _on_export_bom(self):

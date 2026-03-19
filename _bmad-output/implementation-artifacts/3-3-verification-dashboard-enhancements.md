@@ -1,6 +1,6 @@
 # Story 3.3: Verification Dashboard Enhancements
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -30,40 +30,40 @@ So that I can quickly triage all components and fix issues efficiently.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add "Unverified" status label for components with MPN but no verification result yet (AC: #1)
-  - [ ] Add `"Unverified"` text to `_STATUS_LABELS` mapping — this is for when a component has an MPN but hasn't been checked against any source yet (currently shows "Needs attention" for all AMBER, but AMBER covers both "found on 1 source" and "has MPN, unverified")
-  - [ ] Track distinction: AMBER with verified partial result vs AMBER with no verification attempted. Consider a `_NO_RESULT_LABELS` mapping or an additional field on the status model
+- [x] Task 1: Add "Unverified" status label for components with MPN but no verification result yet (AC: #1)
+  - [x]Add `"Unverified"` text to `_STATUS_LABELS` mapping — this is for when a component has an MPN but hasn't been checked against any source yet (currently shows "Needs attention" for all AMBER, but AMBER covers both "found on 1 source" and "has MPN, unverified")
+  - [x]Track distinction: AMBER with verified partial result vs AMBER with no verification attempted. Consider a `_NO_RESULT_LABELS` mapping or an additional field on the status model
 
-- [ ] Task 2: Add default sort by status (red first, then amber, then green) (AC: #1)
-  - [ ] After `set_results()` populates the table and re-enables sorting, call `self.table.sortByColumn()` on the MPN Status column (col 3) in ascending order so that "Missing MPN" and "Not found" (red) sort before "Needs attention" (amber) before "Verified" (green)
-  - [ ] `QTableWidgetItem` sort is lexicographic by default — status labels must sort correctly alphabetically OR set a `UserRole+1` sort key on status items (e.g. RED=0, AMBER=1, GREEN=2) so that red sorts first regardless of label text
-  - [ ] Verify that the `UserRole` data (original component index) is preserved and not confused with the sort key — use `Qt.ItemDataRole.UserRole + 1` for sort order
+- [x] Task 2: Add default sort by status (red first, then amber, then green) (AC: #1)
+  - [x]After `set_results()` populates the table and re-enables sorting, call `self.table.sortByColumn()` on the MPN Status column (col 3) in ascending order so that "Missing MPN" and "Not found" (red) sort before "Needs attention" (amber) before "Verified" (green)
+  - [x]`QTableWidgetItem` sort is lexicographic by default — status labels must sort correctly alphabetically OR set a `UserRole+1` sort key on status items (e.g. RED=0, AMBER=1, GREEN=2) so that red sorts first regardless of label text
+  - [x]Verify that the `UserRole` data (original component index) is preserved and not confused with the sort key — use `Qt.ItemDataRole.UserRole + 1` for sort order
 
-- [ ] Task 3: Add "Re-verify" button to the verify panel (AC: #3)
-  - [ ] Add a QPushButton "Re-verify" next to/below the health bar in the summary area
-  - [ ] The button should only be visible/enabled after a scan has been performed (`self._components` is non-empty)
-  - [ ] Add a `reverify_requested = Signal()` signal to VerifyPanel
-  - [ ] Wire the button click to emit `reverify_requested`
-  - [ ] In `main_window.py`, connect `verify_panel.reverify_requested` to a handler that:
+- [x] Task 3: Add "Re-verify" button to the verify panel (AC: #3)
+  - [x]Add a QPushButton "Re-verify" next to/below the health bar in the summary area
+  - [x]The button should only be visible/enabled after a scan has been performed (`self._components` is non-empty)
+  - [x]Add a `reverify_requested = Signal()` signal to VerifyPanel
+  - [x]Wire the button click to emit `reverify_requested`
+  - [x]In `main_window.py`, connect `verify_panel.reverify_requested` to a handler that:
     - Reads updated component data from the bridge (re-reads fields from KiCad in case fields were edited outside the app)
     - Re-runs `orchestrator.verify_mpn()` for each component
     - Calls `verify_panel.set_results()` with the updated data
-  - [ ] Re-verification should run in a background thread (reuse `ScanWorker`) to avoid blocking the GUI
-  - [ ] Disable the Re-verify button while re-verification is running, re-enable on completion
-  - [ ] Log the re-verification activity: "Re-verifying X components..."
+  - [x]Re-verification should run in a background thread (reuse `ScanWorker`) to avoid blocking the GUI
+  - [x]Disable the Re-verify button while re-verification is running, re-enable on completion
+  - [x]Log the re-verification activity: "Re-verifying X components..."
 
-- [ ] Task 4: Ensure guided search works correctly with updated signal signature (AC: #2)
-  - [ ] Verify `_on_guided_search` in main_window.py still works correctly after Story 3.2's `search_requested` signal change from `Signal(str)` to `Signal(str, str)` — the guided search calls `search_bar.search_button.click()` which triggers the signal with `(query, source)`
-  - [ ] The current guided search flow already works (Story 3.2 preserved it), but confirm that the source selector respects the user's current selection when doing guided search (UX spec: "Source selector respects user's enabled sources and default")
-  - [ ] No code changes expected — this is a verification/test task
+- [x] Task 4: Ensure guided search works correctly with updated signal signature (AC: #2)
+  - [x]Verify `_on_guided_search` in main_window.py still works correctly after Story 3.2's `search_requested` signal change from `Signal(str)` to `Signal(str, str)` — the guided search calls `search_bar.search_button.click()` which triggers the signal with `(query, source)`
+  - [x]The current guided search flow already works (Story 3.2 preserved it), but confirm that the source selector respects the user's current selection when doing guided search (UX spec: "Source selector respects user's enabled sources and default")
+  - [x]No code changes expected — this is a verification/test task
 
-- [ ] Task 5: Write tests (AC: #1-#3)
-  - [ ] Test default sort order: after `set_results()`, verify red-status rows appear before amber before green
-  - [ ] Test sort key data: verify `UserRole + 1` sort keys are set correctly (0=RED, 1=AMBER, 2=GREEN)
-  - [ ] Test "Re-verify" button: visible after scan, hidden/disabled before scan
-  - [ ] Test `reverify_requested` signal emission on button click
-  - [ ] Test status labels: "Missing MPN" for red+no-MPN, "Not found" for red+has-MPN, "Needs attention" for amber, "Verified" for green
-  - [ ] Follow `pytest.importorskip("PySide6")` pattern from `tests/test_filter_row.py`
+- [x] Task 5: Write tests (AC: #1-#3)
+  - [x]Test default sort order: after `set_results()`, verify red-status rows appear before amber before green
+  - [x]Test sort key data: verify `UserRole + 1` sort keys are set correctly (0=RED, 1=AMBER, 2=GREEN)
+  - [x]Test "Re-verify" button: visible after scan, hidden/disabled before scan
+  - [x]Test `reverify_requested` signal emission on button click
+  - [x]Test status labels: "Missing MPN" for red+no-MPN, "Not found" for red+has-MPN, "Needs attention" for amber, "Verified" for green
+  - [x]Follow `pytest.importorskip("PySide6")` pattern from `tests/test_filter_row.py`
 
 ## Dev Notes
 
@@ -242,10 +242,27 @@ Patterns observed:
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (1M context)
 
 ### Debug Log References
 
+- 2 test failures on initial run due to Qt `isVisible()` vs `isHidden()` behavior — widget not shown in test context. Fixed by using `isHidden()` which checks the widget's own visibility flag.
+
 ### Completion Notes List
 
+- Task 1: Added `_UNVERIFIED_LABEL` / `_UNVERIFIED_TOOLTIP` constants. When `has_active_sources=False` and component has MPN but RED status, label shows "Unverified" and status is downgraded to AMBER. `set_results()` accepts new `has_active_sources` parameter (default True).
+- Task 2: Created `_StatusItem(QTableWidgetItem)` subclass with `__lt__` override that sorts by `UserRole+1` numeric sort key (RED=0, AMBER=1, GREEN=2). After populating the table, `sortByColumn()` is called on the MPN Status column in ascending order. Uses `VERIFY_COLUMNS.index("MPN Status")` to avoid hardcoded column index.
+- Task 3: Added `reverify_requested = Signal()` and `QPushButton("Re-verify")` in a horizontal layout alongside the summary label. Button is hidden initially, shown after `set_results()` with non-empty components, hidden on `clear()`. In main_window, `_on_reverify()` handler disables the button and scan action, creates a new `ScanWorker`, and reuses `_on_scan_complete`/`_on_scan_error` which re-enable both.
+- Task 4: Verified guided search flow is compatible with Story 3.2's `Signal(str, str)` change. `_on_guided_search` → `search_bar.set_query()` → `search_button.click()` → `_on_search(query, source)`. Source selector respects user's current selection. No code changes needed.
+- Task 5: 14 tests across 3 test classes: TestStatusLabels (5 tests), TestDefaultSort (4 tests), TestReverifyButton (5 tests). All pass. Full suite: 236 tests pass, 0 regressions.
+
+### Change Log
+
+- 2026-03-19: Implemented Story 3.3 — Unverified label, default sort by status, Re-verify button, guided search verification, 14 tests
+- 2026-03-19: Code review fixes — (1) fixed bg_color mismatch for Unverified rows (RED bg with AMBER status), moved status label logic before cell creation so bg_color reflects downgraded status; (2) added sort key update in `update_component_status` so re-sorting after MPN assignment uses correct order; (3) replaced private `_components` access with public `get_components()` accessor in `_on_reverify`
+
 ### File List
+
+- `src/kipart_search/gui/verify_panel.py` — Modified: added `_StatusItem`, `_UNVERIFIED_LABEL`, `_UNVERIFIED_TOOLTIP`, `_SORT_ORDER`, `reverify_requested` signal, Re-verify button, `has_active_sources` parameter, default sort
+- `src/kipart_search/gui/main_window.py` — Modified: added `_on_reverify()` handler, connected `reverify_requested` signal, pass `has_active_sources` to `set_results()`, re-enable reverify button on scan complete/error
+- `tests/test_verify_dashboard_enhancements.py` — New: 14 tests for status labels, sort order, and Re-verify button
