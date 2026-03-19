@@ -45,22 +45,29 @@ class SearchWorker(QThread):
     error = Signal(str)
     log = Signal(str)
 
-    def __init__(self, orchestrator: SearchOrchestrator, query: str):
+    def __init__(self, orchestrator: SearchOrchestrator, query: str, source_name: str | None = None):
         super().__init__()
         self.orchestrator = orchestrator
         self.query = query
+        self.source_name = source_name
 
     def run(self):
         try:
             variants = generate_query_variants(self.query)
+            source_label = self.source_name if self.source_name and self.source_name != "All Sources" else "all sources"
             if len(variants) > 1:
                 self.log.emit(
-                    f"Searching for '{self.query}' + {len(variants) - 1} "
+                    f"Searching {source_label} for '{self.query}' + {len(variants) - 1} "
                     f"equivalent(s): {', '.join(repr(v) for v in variants)}"
                 )
             else:
-                self.log.emit(f"Searching for '{self.query}' ...")
-            results = self.orchestrator.search(self.query, limit=200)
+                self.log.emit(f"Searching {source_label} for '{self.query}' ...")
+
+            if self.source_name and self.source_name != "All Sources":
+                results = self.orchestrator.search_source(self.query, self.source_name, limit=200)
+            else:
+                results = self.orchestrator.search(self.query, limit=200)
+
             self.log.emit(f"Found {len(results)} result(s).")
             self.results_ready.emit(results)
         except Exception as e:
@@ -382,6 +389,7 @@ class MainWindow(QMainWindow):
         self._jlcpcb_source = JLCPCBSource(db_path)
         if self._jlcpcb_source.is_configured():
             self._orchestrator.add_source(self._jlcpcb_source)
+        self.search_bar.set_sources(self._orchestrator.get_source_names())
 
     def _update_status(self):
         """Update the status bar 3 zones: mode badge, sources, action."""
@@ -424,7 +432,7 @@ class MainWindow(QMainWindow):
 
     # --- Search ---
 
-    def _on_search(self, query: str):
+    def _on_search(self, query: str, source: str = "All Sources"):
         """Handle search request from the search bar."""
         if not self._orchestrator.active_sources:
             QMessageBox.information(
@@ -442,7 +450,11 @@ class MainWindow(QMainWindow):
         if raw != query:
             self.log_panel.log(f"Query: '{raw}' \u2192 '{query}'")
 
-        self._search_worker = SearchWorker(self._orchestrator, query)
+        # Show/hide Source column based on search mode
+        is_unified = source == "All Sources"
+        self.results_table.set_source_column_visible(is_unified)
+
+        self._search_worker = SearchWorker(self._orchestrator, query, source_name=source)
         self._search_worker.log.connect(self.log_panel.log)
         self._search_worker.results_ready.connect(self._on_results)
         self._search_worker.error.connect(self._on_search_error)
@@ -675,6 +687,7 @@ class MainWindow(QMainWindow):
         if self._jlcpcb_source.is_configured():
             self._orchestrator.add_source(self._jlcpcb_source)
 
+        self.search_bar.set_sources(self._orchestrator.get_source_names())
         self._update_status()
         self.log_panel.log(f"Database loaded: {db_path}")
 

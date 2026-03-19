@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import partial
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLineEdit, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from kipart_search.core.query_transform import strip_quotes, transform_query
 
@@ -20,7 +20,8 @@ _SYMBOL_BUTTONS = [
 class SearchBar(QWidget):
     """Search input with transformed query preview and search button."""
 
-    search_requested = Signal(str)  # Emits the transformed query string
+    search_requested = Signal(str, str)  # Emits (transformed_query, source_name)
+    source_changed = Signal(str)  # Emits selected source name (or "All Sources")
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -31,8 +32,17 @@ class SearchBar(QWidget):
         # SearchBar should not stretch vertically
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
-        # Row 1: user input + symbol buttons + search button
+        # Row 1: source selector + user input + symbol buttons + search button
         row1 = QHBoxLayout()
+
+        self._source_selector = QComboBox()
+        self._source_selector.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+        self._source_selector.addItem("All Sources")
+        self._source_selector.currentTextChanged.connect(self.source_changed.emit)
+        row1.addWidget(self._source_selector)
+
         self.query_input = QLineEdit()
         self.query_input.setPlaceholderText(
             "Search parts (e.g. '100nF capacitor MLCC 0805', 'R_0805 10kohm')"
@@ -81,7 +91,25 @@ class SearchBar(QWidget):
         if self._transformed_input.text() != transformed:
             self._transformed_input.setText(transformed)
 
+    @property
+    def selected_source(self) -> str:
+        """Return the currently selected source name."""
+        return self._source_selector.currentText()
+
+    def set_sources(self, sources: list[str]) -> None:
+        """Update the source selector dropdown with available source names."""
+        self._source_selector.blockSignals(True)
+        current = self._source_selector.currentText()
+        self._source_selector.clear()
+        self._source_selector.addItem("All Sources")
+        for name in sources:
+            self._source_selector.addItem(name)
+        # Restore previous selection if still available
+        idx = self._source_selector.findText(current)
+        self._source_selector.setCurrentIndex(idx if idx >= 0 else 0)
+        self._source_selector.blockSignals(False)
+
     def _on_search(self):
         query = strip_quotes(self._transformed_input.text().strip())
         if query:
-            self.search_requested.emit(query)
+            self.search_requested.emit(query, self.selected_source)

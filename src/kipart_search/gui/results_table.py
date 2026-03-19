@@ -35,6 +35,7 @@ FILTERABLE_FIELDS: list[tuple[str, str]] = [
     ("Manufacturer", "manufacturer"),
     ("Package", "package"),
     ("Category", "category"),
+    ("Source", "source"),
 ]
 
 
@@ -191,6 +192,11 @@ class ResultsTable(QWidget):
 
         # Show empty-state guidance
         self._detail.setHtml(_EMPTY_GUIDANCE)
+
+    def set_source_column_visible(self, visible: bool) -> None:
+        """Show or hide the Source column based on search mode."""
+        source_col = COLUMNS.index("Source")
+        self.table.setColumnHidden(source_col, not visible)
 
     def set_results(self, results: list[PartResult]) -> None:
         """Populate the table and filter dropdowns from search results."""
