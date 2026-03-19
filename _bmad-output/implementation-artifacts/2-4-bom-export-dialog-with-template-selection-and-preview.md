@@ -307,3 +307,4 @@ Claude Opus 4.6 (1M context)
 
 - 2026-03-18: Story 2.4 implementation — BOM export dialog with template selection, preview table, DNP filtering, health warning banner, and 22 tests
 - 2026-03-19: Code review fixes — removed dead code block, synced File menu Export BOM enabled state, auto-sync format combo on template change, moved DNP detection to core/models.py as BoardComponent.is_dnp property
+- 2026-03-19: Code review round 2 — blockSignals on format combo during template sync to prevent double _refresh_preview, removed unused format combo→_refresh_preview signal (format doesn't affect preview), removed redundant dnp_handling from template replace at export time (filtering already done at dialog level)

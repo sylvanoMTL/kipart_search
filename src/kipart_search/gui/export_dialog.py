@@ -91,7 +91,6 @@ class ExportDialog(QDialog):
         self._format_combo = QComboBox()
         self._format_combo.addItem("Excel (.xlsx)", "xlsx")
         self._format_combo.addItem("CSV (.csv)", "csv")
-        self._format_combo.currentIndexChanged.connect(self._refresh_preview)
         controls.addWidget(self._format_combo)
 
         controls.addStretch()
@@ -152,7 +151,9 @@ class ExportDialog(QDialog):
         tmpl = self._selected_template()
         idx = self._format_combo.findData(tmpl.file_format)
         if idx >= 0:
+            self._format_combo.blockSignals(True)
             self._format_combo.setCurrentIndex(idx)
+            self._format_combo.blockSignals(False)
 
     def _filtered_components(self) -> list[BoardComponent]:
         """Return components filtered by DNP setting."""
@@ -209,11 +210,7 @@ class ExportDialog(QDialog):
             return
 
         output_path = Path(path)
-        export_template = replace(
-            tmpl,
-            file_format=fmt,
-            dnp_handling=self._selected_dnp(),
-        )
+        export_template = replace(tmpl, file_format=fmt)
 
         try:
             components = self._filtered_components()
