@@ -71,6 +71,7 @@
       "Bash(.env/Scripts/python.exe -m pytest tests/ -v)",
       "Bash(timeout 5 .env/Scripts/python.exe -m kipart_search)",
       "Bash(git status:*)",
+      "Bash(git log -1:*)",
       "Bash(.env/Scripts/python.exe -m pytest tests/ -v --tb=short)",
       "Bash(find src/ -name \"__pycache__\" -type d -exec rm -rf {} +)",
       "Bash(.env/Scripts/python.exe -m pytest tests/ --tb=short -q)",
@@ -87,7 +88,9 @@
       "Bash(.env/Scripts/python.exe -c \"from kipart_search.core.bom_export import export_bom, PCBWAY_TEMPLATE; print\\(''Import OK''\\); print\\(f''Template: {PCBWAY_TEMPLATE.name}, {len\\(PCBWAY_TEMPLATE.columns\\)} columns''\\)\")",
       "Bash(.env/Scripts/python.exe:*)",
       "Bash(chcp 65001)",
-      "Bash(/c/Git_Repo_Clones/kipart-search/.env/Scripts/python.exe -c \":*)"
+      "Bash(/c/Git_Repo_Clones/kipart-search/.env/Scripts/python.exe -c \":*)",
+      "Bash(cat *)",
+      "Bash(grep *)"
     ]
   }
 }

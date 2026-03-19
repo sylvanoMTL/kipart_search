@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-19  # story 2-4 done
+last_updated: 2026-03-19  # story 3-1 ready-for-dev
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -53,7 +53,7 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Production-Ready BOM Export
-  epic-2: in-progress
+  epic-2: done
   2-1-bom-export-engine-with-pcbway-template: done
   2-2-preset-cm-templates-jlcpcb-newbury-electronics: done
   2-3-health-summary-bar-with-live-updates: done
@@ -61,8 +61,8 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Search & Verification Enhancements
-  epic-3: backlog
-  3-1-dynamic-filter-row: backlog
+  epic-3: in-progress
+  3-1-dynamic-filter-row: ready-for-dev
   3-2-two-mode-search-architecture-specific-vs-unified: backlog
   3-3-verification-dashboard-enhancements: backlog
   3-4-stale-data-indicators: backlog
