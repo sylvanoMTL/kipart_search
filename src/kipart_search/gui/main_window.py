@@ -756,7 +756,7 @@ class MainWindow(QMainWindow):
 
         dialog = AssignDialog(self._assign_target, part, parent=self)
         if dialog.exec():
-            self._apply_assignment(dialog.fields_to_write)
+            self._apply_assignment(dialog.fields_to_write, dialog.overwrite_fields)
 
     def _on_manual_assign(self, reference: str):
         """Open AssignDialog in manual-entry mode for the given component."""
@@ -775,25 +775,60 @@ class MainWindow(QMainWindow):
         self._assign_target = comp
         dialog = AssignDialog(comp, part=None, parent=self)
         if dialog.exec():
-            self._apply_assignment(dialog.fields_to_write)
+            self._apply_assignment(dialog.fields_to_write, dialog.overwrite_fields)
 
-    def _apply_assignment(self, fields: dict[str, str]):
+    def _apply_assignment(
+        self, fields: dict[str, str], overwrite_fields: set[str] | None = None,
+    ):
         """Write assignment fields via bridge (connected) or in-memory (standalone)."""
         if not fields or self._assign_target is None:
             return
 
+        overwrite_fields = overwrite_fields or set()
         ref = self._assign_target.reference
         written = 0
+        failed: list[tuple[str, str]] = []  # (field_name, error_msg)
+        mpn_written = False
 
         # Connected mode: write via IPC API
         if self._bridge.is_connected:
             for field_name, value in fields.items():
-                if self._bridge.write_field(ref, field_name, value):
-                    written += 1
+                try:
+                    ok = self._bridge.write_field(
+                        ref, field_name, value,
+                        allow_overwrite=(field_name in overwrite_fields),
+                    )
+                    if ok:
+                        written += 1
+                        if field_name == "MPN":
+                            mpn_written = True
+                    else:
+                        failed.append((field_name, "write refused by bridge"))
+                except Exception as exc:
+                    failed.append((field_name, str(exc)))
+
             if written > 0:
                 self.log_panel.log(f"Wrote {written} field(s) to {ref} via KiCad")
-            else:
-                self.log_panel.log(f"No fields written to {ref}")
+            if failed:
+                fail_lines = [f"  {fn}: {err}" for fn, err in failed]
+                fail_msg = "\n".join(fail_lines)
+                self.log_panel.log(
+                    f"Failed to write {len(failed)} field(s) to {ref}:\n{fail_msg}"
+                )
+                QMessageBox.warning(
+                    self,
+                    "Write-Back Partial Failure",
+                    f"Some fields could not be written to {ref}:\n\n{fail_msg}",
+                )
+
+        # Total failure in connected mode: do not update in-memory state
+        if self._bridge.is_connected and written == 0 and failed:
+            self.log_panel.log(f"No fields written to {ref} — skipping in-memory update")
+            self._assign_target = None
+            self._search_target_label.setText("")
+            self.detail_panel.set_assign_target(None)
+            self.results_table.set_assign_target(None)
+            return
 
         # Update component in-memory (both modes)
         comp = self._assign_target
@@ -802,15 +837,24 @@ class MainWindow(QMainWindow):
         if comp:
             for fname, fval in fields.items():
                 comp.extra_fields[fname.lower()] = fval
-            written_count = written if self._bridge.is_connected else len(fields)
             if not self._bridge.is_connected:
                 self.log_panel.log(
                     f"Assigned {len(fields)} field(s) to {ref} (in-memory)"
                 )
 
-        # Live-update the verify panel without a full re-scan
-        self.verify_panel.update_component_status(ref, Confidence.GREEN)
-        self.log_panel.log(f"{ref} status updated to Verified")
+        # Live-update the verify panel — only GREEN if MPN was written
+        # (or already present, or standalone mode)
+        if self._bridge.is_connected:
+            if mpn_written or "MPN" not in fields:
+                self.verify_panel.update_component_status(ref, Confidence.GREEN)
+                self.log_panel.log(f"{ref} status updated to Verified")
+            else:
+                self.log_panel.log(
+                    f"{ref} MPN write failed — status not changed to Verified"
+                )
+        else:
+            self.verify_panel.update_component_status(ref, Confidence.GREEN)
+            self.log_panel.log(f"{ref} status updated to Verified")
 
         self._assign_target = None
         self._search_target_label.setText("")

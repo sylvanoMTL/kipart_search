@@ -180,11 +180,14 @@ class KiCadBridge:
             log.warning("Failed to select %s: %s", reference, e)
             return False
 
-    def write_field(self, reference: str, field_name: str, value: str) -> bool:
+    def write_field(
+        self, reference: str, field_name: str, value: str,
+        allow_overwrite: bool = False,
+    ) -> bool:
         """Write a field value to a component (e.g. MPN, datasheet).
 
-        Safety: caller must check that the field is empty before calling.
-        This method does NOT overwrite non-empty fields.
+        When *allow_overwrite* is False (default), non-empty fields are
+        refused.  When True, the existing value is overwritten.
         """
         if not self.is_connected:
             return False
@@ -198,7 +201,7 @@ class KiCadBridge:
             # Check predefined fields first
             if field_name.lower() == "datasheet":
                 current = fp.datasheet_field.text.value
-                if current and current.strip():
+                if current and current.strip() and not allow_overwrite:
                     log.warning("Field 'datasheet' on %s is not empty, skipping", reference)
                     return False
                 fp.datasheet_field.text.value = value
@@ -209,7 +212,7 @@ class KiCadBridge:
             for item in fp.texts_and_fields:
                 if hasattr(item, "name") and item.name.lower() == field_name.lower():
                     current = item.text.value if item.text else ""
-                    if current and current.strip():
+                    if current and current.strip() and not allow_overwrite:
                         log.warning("Field '%s' on %s is not empty, skipping", field_name, reference)
                         return False
                     item.text.value = value

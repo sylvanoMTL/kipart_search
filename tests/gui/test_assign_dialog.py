@@ -80,8 +80,8 @@ class TestAssignDialogWithPartResult:
         assert "Datasheet" in fields
         assert "Description" in fields
 
-    def test_nonempty_fields_skipped(self):
-        """Fields that already have values are not in fields_to_write."""
+    def test_nonempty_fields_not_in_fields_to_write_by_default(self):
+        """Non-empty fields have overwrite checkbox unchecked → not in fields_to_write."""
         comp = _make_component(mpn="EXISTING_MPN")
         part = _make_part()
 
@@ -89,6 +89,7 @@ class TestAssignDialogWithPartResult:
         fields = dialog.fields_to_write
 
         assert "MPN" not in fields
+        assert "MPN" not in dialog.overwrite_fields
         # Other empty fields should still be present
         assert "Manufacturer" in fields
 
@@ -157,13 +158,13 @@ class TestAssignDialogManualMode:
         assert fields["MPN"] == "TEST-MPN-123"
         assert fields["Manufacturer"] == "TestCorp"
 
-    def test_manual_mode_nonempty_current_fields_skipped(self):
-        """Manual mode skips fields that already have values in component."""
+    def test_manual_mode_nonempty_current_fields_skipped_without_overwrite(self):
+        """Manual mode skips non-empty fields when overwrite is not checked."""
         comp = _make_component(mpn="EXISTING")
         dialog = AssignDialog(comp, part=None)
 
-        # Even if user types in the MPN edit, it should be skipped
-        dialog._manual_edits["MPN"].setText("NEW-MPN")
+        # QLineEdit is disabled for non-empty fields by default
+        assert not dialog._manual_edits["MPN"].isEnabled()
 
         fields = dialog.fields_to_write
         assert "MPN" not in fields  # Current value is not empty → skipped
@@ -309,8 +310,12 @@ class TestConnectedAssignment:
         window._apply_assignment(fields)
 
         assert window._bridge.write_field.call_count == 2
-        window._bridge.write_field.assert_any_call("C1", "MPN", "ABC123")
-        window._bridge.write_field.assert_any_call("C1", "Manufacturer", "Murata")
+        window._bridge.write_field.assert_any_call(
+            "C1", "MPN", "ABC123", allow_overwrite=False
+        )
+        window._bridge.write_field.assert_any_call(
+            "C1", "Manufacturer", "Murata", allow_overwrite=False
+        )
         window.verify_panel.update_component_status.assert_called_once_with(
             "C1", Confidence.GREEN
         )
@@ -484,3 +489,321 @@ class TestVerifyPanelManualAssign:
 
         action_texts = [a.text() for a in menu.actions()]
         assert "Manual Assign" in action_texts
+
+
+# ---------------------------------------------------------------------------
+# Story 5.4 — Task 4.1–4.3: Overwrite checkbox tests
+# ---------------------------------------------------------------------------
+
+class TestOverwritePartMode:
+    """Test overwrite opt-in for non-empty fields in search-result mode."""
+
+    def test_overwrite_checkbox_unchecked_by_default(self):
+        """Non-empty MPN field shows overwrite checkbox, unchecked → not in fields_to_write."""
+        comp = _make_component(mpn="OLD-MPN")
+        part = _make_part()
+
+        dialog = AssignDialog(comp, part)
+
+        assert "MPN" not in dialog.fields_to_write
+        assert "MPN" not in dialog.overwrite_fields
+        assert "MPN" in dialog._overwrite_checkboxes
+        assert not dialog._overwrite_checkboxes["MPN"].isChecked()
+
+    def test_overwrite_checkbox_checked_adds_to_fields(self):
+        """Checking overwrite checkbox adds field to fields_to_write and overwrite_fields."""
+        comp = _make_component(mpn="OLD-MPN")
+        part = _make_part()
+
+        dialog = AssignDialog(comp, part)
+        dialog._overwrite_checkboxes["MPN"].setChecked(True)
+
+        assert "MPN" in dialog.fields_to_write
+        assert dialog.fields_to_write["MPN"] == part.mpn
+        assert "MPN" in dialog.overwrite_fields
+
+    def test_overwrite_checkbox_uncheck_removes_from_fields(self):
+        """Unchecking overwrite checkbox removes field from fields_to_write."""
+        comp = _make_component(mpn="OLD-MPN")
+        part = _make_part()
+
+        dialog = AssignDialog(comp, part)
+        dialog._overwrite_checkboxes["MPN"].setChecked(True)
+        dialog._overwrite_checkboxes["MPN"].setChecked(False)
+
+        assert "MPN" not in dialog.fields_to_write
+        assert "MPN" not in dialog.overwrite_fields
+
+    def test_assign_button_enabled_with_only_overwrite_fields(self):
+        """Assign button enabled when only overwrite fields are checked."""
+        comp = _make_component(
+            mpn="OLD",
+            datasheet="https://old.com",
+            extra_fields={"Manufacturer": "OldCorp", "Description": "Old"},
+        )
+        part = _make_part()
+        dialog = AssignDialog(comp, part)
+
+        # All fields non-empty — Assign disabled initially
+        assert not dialog.assign_btn.isEnabled()
+
+        # Check one overwrite
+        dialog._overwrite_checkboxes["MPN"].setChecked(True)
+        assert dialog.assign_btn.isEnabled()
+
+
+class TestOverwriteManualMode:
+    """Test overwrite opt-in for non-empty fields in manual entry mode."""
+
+    def test_manual_overwrite_checkbox_enables_lineedit(self):
+        """Checking overwrite in manual mode enables the QLineEdit."""
+        comp = _make_component(mpn="EXISTING")
+        dialog = AssignDialog(comp, part=None)
+
+        assert not dialog._manual_edits["MPN"].isEnabled()
+
+        dialog._overwrite_checkboxes["MPN"].setChecked(True)
+        assert dialog._manual_edits["MPN"].isEnabled()
+
+    def test_manual_overwrite_field_in_fields_to_write(self):
+        """After checking overwrite and editing, field is in fields_to_write."""
+        comp = _make_component(mpn="EXISTING")
+        dialog = AssignDialog(comp, part=None)
+
+        dialog._overwrite_checkboxes["MPN"].setChecked(True)
+        dialog._manual_edits["MPN"].setText("NEW-MPN")
+
+        assert "MPN" in dialog.fields_to_write
+        assert dialog.fields_to_write["MPN"] == "NEW-MPN"
+        assert "MPN" in dialog.overwrite_fields
+
+    def test_manual_overwrite_uncheck_disables_and_removes(self):
+        """Unchecking overwrite in manual mode disables QLineEdit and removes field."""
+        comp = _make_component(mpn="EXISTING")
+        dialog = AssignDialog(comp, part=None)
+
+        dialog._overwrite_checkboxes["MPN"].setChecked(True)
+        dialog._manual_edits["MPN"].setText("NEW-MPN")
+        dialog._overwrite_checkboxes["MPN"].setChecked(False)
+
+        assert not dialog._manual_edits["MPN"].isEnabled()
+        assert "MPN" not in dialog.fields_to_write
+
+
+# ---------------------------------------------------------------------------
+# Story 5.4 — Task 4.4–4.5: Mismatch acknowledgment gate tests
+# ---------------------------------------------------------------------------
+
+class TestMismatchAcknowledgmentGate:
+    """Test mismatch acknowledgment gate disables/enables Assign button."""
+
+    def test_assign_disabled_until_acknowledgment(self):
+        """With mismatches, Assign is disabled until acknowledgment checkbox checked."""
+        comp = _make_component(reference="C1")  # Capacitor
+        part = _make_part(
+            category="Resistors",
+            description="10k 0805 Resistor",
+        )
+
+        dialog = AssignDialog(comp, part)
+
+        # Dialog has mismatches → Assign should be disabled
+        assert dialog._has_mismatches
+        assert dialog._mismatch_ack_checkbox is not None
+        assert not dialog.assign_btn.isEnabled()
+
+        # Check the acknowledgment
+        dialog._mismatch_ack_checkbox.setChecked(True)
+        assert dialog.assign_btn.isEnabled()
+
+    def test_no_acknowledgment_when_no_mismatches(self):
+        """Without mismatches, no acknowledgment checkbox and Assign works normally."""
+        comp = _make_component(reference="C1")
+        part = _make_part(category="Capacitors", description="100nF Capacitor")
+
+        dialog = AssignDialog(comp, part)
+
+        assert not dialog._has_mismatches
+        assert dialog._mismatch_ack_checkbox is None
+        assert dialog.assign_btn.isEnabled()
+
+    def test_manual_mode_no_mismatch_gate(self):
+        """Manual mode (no part) has no mismatch gate."""
+        comp = _make_component()
+        dialog = AssignDialog(comp, part=None)
+
+        assert not dialog._has_mismatches
+        assert dialog._mismatch_ack_checkbox is None
+
+
+# ---------------------------------------------------------------------------
+# Story 5.4 — Task 4.6–4.7: write_field allow_overwrite tests
+# ---------------------------------------------------------------------------
+
+class TestWriteFieldOverwrite:
+    """Test KiCadBridge.write_field with allow_overwrite parameter."""
+
+    def _make_bridge_with_mock_fp(self, field_name: str, current_value: str):
+        """Create a KiCadBridge with a mock footprint that has one field."""
+        from kipart_search.gui.kicad_bridge import KiCadBridge
+
+        bridge = KiCadBridge()
+        bridge._board = MagicMock()
+
+        fp = MagicMock()
+
+        if field_name.lower() == "datasheet":
+            fp.datasheet_field.text.value = current_value
+        else:
+            field_item = MagicMock()
+            field_item.name = field_name
+            field_item.text.value = current_value
+            fp.texts_and_fields = [field_item]
+
+        bridge._footprint_cache["C1"] = fp
+        return bridge, fp
+
+    def test_write_field_allow_overwrite_true(self):
+        """write_field(allow_overwrite=True) writes to non-empty field."""
+        bridge, fp = self._make_bridge_with_mock_fp("MPN", "OLD-VALUE")
+
+        result = bridge.write_field("C1", "MPN", "NEW-VALUE", allow_overwrite=True)
+
+        assert result is True
+
+    def test_write_field_allow_overwrite_false_refuses(self):
+        """write_field(allow_overwrite=False) refuses non-empty field."""
+        bridge, fp = self._make_bridge_with_mock_fp("MPN", "OLD-VALUE")
+
+        result = bridge.write_field("C1", "MPN", "NEW-VALUE", allow_overwrite=False)
+
+        assert result is False
+
+    def test_write_field_default_refuses_nonempty(self):
+        """write_field() default refuses non-empty field (backward compat)."""
+        bridge, fp = self._make_bridge_with_mock_fp("MPN", "OLD-VALUE")
+
+        result = bridge.write_field("C1", "MPN", "NEW-VALUE")
+
+        assert result is False
+
+    def test_write_field_datasheet_overwrite(self):
+        """write_field(allow_overwrite=True) works for datasheet field."""
+        bridge, fp = self._make_bridge_with_mock_fp("Datasheet", "https://old.com")
+
+        result = bridge.write_field(
+            "C1", "Datasheet", "https://new.com", allow_overwrite=True
+        )
+
+        assert result is True
+
+    def test_write_field_datasheet_refuses_without_overwrite(self):
+        """write_field() refuses non-empty datasheet without allow_overwrite."""
+        bridge, fp = self._make_bridge_with_mock_fp("Datasheet", "https://old.com")
+
+        result = bridge.write_field("C1", "Datasheet", "https://new.com")
+
+        assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Story 5.4 — Task 4.8–4.9: _apply_assignment error handling tests
+# ---------------------------------------------------------------------------
+
+class TestApplyAssignmentErrorHandling:
+    """Test _apply_assignment with partial and total failure."""
+
+    def _make_window(self, comp):
+        from kipart_search.gui.kicad_bridge import KiCadBridge
+        from kipart_search.gui.main_window import MainWindow
+
+        window = MainWindow.__new__(MainWindow)
+        window._bridge = MagicMock(spec=KiCadBridge)
+        window._bridge.is_connected = True
+        window._assign_target = comp
+        window.verify_panel = MagicMock()
+        window.log_panel = MagicMock()
+        window._search_target_label = MagicMock()
+        window.detail_panel = MagicMock()
+        window.results_table = MagicMock()
+        return window
+
+    def test_partial_failure_some_fields_written(self):
+        """Partial failure: MPN succeeds, Manufacturer fails."""
+        comp = _make_component(reference="C1")
+        window = self._make_window(comp)
+
+        # MPN succeeds, Manufacturer fails
+        def write_field_side_effect(ref, field, value, allow_overwrite=False):
+            if field == "MPN":
+                return True
+            return False
+
+        window._bridge.write_field.side_effect = write_field_side_effect
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("kipart_search.gui.main_window.QMessageBox", MagicMock())
+            window._apply_assignment(
+                {"MPN": "ABC123", "Manufacturer": "Murata"}
+            )
+
+        # MPN written → in-memory update happens
+        assert comp.mpn == "ABC123"
+        # Status goes GREEN because MPN was written
+        window.verify_panel.update_component_status.assert_called_once_with(
+            "C1", Confidence.GREEN
+        )
+
+    def test_total_failure_no_in_memory_update(self):
+        """Total failure: no fields written → no in-memory update, no GREEN."""
+        comp = _make_component(reference="C1")
+        window = self._make_window(comp)
+        window._bridge.write_field.return_value = False
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("kipart_search.gui.main_window.QMessageBox", MagicMock())
+            window._apply_assignment({"MPN": "ABC123"})
+
+        # No in-memory update on total failure
+        assert comp.mpn == ""
+        # No GREEN status
+        window.verify_panel.update_component_status.assert_not_called()
+
+    def test_partial_failure_mpn_fails_no_green(self):
+        """When MPN write fails but other fields succeed, status stays non-GREEN."""
+        comp = _make_component(reference="C1")
+        window = self._make_window(comp)
+
+        def write_field_side_effect(ref, field, value, allow_overwrite=False):
+            return field != "MPN"  # MPN fails, others succeed
+
+        window._bridge.write_field.side_effect = write_field_side_effect
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("kipart_search.gui.main_window.QMessageBox", MagicMock())
+            window._apply_assignment(
+                {"MPN": "ABC123", "Manufacturer": "Murata"}
+            )
+
+        # In-memory update still happens (partial success)
+        # But no GREEN because MPN specifically failed
+        for call in window.verify_panel.update_component_status.call_args_list:
+            assert call[0][1] != Confidence.GREEN or "MPN" not in {"MPN": "ABC123"}
+
+    def test_apply_assignment_with_overwrite_fields(self):
+        """Overwrite fields pass allow_overwrite=True to bridge."""
+        comp = _make_component(reference="C1", mpn="OLD")
+        window = self._make_window(comp)
+        window._bridge.write_field.return_value = True
+
+        window._apply_assignment(
+            {"MPN": "NEW-MPN", "Manufacturer": "NewCorp"},
+            overwrite_fields={"MPN"},
+        )
+
+        window._bridge.write_field.assert_any_call(
+            "C1", "MPN", "NEW-MPN", allow_overwrite=True
+        )
+        window._bridge.write_field.assert_any_call(
+            "C1", "Manufacturer", "NewCorp", allow_overwrite=False
+        )

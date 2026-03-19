@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QHBoxLayout,
     QHeaderView,
@@ -106,8 +107,8 @@ class AssignDialog(QDialog):
     """Preview dialog for writing part data back to a KiCad component.
 
     Shows a table of fields with current (KiCad) vs new (search result) values.
-    Only empty fields are checked for writing. Non-empty fields show a warning
-    and are unchecked by default.
+    Only empty fields are checked for writing. Non-empty fields show an
+    opt-in overwrite checkbox (unchecked by default).
 
     When ``part`` is None, opens in manual entry mode with editable fields.
     """
@@ -122,8 +123,11 @@ class AssignDialog(QDialog):
         self.component = component
         self.part = part
         self._write_fields: dict[str, str] = {}
+        self._overwrite_fields: set[str] = set()
         self._manual_mode = part is None
         self._manual_edits: dict[str, QLineEdit] = {}
+        self._overwrite_checkboxes: dict[str, QCheckBox] = {}
+        self._has_mismatches = False
 
         self.setWindowTitle(f"Assign Part to {component.reference}")
         self.setMinimumSize(550, 400)
@@ -146,9 +150,11 @@ class AssignDialog(QDialog):
         layout.addWidget(header)
 
         # Mismatch warnings (only when a PartResult is provided)
+        self._mismatch_ack_checkbox: QCheckBox | None = None
         if part is not None:
             warnings = _check_mismatches(component, part)
             if warnings:
+                self._has_mismatches = True
                 warning_html = "<br><br>".join(
                     f"\u26a0 <b>{w}</b>" for w in warnings
                 )
@@ -161,6 +167,18 @@ class AssignDialog(QDialog):
                     "padding: 10px; margin: 6px 0; font-size: 13px;"
                 )
                 layout.addWidget(warning_label)
+
+                # Mismatch acknowledgment checkbox (Task 2)
+                self._mismatch_ack_checkbox = QCheckBox(
+                    "I understand and want to proceed"
+                )
+                self._mismatch_ack_checkbox.setStyleSheet(
+                    "margin: 4px 0; font-weight: bold;"
+                )
+                self._mismatch_ack_checkbox.toggled.connect(
+                    self._update_assign_button
+                )
+                layout.addWidget(self._mismatch_ack_checkbox)
 
         # Field preview table
         self.table = QTableWidget()
@@ -199,7 +217,7 @@ class AssignDialog(QDialog):
         btn_layout.addWidget(self.cancel_btn)
 
         self.assign_btn = QPushButton("Assign")
-        self.assign_btn.setDefault(True)
+        self.assign_btn.setDefault(False)  # Default is Cancel for safety
         self.assign_btn.clicked.connect(self.accept)
         btn_layout.addWidget(self.assign_btn)
 
@@ -211,6 +229,8 @@ class AssignDialog(QDialog):
         """Build the preview table comparing current vs new values."""
         self._manual_edits.clear()
         self._write_fields.clear()
+        self._overwrite_fields.clear()
+        self._overwrite_checkboxes.clear()
 
         if self._manual_mode:
             self._populate_manual_table()
@@ -219,7 +239,8 @@ class AssignDialog(QDialog):
 
     def _populate_part_table(self):
         """Populate table from a PartResult (read-only new values)."""
-        rows = []
+        rows: list[tuple[str, str, str, str, bool]] = []
+        row_kicad_fields: list[str] = []
         for display_name, part_attr, kicad_field in ASSIGNABLE_FIELDS:
             new_value = getattr(self.part, part_attr, "") or ""
             if not new_value:
@@ -233,9 +254,10 @@ class AssignDialog(QDialog):
                 action = "Will write"
                 self._write_fields[kicad_field] = new_value
             else:
-                action = "Skip (not empty)"
+                action = f"Current: {current_value}"
 
             rows.append((display_name, current_value, new_value, action, is_empty))
+            row_kicad_fields.append(kicad_field)
 
         self.table.setRowCount(len(rows))
         for row, (name, current, new, action, is_empty) in enumerate(rows):
@@ -252,12 +274,27 @@ class AssignDialog(QDialog):
             new_item.setToolTip(new)
             self.table.setItem(row, 2, new_item)
 
-            action_item = QTableWidgetItem(action)
             if is_empty:
+                action_item = QTableWidgetItem(action)
                 action_item.setBackground(QColor(200, 255, 200))  # Green
+                self.table.setItem(row, 3, action_item)
             else:
-                action_item.setBackground(QColor(255, 235, 180))  # Amber
-            self.table.setItem(row, 3, action_item)
+                # Non-empty: overwrite checkbox (opt-in, unchecked by default)
+                kicad_field = row_kicad_fields[row]
+                cb = QCheckBox("Overwrite")
+                cb.setChecked(False)
+                cb.toggled.connect(
+                    lambda checked, kf=kicad_field, nv=new: self._on_overwrite_toggled(
+                        kf, nv, checked
+                    )
+                )
+                self._overwrite_checkboxes[kicad_field] = cb
+                self.table.setCellWidget(row, 3, cb)
+                # Set amber background on the row
+                for col in range(3):
+                    item = self.table.item(row, col)
+                    if item:
+                        item.setBackground(QColor(255, 235, 180))
 
         self.table.resizeColumnsToContents()
 
@@ -267,6 +304,16 @@ class AssignDialog(QDialog):
         equal_width = max(w1, w2)
         self.table.setColumnWidth(1, equal_width)
         self.table.setColumnWidth(2, equal_width)
+
+    def _on_overwrite_toggled(self, kicad_field: str, new_value: str, checked: bool):
+        """Handle overwrite checkbox toggle in part-result mode."""
+        if checked:
+            self._write_fields[kicad_field] = new_value
+            self._overwrite_fields.add(kicad_field)
+        else:
+            self._write_fields.pop(kicad_field, None)
+            self._overwrite_fields.discard(kicad_field)
+        self._update_assign_button()
 
     def _populate_manual_table(self):
         """Populate table with editable QLineEdit widgets for manual entry."""
@@ -287,29 +334,61 @@ class AssignDialog(QDialog):
             current_item.setToolTip(current_display)
             self.table.setItem(row, 1, current_item)
 
-            # Editable new value (QLineEdit) — disabled for non-empty fields
+            # Editable new value (QLineEdit)
             edit = QLineEdit()
             if is_empty:
                 edit.setPlaceholderText(f"Enter {display_name}...")
+                edit.setEnabled(True)
             else:
-                edit.setPlaceholderText("(field not empty)")
-                edit.setEnabled(False)
+                edit.setText(current_value)
+                edit.setEnabled(False)  # Disabled until overwrite checked
             edit.textChanged.connect(self._on_manual_field_changed)
             self._manual_edits[kicad_field] = edit
             self.table.setCellWidget(row, 2, edit)
 
-            # Action column — will update dynamically
+            # Action column
             if is_empty:
                 action_item = QTableWidgetItem("Will write")
                 action_item.setBackground(QColor(200, 255, 200))
+                self.table.setItem(row, 3, action_item)
             else:
-                action_item = QTableWidgetItem("Skip (not empty)")
-                action_item.setBackground(QColor(255, 235, 180))
-            self.table.setItem(row, 3, action_item)
+                # Overwrite checkbox for non-empty fields
+                cb = QCheckBox("Overwrite")
+                cb.setChecked(False)
+                cb.toggled.connect(
+                    lambda checked, kf=kicad_field: self._on_manual_overwrite_toggled(
+                        kf, checked
+                    )
+                )
+                self._overwrite_checkboxes[kicad_field] = cb
+                self.table.setCellWidget(row, 3, cb)
+                # Amber background for non-empty field info cells
+                for col in range(2):
+                    item = self.table.item(row, col)
+                    if item:
+                        item.setBackground(QColor(255, 235, 180))
 
         self.table.resizeColumnsToContents()
         # Give the editable column more space
         self.table.setColumnWidth(2, 200)
+
+    def _on_manual_overwrite_toggled(self, kicad_field: str, checked: bool):
+        """Handle overwrite checkbox toggle in manual mode."""
+        edit = self._manual_edits.get(kicad_field)
+        if edit is None:
+            return
+
+        if checked:
+            edit.setEnabled(True)
+            self._overwrite_fields.add(kicad_field)
+        else:
+            edit.setEnabled(False)
+            self._overwrite_fields.discard(kicad_field)
+            # Remove from write fields when unchecked
+            self._write_fields.pop(kicad_field, None)
+
+        # Trigger re-evaluation of write fields
+        self._on_manual_field_changed()
 
     def _on_manual_field_changed(self):
         """Update _write_fields and action column when manual entry text changes."""
@@ -323,20 +402,10 @@ class AssignDialog(QDialog):
             current_value = self._get_current_value(kicad_field)
             is_empty = not current_value.strip()
 
-            action_item = self.table.item(row, 3)
-            if not action_item:
-                continue
-
             if is_empty and text:
                 self._write_fields[kicad_field] = text
-                action_item.setText("Will write")
-                action_item.setBackground(QColor(200, 255, 200))
-            elif not is_empty:
-                action_item.setText("Skip (not empty)")
-                action_item.setBackground(QColor(255, 235, 180))
-            else:
-                action_item.setText("")
-                action_item.setBackground(QColor(255, 255, 255))
+            elif not is_empty and kicad_field in self._overwrite_fields and text:
+                self._write_fields[kicad_field] = text
 
         self._update_assign_button()
 
@@ -357,6 +426,15 @@ class AssignDialog(QDialog):
 
     def _update_assign_button(self):
         """Enable/disable the Assign button based on current state."""
+        # Mismatch gate: if mismatches exist and not acknowledged, disable
+        if self._has_mismatches and self._mismatch_ack_checkbox is not None:
+            if not self._mismatch_ack_checkbox.isChecked():
+                self.assign_btn.setEnabled(False)
+                self.assign_btn.setToolTip(
+                    "Acknowledge mismatch warnings to enable assignment"
+                )
+                return
+
         if self._manual_mode:
             # In manual mode, MPN must be non-empty
             mpn_edit = self._manual_edits.get("MPN")
@@ -392,3 +470,8 @@ class AssignDialog(QDialog):
     def fields_to_write(self) -> dict[str, str]:
         """Return dict of {kicad_field_name: value} to write."""
         return dict(self._write_fields)
+
+    @property
+    def overwrite_fields(self) -> set[str]:
+        """Return set of field names that are overwrites of non-empty fields."""
+        return set(self._overwrite_fields)
