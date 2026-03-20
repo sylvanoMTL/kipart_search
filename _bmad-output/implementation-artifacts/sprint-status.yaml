@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-20  # story 6-2 done after code review
+last_updated: 2026-03-20  # epics 3-6 marked done, all Phase 1 stories complete
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -61,7 +61,7 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Search & Verification Enhancements
-  epic-3: in-progress
+  epic-3: done
   3-1-dynamic-filter-row: done
   3-2-two-mode-search-architecture-specific-vs-unified: done
   3-3-verification-dashboard-enhancements: done
@@ -69,14 +69,14 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: Caching & Offline Resilience
-  epic-4: in-progress
+  epic-4: done
   4-1-sqlite-query-cache: done
   4-2-jlcpcb-database-download-and-refresh: done
   4-3-full-offline-operation: done
   epic-4-retrospective: optional
 
   # Epic 5: Safe KiCad Write-Back & Assignment
-  epic-5: in-progress
+  epic-5: done
   5-1-kicad-connection-and-board-scan: done
   5-2-click-to-highlight-cross-probe: done
   5-3-mpn-assignment-with-preview-dialog: done
@@ -85,7 +85,7 @@ development_status:
   epic-5-retrospective: optional
 
   # Epic 6: Source Configuration & First-Run Experience
-  epic-6: in-progress
+  epic-6: done
   6-1-source-preferences-dialog: done
   6-2-welcome-first-run-dialog: done
   epic-6-retrospective: optional
