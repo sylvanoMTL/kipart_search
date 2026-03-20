@@ -109,6 +109,12 @@ class SearchBar(QWidget):
         self._source_selector.setCurrentIndex(idx if idx >= 0 else 0)
         self._source_selector.blockSignals(False)
 
+    def set_default_source(self, name: str) -> None:
+        """Select a source by name in the dropdown, if it exists."""
+        idx = self._source_selector.findText(name)
+        if idx >= 0:
+            self._source_selector.setCurrentIndex(idx)
+
     def _on_search(self):
         query = strip_quotes(self._transformed_input.text().strip())
         if query:

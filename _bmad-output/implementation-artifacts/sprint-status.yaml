@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-20  # story 5-5 done after code review
+last_updated: 2026-03-20  # story 6-1 done after code review
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -85,7 +85,7 @@ development_status:
   epic-5-retrospective: optional
 
   # Epic 6: Source Configuration & First-Run Experience
-  epic-6: backlog
-  6-1-source-preferences-dialog: backlog
+  epic-6: in-progress
+  6-1-source-preferences-dialog: done
   6-2-welcome-first-run-dialog: backlog
   epic-6-retrospective: optional

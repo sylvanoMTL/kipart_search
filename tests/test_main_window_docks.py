@@ -214,8 +214,8 @@ class TestToolbar:
     def test_export_bom_disabled(self, window: MainWindow):
         assert not window._act_export.isEnabled()
 
-    def test_preferences_disabled(self, window: MainWindow):
-        assert not window._act_prefs.isEnabled()
+    def test_preferences_enabled(self, window: MainWindow):
+        assert window._act_prefs.isEnabled()
 
     def test_scan_project_enabled(self, window: MainWindow):
         assert window._act_scan.isEnabled()

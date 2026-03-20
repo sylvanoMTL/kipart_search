@@ -239,8 +239,8 @@ class MainWindow(QMainWindow):
         self.toolbar.addAction(self._act_push)
 
         self._act_prefs = QAction("Preferences", self)
-        self._act_prefs.setEnabled(False)
-        self._act_prefs.setToolTip("Preferences (not yet implemented)")
+        self._act_prefs.setToolTip("Configure data sources and API keys")
+        self._act_prefs.triggered.connect(self._on_preferences)
         self.toolbar.addAction(self._act_prefs)
 
         # ── Menus (order: File, View, Help) ──
@@ -259,8 +259,8 @@ class MainWindow(QMainWindow):
         self.status_bar.addPermanentWidget(self._action_label)
         self.setStatusBar(self.status_bar)
 
-        # Try to load existing database
-        self._init_jlcpcb_source()
+        # Load saved source configs and init enabled sources
+        self._init_sources_from_config()
         self._update_status()
 
         # ── Restore saved layout (must come after all docks exist) ──
@@ -335,6 +335,9 @@ class MainWindow(QMainWindow):
 
         # Tools menu
         tools_menu = menubar.addMenu("Tools")
+        prefs_action = QAction("Preferences...", self)
+        prefs_action.triggered.connect(self._on_preferences)
+        tools_menu.addAction(prefs_action)
         backup_action = QAction("Backups...", self)
         backup_action.triggered.connect(self._on_open_backups)
         tools_menu.addAction(backup_action)
@@ -415,6 +418,31 @@ class MainWindow(QMainWindow):
         except Exception:
             log.warning("Failed to initialise query cache, continuing without cache")
             return None
+
+    def _init_sources_from_config(self):
+        """Load saved source configs and register enabled sources."""
+        from kipart_search.core.source_config import SourceConfigManager
+
+        mgr = SourceConfigManager()
+        configs = mgr.get_all_configs()
+
+        # Check if JLCPCB is enabled (default: yes)
+        jlcpcb_enabled = True
+        default_source: str | None = None
+        for cfg in configs:
+            if cfg.source_name == "JLCPCB":
+                jlcpcb_enabled = cfg.enabled
+            if cfg.is_default and cfg.enabled:
+                default_source = cfg.source_name
+
+        if jlcpcb_enabled:
+            self._init_jlcpcb_source()
+        else:
+            self.search_bar.set_sources(self._orchestrator.get_source_names())
+
+        # Set default source in search bar
+        if default_source:
+            self.search_bar.set_default_source(default_source)
 
     def _init_jlcpcb_source(self):
         """Initialize JLCPCB source if database exists.
@@ -928,6 +956,49 @@ class MainWindow(QMainWindow):
         self._search_target_label.setText("")
         self.detail_panel.set_assign_target(None)
         self.results_table.set_assign_target(None)
+
+    # --- Preferences ---
+
+    def _on_preferences(self):
+        """Open the Source Preferences dialog."""
+        from kipart_search.gui.source_preferences_dialog import SourcePreferencesDialog
+        from kipart_search.core.source_config import SourceConfigManager
+
+        mgr = SourceConfigManager()
+        dialog = SourcePreferencesDialog(config_manager=mgr, parent=self)
+        if dialog.exec():
+            configs = dialog.get_saved_configs()
+            self._apply_source_configs(configs)
+
+    def _apply_source_configs(self, configs: list):
+        """Update orchestrator sources and UI based on saved preferences."""
+        from kipart_search.core.source_config import SourceConfig
+
+        # Rebuild orchestrator with only enabled sources
+        self._orchestrator = SearchOrchestrator(cache=self._cache)
+
+        for cfg in configs:
+            if not cfg.enabled:
+                continue
+            if cfg.source_name == "JLCPCB":
+                if not self._jlcpcb_source:
+                    self._init_jlcpcb_source()
+                if self._jlcpcb_source and self._jlcpcb_source.is_configured():
+                    self._orchestrator.add_source(self._jlcpcb_source)
+            # Future API sources would be instantiated here
+
+        self.search_bar.set_sources(self._orchestrator.get_source_names())
+        self._update_status()
+
+        # Update search bar default source
+        for cfg in configs:
+            if cfg.is_default and cfg.enabled:
+                self.search_bar.set_default_source(cfg.source_name)
+                break
+
+        self.log_panel.log(
+            f"Sources updated: {', '.join(self._orchestrator.get_source_names()) or 'none'}"
+        )
 
     # --- Backups ---
 
