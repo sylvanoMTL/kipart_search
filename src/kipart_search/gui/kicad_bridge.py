@@ -199,48 +199,76 @@ class KiCadBridge:
     ) -> bool:
         """Write a field value to a component (e.g. MPN, datasheet).
 
-        When *allow_overwrite* is False (default), non-empty fields are
-        refused.  When True, the existing value is overwritten.
+        KiCad 9 IPC API limitation (2026-03-20):
+        -----------------------------------------
+        board.update_items(fp) on a FootprintInstance **strips all custom
+        fields** (MPN, Manufacturer, etc.) from the footprint definition.
+        Even writing to a built-in field like Datasheet destroys any custom
+        fields that were synced from the schematic via "Update PCB from
+        Schematic".
+
+        Because of this, ALL write_field calls are disabled in KiCad 9.
+        The caller (main_window._on_assign_confirmed) falls back to
+        local-state assignment, which updates the in-memory ComponentData
+        for BOM export without touching KiCad.
+
+        When KiCad 10 adds schematic editor IPC API support, this method
+        should be revisited.  The original write logic is preserved below
+        (commented out) for reference.
+
+        See: https://dev-docs.kicad.org/en/apis-and-binding/ipc-api/for-addon-developers/
+        "In KiCad 9.0, the IPC API and the new IPC plugin system are only
+        implemented in the PCB editor, due to development time constraints.
+        In the future, the IPC API will be expanded to support the schematic
+        editor, library editors, and other parts of KiCad."
+
+        Test script: tests/manual_tests/test_write_field.py
         """
-        if not self.is_connected:
-            return False
+        # --- KiCad 9: all writes disabled to prevent field destruction ---
+        log.info(
+            "write_field('%s', '%s') on %s — disabled in KiCad 9. "
+            "update_items() strips custom fields from footprints. "
+            "Falling back to local-state assignment.",
+            field_name, value, reference,
+        )
+        return False
 
-        fp = self._footprint_cache.get(reference)
-        if fp is None:
-            log.warning("Component %s not found in cache", reference)
-            return False
-
-        try:
-            # Check predefined fields first
-            if field_name.lower() == "datasheet":
-                current = fp.datasheet_field.text.value
-                if current and current.strip() and not allow_overwrite:
-                    log.warning("Field 'datasheet' on %s is not empty, skipping", reference)
-                    return False
-                fp.datasheet_field.text.value = value
-                self._board.update_items(fp)
-                return True
-
-            # Search custom fields
-            for item in fp.texts_and_fields:
-                if hasattr(item, "name") and item.name.lower() == field_name.lower():
-                    current = item.text.value if item.text else ""
-                    if current and current.strip() and not allow_overwrite:
-                        log.warning("Field '%s' on %s is not empty, skipping", field_name, reference)
-                        return False
-                    item.text.value = value
-                    self._board.update_items(fp)
-                    return True
-
-            # Field doesn't exist on footprint — KiCad stores custom fields
-            # on schematic symbols, not PCB footprints.  The IPC API (KiCad 9)
-            # only exposes the PCB editor, so we cannot create new symbol fields.
-            # Return False so the caller can fall back to local-state assignment.
-            log.info(
-                "Field '%s' not found on %s — schematic field creation "
-                "not supported by KiCad 9 IPC API", field_name, reference,
-            )
-            return False
-        except Exception as e:
-            log.warning("Failed to write field '%s' on %s: %s", field_name, reference, e)
-            return False
+        # --- KiCad 10+: re-enable the code below when schematic API is available ---
+        # if not self.is_connected:
+        #     return False
+        #
+        # fp = self._footprint_cache.get(reference)
+        # if fp is None:
+        #     log.warning("Component %s not found in cache", reference)
+        #     return False
+        #
+        # try:
+        #     # Check predefined fields first
+        #     if field_name.lower() == "datasheet":
+        #         current = fp.datasheet_field.text.value
+        #         if current and current.strip() and not allow_overwrite:
+        #             log.warning("Field 'datasheet' on %s is not empty, skipping", reference)
+        #             return False
+        #         fp.datasheet_field.text.value = value
+        #         self._board.update_items(fp)
+        #         return True
+        #
+        #     # Search custom fields
+        #     for item in fp.texts_and_fields:
+        #         if hasattr(item, "name") and item.name.lower() == field_name.lower():
+        #             current = item.text.value if item.text else ""
+        #             if current and current.strip() and not allow_overwrite:
+        #                 log.warning("Field '%s' on %s is not empty, skipping", field_name, reference)
+        #                 return False
+        #             item.text.value = value
+        #             self._board.update_items(fp)
+        #             return True
+        #
+        #     log.info(
+        #         "Field '%s' not found on %s — schematic field creation "
+        #         "not supported by KiCad 9 IPC API", field_name, reference,
+        #     )
+        #     return False
+        # except Exception as e:
+        #     log.warning("Failed to write field '%s' on %s: %s", field_name, reference, e)
+        #     return False
