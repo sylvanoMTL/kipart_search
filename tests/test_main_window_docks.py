@@ -132,11 +132,11 @@ class TestPanelWidgetsPreserved:
 
 
 class TestMenuStructure:
-    """File, View, Help menus with correct ordering."""
+    """File, View, Tools, Help menus with correct ordering."""
 
-    def test_menu_order_file_view_help(self, window: MainWindow):
+    def test_menu_order_file_view_tools_help(self, window: MainWindow):
         menus = [a.text() for a in window.menuBar().actions()]
-        assert menus == ["File", "View", "Help"]
+        assert menus == ["File", "View", "Tools", "Help"]
 
     def test_file_menu_has_scan_and_download(self, window: MainWindow):
         file_action = [a for a in window.menuBar().actions() if a.text() == "File"][0]

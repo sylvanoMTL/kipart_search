@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 log = logging.getLogger(__name__)
 
 from kipart_search import __version__
+from kipart_search.core.backup import BackupManager
 from kipart_search.core.models import Confidence
 from kipart_search.core.cache import QueryCache
 from kipart_search.core.sources import JLCPCBSource
@@ -150,6 +151,7 @@ class MainWindow(QMainWindow):
         self._scan_worker: ScanWorker | None = None
         self._bridge = KiCadBridge()
         self._assign_target: BoardComponent | None = None
+        self._backup_manager: BackupManager | None = None
 
         # ── Hidden central widget (QDockWidgets fill around it) ──
         # Zero width so left/right docks fill the full window width.
@@ -330,6 +332,12 @@ class MainWindow(QMainWindow):
         reset_action = QAction("Reset Layout", self)
         reset_action.triggered.connect(self._reset_layout)
         view_menu.addAction(reset_action)
+
+        # Tools menu
+        tools_menu = menubar.addMenu("Tools")
+        backup_action = QAction("Backups...", self)
+        backup_action.triggered.connect(self._on_open_backups)
+        tools_menu.addAction(backup_action)
 
         # Help menu (last)
         help_menu = menubar.addMenu("Help")
@@ -625,6 +633,10 @@ class MainWindow(QMainWindow):
         """Display scan/verification results."""
         from kipart_search.core.models import is_stale
 
+        # Reset backup session so next write creates a fresh backup
+        if self._backup_manager is not None:
+            self._backup_manager.reset_session()
+
         has_sources = bool(self._orchestrator.active_sources)
         self.verify_panel.set_results(
             components, mpn_statuses, has_sources, db_mtime=db_mtime,
@@ -777,6 +789,19 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             self._apply_assignment(dialog.fields_to_write, dialog.overwrite_fields)
 
+    def _get_project_name(self) -> str:
+        """Extract project name from KiCad board filename or fallback."""
+        name = self._bridge.get_project_name()
+        return name if name else "standalone"
+
+    def _ensure_backup_manager(self) -> BackupManager:
+        """Lazily create the BackupManager on first use."""
+        mgr = getattr(self, "_backup_manager", None)
+        if mgr is None:
+            mgr = BackupManager()
+            self._backup_manager = mgr
+        return mgr
+
     def _apply_assignment(
         self, fields: dict[str, str], overwrite_fields: set[str] | None = None,
     ):
@@ -789,6 +814,29 @@ class MainWindow(QMainWindow):
         written = 0
         failed: list[tuple[str, str]] = []  # (field_name, error_msg)
         mpn_written = False
+        backup_mgr = self._ensure_backup_manager()
+        project = self._get_project_name()
+
+        # Pre-session backup (connected mode only)
+        if self._bridge.is_connected:
+            try:
+                from dataclasses import asdict
+                components = self.verify_panel.get_components()
+                comp_dicts = [asdict(c) for c in components]
+                backup_mgr.ensure_session_backup(project, comp_dicts)
+            except Exception as exc:
+                log.warning("Failed to create session backup: %s", exc)
+
+        # Capture old values before writing (comp state is still pre-write)
+        comp = self._assign_target
+        old_values: dict[str, str] = {}
+        for field_name in fields:
+            if field_name == "MPN":
+                old_values[field_name] = comp.mpn
+            elif field_name.lower() == "datasheet":
+                old_values[field_name] = comp.datasheet
+            else:
+                old_values[field_name] = comp.extra_fields.get(field_name.lower(), "")
 
         # Connected mode: write via IPC API
         if self._bridge.is_connected:
@@ -802,6 +850,11 @@ class MainWindow(QMainWindow):
                         written += 1
                         if field_name == "MPN":
                             mpn_written = True
+                        # Log successful write to undo CSV
+                        backup_mgr.log_field_change(
+                            project, ref, field_name,
+                            old_values.get(field_name, ""), value,
+                        )
                     else:
                         failed.append((field_name, "write refused by bridge"))
                 except Exception as exc:
@@ -840,6 +893,12 @@ class MainWindow(QMainWindow):
             }
         else:
             written_fields = fields
+            # Standalone mode: log all field changes to undo CSV (no snapshot)
+            for field_name, value in written_fields.items():
+                backup_mgr.log_field_change(
+                    project, ref, field_name,
+                    old_values.get(field_name, ""), value,
+                )
 
         if comp and "MPN" in written_fields:
             comp.mpn = written_fields["MPN"]
@@ -869,6 +928,84 @@ class MainWindow(QMainWindow):
         self._search_target_label.setText("")
         self.detail_panel.set_assign_target(None)
         self.results_table.set_assign_target(None)
+
+    # --- Backups ---
+
+    def _on_open_backups(self):
+        """Open the backup browser dialog."""
+        from kipart_search.gui.backup_dialog import BackupBrowserDialog
+
+        backup_mgr = self._ensure_backup_manager()
+        project = self._get_project_name()
+
+        dialog = BackupBrowserDialog(backup_mgr, project, parent=self)
+        dialog.restore_requested.connect(self._on_restore_backup)
+        dialog.exec()
+
+    def _on_restore_backup(self, component_dicts: list[dict]):
+        """Restore component fields from a backup snapshot."""
+        if not self._bridge.is_connected:
+            QMessageBox.warning(
+                self, "Not Connected",
+                "Restore requires an active KiCad connection.",
+            )
+            return
+
+        backup_mgr = self._ensure_backup_manager()
+        project = self._get_project_name()
+
+        # Safety net: create a new backup before restoring
+        try:
+            from dataclasses import asdict
+            current_components = self.verify_panel.get_components()
+            comp_dicts = [asdict(c) for c in current_components]
+            backup_mgr.reset_session()
+            backup_mgr.ensure_session_backup(project, comp_dicts)
+        except Exception as exc:
+            log.warning("Failed to create safety backup before restore: %s", exc)
+
+        restored = 0
+        failed = 0
+        for comp_dict in component_dicts:
+            ref = comp_dict.get("reference", "")
+            if not ref:
+                continue
+            for field_name in ("mpn", "datasheet"):
+                value = comp_dict.get(field_name, "")
+                if value:
+                    try:
+                        # Map field names to KiCad convention
+                        kicad_name = "MPN" if field_name == "mpn" else field_name.capitalize()
+                        ok = self._bridge.write_field(
+                            ref, kicad_name, value, allow_overwrite=True,
+                        )
+                        if ok:
+                            restored += 1
+                            backup_mgr.log_field_change(
+                                project, ref, kicad_name, "", value,
+                            )
+                    except Exception:
+                        failed += 1
+            # Restore extra fields
+            for fname, fval in comp_dict.get("extra_fields", {}).items():
+                if fval:
+                    try:
+                        ok = self._bridge.write_field(
+                            ref, fname, fval, allow_overwrite=True,
+                        )
+                        if ok:
+                            restored += 1
+                            backup_mgr.log_field_change(
+                                project, ref, fname, "", fval,
+                            )
+                    except Exception:
+                        failed += 1
+
+        msg = f"Restored {restored} field(s) across {len(component_dicts)} components."
+        if failed:
+            msg += f" ({failed} field(s) failed)"
+        self.log_panel.log(msg)
+        QMessageBox.information(self, "Restore Complete", msg)
 
     # --- Database ---
 

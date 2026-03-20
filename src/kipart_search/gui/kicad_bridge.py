@@ -101,6 +101,19 @@ class KiCadBridge:
     def is_connected(self) -> bool:
         return self._board is not None
 
+    def get_project_name(self) -> str | None:
+        """Return the board filename stem, or None if not connected."""
+        if self._board is None:
+            return None
+        try:
+            from pathlib import Path
+            name = self._board.get_filename()
+            if name:
+                return Path(name).stem
+        except Exception:
+            pass
+        return None
+
     def get_components(self) -> list[BoardComponent]:
         """Read all components from the board."""
         if not self.is_connected:
