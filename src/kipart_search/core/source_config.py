@@ -95,6 +95,30 @@ class SourceConfigManager:
     def __init__(self, config_path: Path | None = None):
         self._config_path = config_path or _config_path()
 
+    # ── Welcome flag ──────────────────────────────────────────────
+
+    def get_welcome_shown(self) -> bool:
+        """Return True if the welcome dialog has been shown previously."""
+        if not self._config_path.exists():
+            return False
+        try:
+            raw = json.loads(self._config_path.read_text(encoding="utf-8"))
+            return bool(raw.get("welcome_shown", False))
+        except (json.JSONDecodeError, OSError):
+            return False
+
+    def set_welcome_shown(self, value: bool) -> None:
+        """Persist the welcome_shown flag without overwriting other settings."""
+        raw: dict = {}
+        if self._config_path.exists():
+            try:
+                raw = json.loads(self._config_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                raw = {}
+        raw["welcome_shown"] = value
+        self._config_path.parent.mkdir(parents=True, exist_ok=True)
+        self._config_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+
     # ── Credentials ──────────────────────────────────────────────
 
     def get_credential(self, source_name: str, field_name: str) -> str | None:
@@ -161,14 +185,22 @@ class SourceConfigManager:
 
     def save_configs(self, configs: list[SourceConfig]) -> None:
         """Persist enabled/default state to config.json. Never stores secrets."""
+        # Load existing file to preserve non-source keys (e.g. welcome_shown)
+        raw: dict = {}
+        if self._config_path.exists():
+            try:
+                raw = json.loads(self._config_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                raw = {}
         data: dict[str, dict] = {}
         for cfg in configs:
             data[cfg.source_name] = {
                 "enabled": cfg.enabled,
                 "is_default": cfg.is_default,
             }
+        raw["sources"] = data
         self._config_path.parent.mkdir(parents=True, exist_ok=True)
-        self._config_path.write_text(json.dumps({"sources": data}, indent=2), encoding="utf-8")
+        self._config_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
     # ── Helpers ──────────────────────────────────────────────────
 

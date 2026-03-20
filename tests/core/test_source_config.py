@@ -258,3 +258,63 @@ class TestRegistryLookup:
     def test_get_registry_entry_not_found(self):
         entry = SourceConfigManager.get_registry_entry("NonExistent")
         assert entry is None
+
+
+# ── Welcome shown flag ────────────────────────────────────────────
+
+
+class TestWelcomeShown:
+    def test_default_false_when_no_config(self, tmp_path: Path):
+        mgr = SourceConfigManager(config_path=tmp_path / "config.json")
+        assert mgr.get_welcome_shown() is False
+
+    def test_default_false_when_flag_missing(self, tmp_path: Path):
+        config_file = tmp_path / "config.json"
+        config_file.write_text('{"sources": {}}', encoding="utf-8")
+        mgr = SourceConfigManager(config_path=config_file)
+        assert mgr.get_welcome_shown() is False
+
+    def test_set_and_get_true(self, tmp_path: Path):
+        config_file = tmp_path / "config.json"
+        mgr = SourceConfigManager(config_path=config_file)
+        mgr.set_welcome_shown(True)
+        assert mgr.get_welcome_shown() is True
+
+    def test_set_false_after_true(self, tmp_path: Path):
+        config_file = tmp_path / "config.json"
+        mgr = SourceConfigManager(config_path=config_file)
+        mgr.set_welcome_shown(True)
+        mgr.set_welcome_shown(False)
+        assert mgr.get_welcome_shown() is False
+
+    def test_set_preserves_existing_sources(self, tmp_path: Path):
+        config_file = tmp_path / "config.json"
+        mgr = SourceConfigManager(config_path=config_file)
+        # Save some source configs first
+        configs = [SourceConfig("JLCPCB", enabled=True, is_default=True)]
+        mgr.save_configs(configs)
+        # Now set welcome_shown
+        mgr.set_welcome_shown(True)
+        # Verify sources are still intact
+        raw = json.loads(config_file.read_text(encoding="utf-8"))
+        assert raw["welcome_shown"] is True
+        assert raw["sources"]["JLCPCB"]["enabled"] is True
+
+    def test_save_configs_preserves_welcome_shown(self, tmp_path: Path):
+        config_file = tmp_path / "config.json"
+        mgr = SourceConfigManager(config_path=config_file)
+        # Set welcome flag first
+        mgr.set_welcome_shown(True)
+        # Save source configs
+        configs = [SourceConfig("JLCPCB", enabled=True)]
+        mgr.save_configs(configs)
+        # Verify welcome_shown is preserved
+        raw = json.loads(config_file.read_text(encoding="utf-8"))
+        assert raw["welcome_shown"] is True
+        assert "sources" in raw
+
+    def test_corrupt_config_returns_false(self, tmp_path: Path):
+        config_file = tmp_path / "config.json"
+        config_file.write_text("not json!", encoding="utf-8")
+        mgr = SourceConfigManager(config_path=config_file)
+        assert mgr.get_welcome_shown() is False

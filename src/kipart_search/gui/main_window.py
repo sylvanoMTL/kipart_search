@@ -12,6 +12,7 @@ from PySide6.QtCore import QSettings, QThread, QTimer, Signal, Qt
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QDockWidget,
     QLabel,
     QMainWindow,
@@ -263,6 +264,9 @@ class MainWindow(QMainWindow):
         self._init_sources_from_config()
         self._update_status()
 
+        # ── First-run welcome dialog ──
+        self._check_welcome()
+
         # ── Restore saved layout (must come after all docks exist) ──
         settings = QSettings("kipart-search", "kipart-search")
         geometry = settings.value("geometry")
@@ -444,27 +448,52 @@ class MainWindow(QMainWindow):
         if default_source:
             self.search_bar.set_default_source(default_source)
 
+    def _check_welcome(self):
+        """Show the welcome dialog on first launch."""
+        from kipart_search.core.source_config import SourceConfigManager
+        from kipart_search.gui.welcome_dialog import WelcomeDialog
+
+        mgr = SourceConfigManager()
+        if mgr.get_welcome_shown():
+            return
+
+        dialog = WelcomeDialog(parent=self)
+
+        def _on_source_configured():
+            # Check if it was a download or an API configuration
+            db_path = dialog.get_db_path()
+            if db_path:
+                self._on_db_downloaded(str(db_path))
+            else:
+                configs = dialog.get_saved_configs()
+                if configs:
+                    self._apply_source_configs(configs)
+
+        dialog.source_configured.connect(_on_source_configured)
+        result = dialog.exec()
+
+        mgr.set_welcome_shown(True)
+
+        if result == QDialog.DialogCode.Rejected:
+            # User skipped — emphasise the Preferences button
+            prefs_widget = self.toolbar.widgetForAction(self._act_prefs)
+            if prefs_widget:
+                prefs_widget.setStyleSheet("font-weight: bold;")
+                self._act_prefs.setToolTip("Configure data sources to start searching")
+
+        self._update_status()
+
     def _init_jlcpcb_source(self):
         """Initialize JLCPCB source if database exists.
 
-        On first run (no DB file), prompts the user to download.
+        If the DB file is missing, silently skips (Welcome Dialog handles first-run).
         If the DB file exists but is corrupted, prompts to re-download.
         """
         db_path = JLCPCBSource.default_db_path()
         self._jlcpcb_source = JLCPCBSource(db_path)
 
         if not db_path.exists():
-            # First-run: prompt to download
-            reply = QMessageBox.question(
-                self,
-                "JLCPCB Database",
-                "No JLCPCB parts database found.\n\n"
-                "Download now? (~500 MB, provides offline search for 1M+ parts)\n\n"
-                "You can also download later from File > Download Database.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                self._on_download_db()
+            # No database — Welcome Dialog or File > Download handles this
             self.search_bar.set_sources(self._orchestrator.get_source_names())
             return
 
@@ -963,6 +992,12 @@ class MainWindow(QMainWindow):
         """Open the Source Preferences dialog."""
         from kipart_search.gui.source_preferences_dialog import SourcePreferencesDialog
         from kipart_search.core.source_config import SourceConfigManager
+
+        # Remove emphasis added by welcome-skip flow
+        prefs_widget = self.toolbar.widgetForAction(self._act_prefs)
+        if prefs_widget:
+            prefs_widget.setStyleSheet("")
+        self._act_prefs.setToolTip("Configure data sources and API keys")
 
         mgr = SourceConfigManager()
         dialog = SourcePreferencesDialog(config_manager=mgr, parent=self)
