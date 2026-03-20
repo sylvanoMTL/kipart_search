@@ -153,6 +153,7 @@ class MainWindow(QMainWindow):
         self._bridge = KiCadBridge()
         self._assign_target: BoardComponent | None = None
         self._backup_manager: BackupManager | None = None
+        self._local_assignments: dict[str, dict[str, str]] = {}  # ref → {field: value}
 
         # ── Hidden central widget (QDockWidgets fill around it) ──
         # Zero width so left/right docks fill the full window width.
@@ -235,8 +236,11 @@ class MainWindow(QMainWindow):
         self.toolbar.addAction(self._act_export)
 
         self._act_push = QAction("Push to KiCad", self)
-        self._act_push.setEnabled(False)
-        self._act_push.setToolTip("Push changes to KiCad (requires connection)")
+        self._act_push.setToolTip(
+            "KiCad 9 IPC API does not support creating symbol fields. "
+            "Expected in KiCad 10."
+        )
+        self._act_push.triggered.connect(self._on_push_to_kicad)
         self.toolbar.addAction(self._act_push)
 
         self._act_prefs = QAction("Preferences", self)
@@ -571,8 +575,8 @@ class MainWindow(QMainWindow):
         else:
             self._sources_label.setText("No sources configured")
 
-        # Update Push to KiCad button state
-        self._act_push.setEnabled(self._bridge.is_connected)
+        # Push to KiCad: always enabled but shows info dialog (KiCad 9 limitation)
+        self._act_push.setEnabled(True)
 
     def _set_action_status(self, text: str):
         """Update the right zone of the status bar with an action message."""
@@ -694,6 +698,22 @@ class MainWindow(QMainWindow):
         if self._backup_manager is not None:
             self._backup_manager.reset_session()
 
+        # Re-apply local assignments that couldn't be written to KiCad
+        restored = 0
+        if self._local_assignments:
+            for comp in components:
+                local_fields = self._local_assignments.get(comp.reference)
+                if not local_fields:
+                    continue
+                for fn, fv in local_fields.items():
+                    if fn == "MPN":
+                        comp.mpn = fv
+                    comp.extra_fields[fn.lower()] = fv
+                # Update status to GREEN since MPN is assigned locally
+                if "MPN" in local_fields:
+                    mpn_statuses[comp.reference] = Confidence.GREEN
+                    restored += 1
+
         has_sources = bool(self._orchestrator.active_sources)
         self.verify_panel.set_results(
             components, mpn_statuses, has_sources, db_mtime=db_mtime,
@@ -703,6 +723,11 @@ class MainWindow(QMainWindow):
         self._act_export.setEnabled(True)
         self._menu_export.setEnabled(True)
         self._set_action_status(f"Scan complete: {len(components)} components")
+
+        if restored > 0:
+            self.log_panel.log(
+                f"Restored {restored} local MPN assignment(s) — not yet in KiCad"
+            )
 
         # Log stale detection results
         stale_count = sum(
@@ -722,6 +747,18 @@ class MainWindow(QMainWindow):
         self._act_scan.setEnabled(True)
         self.verify_panel.reverify_button.setEnabled(True)
         self._set_action_status("Scan failed")
+
+    def _on_push_to_kicad(self):
+        """Inform user that Push to KiCad is not available in KiCad 9."""
+        QMessageBox.information(
+            self,
+            "Push to KiCad — Not Available Yet",
+            "KiCad 9 IPC API only supports the PCB editor.\n\n"
+            "Custom symbol fields (MPN, Manufacturer, etc.) cannot be "
+            "created via the current API. This feature is expected in "
+            "KiCad 10 when schematic editor API support is added.\n\n"
+            "Your local MPN assignments are preserved for BOM export.",
+        )
 
     def _on_export_bom(self):
         """Open the BOM export dialog."""
@@ -895,7 +932,8 @@ class MainWindow(QMainWindow):
             else:
                 old_values[field_name] = comp.extra_fields.get(field_name.lower(), "")
 
-        # Connected mode: write via IPC API
+        # Connected mode: try to write via IPC API, fall back to local state
+        local_only: list[str] = []  # fields assigned locally (not in KiCad)
         if self._bridge.is_connected:
             for field_name, value in fields.items():
                 try:
@@ -913,12 +951,24 @@ class MainWindow(QMainWindow):
                             old_values.get(field_name, ""), value,
                         )
                     else:
-                        failed.append((field_name, "write refused by bridge"))
+                        # Field doesn't exist on footprint — assign locally
+                        local_only.append(field_name)
                 except Exception as exc:
                     failed.append((field_name, str(exc)))
 
             if written > 0:
                 self.log_panel.log(f"Wrote {written} field(s) to {ref} via KiCad")
+            if local_only:
+                # Track local assignments so re-verify can restore them
+                if ref not in self._local_assignments:
+                    self._local_assignments[ref] = {}
+                for fn in local_only:
+                    self._local_assignments[ref][fn] = fields[fn]
+                self.log_panel.log(
+                    f"Assigned {len(local_only)} field(s) to {ref} locally "
+                    f"({', '.join(local_only)}) — KiCad 9 IPC API cannot "
+                    f"create new symbol fields. BOM export will include them."
+                )
             if failed:
                 fail_lines = [f"  {fn}: {err}" for fn, err in failed]
                 fail_msg = "\n".join(fail_lines)
@@ -927,12 +977,12 @@ class MainWindow(QMainWindow):
                 )
                 QMessageBox.warning(
                     self,
-                    "Write-Back Partial Failure",
+                    "Write-Back Error",
                     f"Some fields could not be written to {ref}:\n\n{fail_msg}",
                 )
 
-        # Total failure in connected mode: do not update in-memory state
-        if self._bridge.is_connected and written == 0 and failed:
+        # Total failure (exceptions only) in connected mode: skip in-memory update
+        if self._bridge.is_connected and written == 0 and not local_only and failed:
             self.log_panel.log(f"No fields written to {ref} — skipping in-memory update")
             self._assign_target = None
             self._search_target_label.setText("")
@@ -941,7 +991,7 @@ class MainWindow(QMainWindow):
             return
 
         # Update component in-memory (both modes)
-        # In connected mode, only update fields that were actually written
+        # Include IPC-written fields + local-only fields; exclude hard failures
         comp = self._assign_target
         if self._bridge.is_connected:
             failed_names = {fn for fn, _ in failed}
@@ -957,6 +1007,9 @@ class MainWindow(QMainWindow):
                     old_values.get(field_name, ""), value,
                 )
 
+        # MPN counts as assigned if written to KiCad OR assigned locally
+        mpn_assigned = mpn_written or "MPN" in local_only
+
         if comp and "MPN" in written_fields:
             comp.mpn = written_fields["MPN"]
         if comp:
@@ -967,19 +1020,15 @@ class MainWindow(QMainWindow):
                     f"Assigned {len(written_fields)} field(s) to {ref} (in-memory)"
                 )
 
-        # Live-update the verify panel — only GREEN if MPN was written
-        # (or already present, or standalone mode)
-        if self._bridge.is_connected:
-            if mpn_written or "MPN" not in fields:
-                self.verify_panel.update_component_status(ref, Confidence.GREEN)
-                self.log_panel.log(f"{ref} status updated to Verified")
-            else:
-                self.log_panel.log(
-                    f"{ref} MPN write failed — status not changed to Verified"
-                )
-        else:
+        # Live-update the verify panel — GREEN if MPN was assigned (IPC or local)
+        if mpn_assigned or "MPN" not in fields:
             self.verify_panel.update_component_status(ref, Confidence.GREEN)
-            self.log_panel.log(f"{ref} status updated to Verified")
+            pct = self.verify_panel.get_health_percentage()
+            self.log_panel.log(f"{ref} status updated to Verified — BOM health: {pct}%")
+        elif self._bridge.is_connected:
+            self.log_panel.log(
+                f"{ref} MPN write failed — status not changed to Verified"
+            )
 
         self._assign_target = None
         self._search_target_label.setText("")

@@ -232,7 +232,14 @@ class KiCadBridge:
                     self._board.update_items(fp)
                     return True
 
-            log.warning("Field '%s' not found on %s", field_name, reference)
+            # Field doesn't exist on footprint — KiCad stores custom fields
+            # on schematic symbols, not PCB footprints.  The IPC API (KiCad 9)
+            # only exposes the PCB editor, so we cannot create new symbol fields.
+            # Return False so the caller can fall back to local-state assignment.
+            log.info(
+                "Field '%s' not found on %s — schematic field creation "
+                "not supported by KiCad 9 IPC API", field_name, reference,
+            )
             return False
         except Exception as e:
             log.warning("Failed to write field '%s' on %s: %s", field_name, reference, e)
