@@ -38,6 +38,7 @@ class WelcomeDialog(QDialog):
 
         self._worker: DownloadWorker | None = None
         self._db_path: Path | None = None
+        self._saved_configs: list = []
 
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
@@ -203,4 +204,4 @@ class WelcomeDialog(QDialog):
 
     def get_saved_configs(self) -> list:
         """Return configs saved via the Configure API option."""
-        return getattr(self, "_saved_configs", [])
+        return self._saved_configs
