@@ -51,6 +51,12 @@ FR32: Designer can store and manage API keys for distributor adapters (DigiKey, 
 FR33: Designer can use the application fully offline after initial database download
 FR34: Designer can access a Help/About dialog with app name, version, author, and license information
 FR35: Designer can see a clear status indicator showing current data mode (e.g., "Local DB" vs "Online - 3 sources active")
+FR36: Developer can compile the application into a standalone binary (no Python installation required) using Nuitka
+FR37: Compiled binary retains full functionality: PySide6 GUI, keyring, httpx, openpyxl, SQLite, and optional kicad-python
+FR38: Application supports a license key system with revised free/paid tier split: free tier includes JLCPCB search, KiCad scan/highlight, basic verification, single-component write-back, CSV export; paid tier gates multi-distributor search, CM BOM exports, full verification, batch write-back, Excel export
+FR39: License validation works both online (LemonSqueezy/Gumroad API) and offline (signed JWT fallback), with one-time license fee (not subscription)
+FR40: Compiled binary distributed as a Windows zip package (standalone folder with .exe); installer (NSIS/Inno Setup) deferred to later story
+FR41: Build pipeline produces platform-specific packages for Linux AppImage and macOS .app bundle (deferred to future Epic 8)
 
 ### NonFunctional Requirements
 
@@ -69,6 +75,10 @@ NFR12: Database corruption recovery: if the JLCPCB parts database is corrupted, 
 NFR13: Write-back operations are atomic per component - a failed write to one component does not affect others
 NFR14: Application runs on Windows 10/11, Linux (Ubuntu 22.04+, Fedora 38+), and macOS 12+ without platform-specific code paths in core logic
 NFR15: All file paths use platform-agnostic handling (no hardcoded separators or OS-specific paths)
+NFR16: No GPL-licensed dependencies may be added to the project (GPL firewall) — enforced by build pipeline check
+NFR17: PySide6 LGPL compliance maintained — Qt DLLs must remain dynamically linked in compiled builds
+NFR18: Nuitka build includes all dynamic imports (keyring backends, httpx transports) without runtime import errors
+NFR19: Compiled binary cold start remains under 5 seconds (consistent with NFR5)
 
 ### Additional Requirements
 
@@ -86,6 +96,15 @@ NFR15: All file paths use platform-agnostic handling (no hardcoded separators or
 - **Package extraction**: `_extract_package_from_footprint()` may need to move from kicad_bridge.py to core/ for bom_export.py access.
 - **New files for Phase 1**: `core/bom_export.py`, `gui/export_dialog.py`, `gui/detail_panel.py`, `tests/core/test_bom_export.py`.
 - **Implementation priority from Architecture**: (1) QDockWidget migration, (2) Cache DB, (3) BOM export engine, (4) Deduplication (Phase 2), (5) DigiKey adapter (Phase 2), (6) Write-back investigation (parallel).
+- **Nuitka compilation**: Standalone binary build via `nuitka --standalone --enable-plugin=pyside6`. Requires `--include-package=keyring.backends` for dynamic backend discovery. `kicad-python` remains optional with graceful ImportError handling.
+- **GPL firewall**: All new dependencies must be MIT/BSD/Apache-compatible. DigiKey adapter uses own httpx client (ADR-04). Never vendor code from GPL projects (Ki-nTree, peeter123/digikey-api).
+- **License gating architecture**: `core/license.py` module with feature flags. Free tier always available (JLCPCB search, BOM export). Paid features gated behind `license.has("pro")`. Online validation via LemonSqueezy/Gumroad with offline signed-JWT fallback.
+- **Installer packaging**: Windows via NSIS or Inno Setup wrapping Nuitka `--standalone` output. Linux via AppImage. macOS via .app bundle. CI pipeline for all 3 platforms.
+- **PySide6 LGPL compliance**: Nuitka standalone mode keeps Qt DLLs as separate shared libraries (dynamic linking), satisfying LGPL requirements for proprietary distribution.
+- **License gating pattern**: Use class-level capability checks (`raise FeatureNotAvailable("pro")` in `__init__`), not bare `if not license.has()` conditionals. Harder to patch in compiled binary without over-engineering.
+- **Pricing model**: One-time license fee ($30-50 range), not subscription. KiCad community culture strongly resists SaaS/subscription tooling.
+- **Distribution strategy**: Windows zip first (Nuitka `--standalone` output folder). Installer (Start Menu, file associations) as a follow-up story. Cross-platform (Linux, macOS) deferred to Epic 8.
+- **Revised free/paid tier split (War Room consensus)**: Free tier must be genuinely useful (search + scan + basic verify + single write-back). Pro tier gates productivity-at-scale features (batch ops, multi-distributor, CM exports). Upgrade trigger: when 70+ component boards make one-by-one clicking painful.
 
 ### UX Design Requirements
 
@@ -145,6 +164,12 @@ FR32: Epic 6 - Store/manage API keys via OS-native storage
 FR33: Epic 4 - Full offline use after database download
 FR34: Epic 1, 6 - Help/About dialog
 FR35: Epic 1, 6 - Data mode status indicator
+FR36: Epic 7 - Nuitka standalone binary compilation
+FR37: Epic 7 - Compiled binary full functionality verification
+FR38: Epic 7 - License key system (revised free/paid tier split)
+FR39: Epic 7 - Online + offline license validation (one-time fee)
+FR40: Epic 7 - Windows zip distribution package
+FR41: Epic 8 (future) - Cross-platform builds (Linux, macOS)
 
 ## Epic List
 
@@ -183,6 +208,11 @@ Designers can configure which data sources are active, enter and validate API ke
 **FRs covered:** FR32, FR34, FR35
 **UX-DRs covered:** UX-DR7, UX-DR8
 **NFRs addressed:** NFR6, NFR7
+
+### Epic 7: Build Pipeline & Distribution (Windows)
+Developers can compile KiPart Search into a standalone Windows binary using Nuitka, enforce dependency license compliance, and gate premium features behind a one-time license key — enabling closed-source distribution and monetization without requiring end-users to install Python. Free tier remains genuinely useful (JLCPCB search, scan, basic verify, single write-back). Pro tier gates productivity-at-scale features (multi-distributor, CM exports, batch write-back, full verification).
+**FRs covered:** FR36, FR37, FR38, FR39, FR40
+**NFRs addressed:** NFR14, NFR16, NFR17, NFR18, NFR19
 
 ---
 
@@ -723,6 +753,52 @@ So that my KiCad project carries all manufacturing references and future BOM exp
 - Add-never-overwrite is the default — matches existing UX-DR17 spec
 - Undo log records every change for auditability
 
+### Story 5.8: Dual-Source Scan (Schematic + PCB)
+
+As a designer,
+I want the scan to read component data from both my `.kicad_sch` schematic files and the PCB via IPC API,
+So that I see all components (including unplaced ones), get the most up-to-date field values, and get warned when the PCB is out of sync with the schematic.
+
+**Acceptance Criteria:**
+
+**Given** the app is connected to KiCad and a board scan is initiated
+**When** the scan reads components from the PCB via IPC API
+**Then** the system also reads symbol properties from all `.kicad_sch` files in the project directory via `core/kicad_sch.py`
+**And** for each component, the scan merges data from both sources: schematic fields take priority over PCB fields for MPN, Manufacturer, and other custom properties (schematic is the source of truth)
+
+**Given** a component exists in the schematic but has no footprint placed on the PCB
+**When** the verification dashboard displays results
+**Then** that component appears in the table with a distinct "Not on PCB" status indicator
+**And** click-to-highlight is unavailable for that component (no footprint to select)
+**And** the health summary bar counts these components under "Needs attention"
+**And** the log panel reports: "N component(s) found in schematic but not placed on PCB"
+
+**Given** a component's schematic symbol has field values (e.g. MPN) that differ from the PCB footprint fields
+**When** the verification dashboard displays results
+**Then** that component shows an amber "PCB out of sync" indicator
+**And** a tooltip or detail text reads: "Schematic has MPN '[value]' but PCB does not — run Update PCB from Schematic (F8) in KiCad"
+
+**Given** one or more components are detected as out of sync or not on PCB
+**When** the scan completes
+**Then** a banner or log message warns: "N component(s) need attention — run Update PCB from Schematic (F8) in KiCad, then re-scan."
+
+**Given** all components have matching fields between PCB and schematic and all are placed
+**When** the scan completes
+**Then** no sync warning is shown — the scan proceeds as normal
+
+**Given** the app cannot locate the `.kicad_sch` project files (e.g. standalone mode, project directory not resolvable)
+**When** the scan runs
+**Then** schematic reading is silently skipped — the scan works exactly as before (PCB-only)
+**And** no error is shown (graceful degradation)
+
+**Technical constraints:**
+- Merge logic lives in `core/` (zero GUI dependencies) — e.g. `merge_pcb_sch(pcb_components: list[BoardComponent], sch_symbols: list[SchSymbol]) -> list[MergedComponent]`
+- A new `MergedComponent` dataclass or extended `BoardComponent` carries a `source` flag indicating: `both`, `pcb_only`, `sch_only`, and a `sync_mismatches: list[str]` for differing fields
+- Schematic file discovery reuses `kicad_sch.find_schematic_files()` and `read_symbols()`
+- The scan worker thread handles schematic reads in background (no GUI blocking)
+- Schematic lock files do NOT prevent read access — only writes are blocked by locks
+- This is read-only — no `.kicad_sch` file modification occurs
+
 ---
 
 ## Epic 6: Source Configuration & First-Run Experience
@@ -787,3 +863,116 @@ So that I can start searching immediately without reading documentation.
 **Given** a returning user who has previously configured sources
 **When** the application launches
 **Then** the Welcome Dialog does not appear — the app opens directly to the main window
+
+---
+
+## Epic 7: Build Pipeline & Distribution (Windows)
+
+Developers can compile KiPart Search into a standalone Windows binary using Nuitka, enforce dependency license compliance, and gate premium features behind a one-time license key — enabling closed-source distribution and monetization without requiring end-users to install Python. Free tier remains genuinely useful (JLCPCB search, scan, basic verify, single write-back). Pro tier gates productivity-at-scale features (multi-distributor, CM exports, batch write-back, full verification).
+
+### Story 7.1: Minimal Nuitka Build
+
+As a developer,
+I want to compile KiPart Search into a standalone Windows binary using Nuitka that launches and displays the main window,
+So that I have a working build pipeline foundation for closed-source distribution.
+
+**Acceptance Criteria:**
+
+**Given** the project source code with all dependencies installed
+**When** the developer runs the Nuitka build script
+**Then** a `dist/` folder is produced containing a standalone `kipart-search.exe` and all required DLLs
+**And** PySide6 Qt plugins (platforms, imageformats, styles) are correctly included via `--enable-plugin=pyside6`
+**And** the compiled binary launches and displays the main window without errors
+**And** `keyring.backends` are included via `--include-package` to resolve dynamic import discovery
+**And** SSL certificates are bundled for `httpx` HTTPS requests
+**And** the build script is a single Python file (`build_nuitka.py`) that can be run reproducibly
+**And** a GPL firewall check runs before compilation: parses `pip-licenses` output and fails the build if any GPL dependency is detected (NFR16)
+**And** PySide6 Qt DLLs remain as separate shared libraries in the output (dynamic linking, satisfying LGPL — NFR17)
+
+### Story 7.2: Compiled Binary Full Functionality Verification
+
+As a developer,
+I want to verify that all application features work correctly in the compiled binary,
+So that I can be confident the distributed build matches the development experience.
+
+**Acceptance Criteria:**
+
+**Given** the compiled binary from Story 7.1
+**When** the developer runs the smoke test checklist against the compiled binary
+**Then** JLCPCB database download completes with progress indication
+**And** full-text search returns results in under 5 seconds (NFR19)
+**And** KiCad IPC connection works when KiCad is running (kicad-python optional import resolved)
+**And** KiCad scan, highlight, and single-component write-back function correctly
+**And** BOM export produces valid Excel and CSV files (openpyxl working)
+**And** keyring stores and retrieves API keys via the OS-native backend
+**And** the verify panel displays component status with colour-coded indicators
+**And** all QDockWidget panels dock, float, and persist layout via QSettings
+**And** a smoke test script (`tests/smoke_test_build.py`) documents the manual verification checklist with pass/fail recording
+**And** any Nuitka `--include-*` flags needed to fix broken features are added to the build script
+
+### Story 7.3: License Module and Feature Gating
+
+As a developer,
+I want a license module that validates a one-time license key and gates premium features behind class-level capability checks,
+So that free and paid tiers are enforced in both development and compiled builds.
+
+**Acceptance Criteria:**
+
+**Given** the application starts without a license key
+**When** the user launches the app
+**Then** the free tier is fully functional: JLCPCB search, KiCad scan/highlight, basic verification (MPN present/missing), single-component write-back, CSV export
+**And** Pro-gated features show a disabled state with tooltip "Requires Pro license": multi-distributor search, CM BOM export templates, full verification (datasheet/footprint checks), batch write-back, Excel export
+
+**Given** the user enters a valid license key in the Preferences dialog
+**When** the key is validated online via LemonSqueezy/Gumroad API
+**Then** all Pro features become available immediately without restart
+**And** the license key is stored securely via `keyring`
+**And** the status bar shows "Pro" badge
+
+**Given** the app has a cached valid license but no internet connection
+**When** the user launches the app offline
+**Then** the offline signed-JWT fallback validates the cached key
+**And** Pro features remain available
+
+**Given** a Pro-gated feature class (e.g., `BatchWriteBack`, `CMBOMExport`)
+**When** instantiated without a valid Pro license
+**Then** a `FeatureNotAvailable("pro")` exception is raised at `__init__` level (class-level gating, not bare conditionals)
+**And** the `core/license.py` module contains the `License` class, feature registry, and validation logic
+**And** the pricing model is one-time fee (not subscription) — no expiry check on valid keys
+
+### Story 7.4: Windows Zip Distribution Package
+
+As a developer,
+I want to package the compiled binary as a distributable zip file for Windows,
+So that end-users can download, unzip, and run KiPart Search without installing Python.
+
+**Acceptance Criteria:**
+
+**Given** a successful Nuitka build from Story 7.1
+**When** the developer runs the packaging step in the build script
+**Then** a `kipart-search-{version}-windows.zip` file is produced containing the standalone folder
+**And** the zip includes a top-level `kipart-search/` folder with `kipart-search.exe` at its root
+**And** the zip includes a `README.txt` with: quick start instructions, system requirements (Windows 10/11), and link to documentation
+**And** the zip file size is documented (baseline for tracking bloat)
+**And** a fresh Windows machine (no Python installed) can unzip and run `kipart-search.exe` successfully
+**And** the build script has a `--package` flag that produces the zip after compilation
+**And** version number is read from `pyproject.toml` and embedded in the zip filename and the app's About dialog
+
+### Story 7.5: CI Build Pipeline
+
+As a developer,
+I want an automated CI pipeline that compiles, tests, and packages the Windows binary on every tagged release,
+So that distribution builds are reproducible and not dependent on my local machine.
+
+**Acceptance Criteria:**
+
+**Given** a GitHub Actions workflow file (`.github/workflows/build-windows.yml`)
+**When** a version tag (`v*.*.*`) is pushed to the repository
+**Then** the pipeline installs Python 3.10+, project dependencies, and Nuitka
+**And** the GPL firewall check runs and fails the pipeline if GPL deps are detected
+**And** the Nuitka build script executes and produces the standalone binary
+**And** the smoke test script runs basic validation (app launches, exits cleanly)
+**And** the zip package is produced with correct version in filename
+**And** the zip is uploaded as a GitHub Release asset attached to the tag
+**And** the pipeline completes in under 30 minutes
+**And** build artifacts are cached between runs where possible (Nuitka ccache, pip cache)
