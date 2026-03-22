@@ -1,6 +1,6 @@
 # Story 7.1: Minimal Nuitka Build
 
-Status: review
+Status: done
 
 ## Story
 
@@ -214,6 +214,7 @@ Claude Opus 4.6 (1M context)
 ### Debug Log References
 - Nuitka flagged as AGPL during GPL firewall check — resolved by adding BUILD_ONLY exclusion set for build-only tools (Nuitka, pip-licenses, pytest) that are not bundled in the distributed binary
 - Build produced `__main__.exe` (Nuitka default naming from `__main__.py` entry point) — 68 files, 115 MB total in `dist/__main__.dist/`
+- Code review fix: added `--output-filename=kipart-search` flag and updated dist_path to `kipart-search.dist` to match AC #1
 
 ### Completion Notes List
 - **Task 1**: `check_licenses()` implemented in `build_nuitka.py` with BUILD_ONLY exclusion set for dev/build tools. Runs `piplicenses --format=json`, checks for GPL (excluding LGPL), prints pass/fail report. 42 packages checked, all clean.
@@ -224,9 +225,11 @@ Claude Opus 4.6 (1M context)
 
 ### Change Log
 - 2026-03-22: Implemented Story 7.1 — Nuitka build script with GPL firewall, keyring fallback, verified binary launch
+- 2026-03-22: Code review fixes — added `--output-filename=kipart-search` (AC #1), replaced naive version parsing with `tomllib`, added `nuitka-crash-report.xml` to `.gitignore`
 
 ### File List
 - `build_nuitka.py` (new) — Nuitka build script with GPL firewall check
 - `pyproject.toml` (modified) — added `pip-licenses` to dev dependencies
 - `src/kipart_search/__main__.py` (modified) — added `_init_keyring_compiled()` fallback
 - `tests/test_build_nuitka.py` (new) — 7 unit tests for build script and keyring fallback
+- `.gitignore` (modified) — added `nuitka-crash-report.xml`

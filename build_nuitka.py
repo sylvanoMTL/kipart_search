@@ -49,13 +49,10 @@ def check_licenses() -> None:
 def read_version() -> str:
     """Read version from pyproject.toml and return X.X.X.X quad format."""
     pyproject = Path(__file__).parent / "pyproject.toml"
-    version = "0.0.0"
-    for line in pyproject.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if stripped.startswith("version") and "=" in stripped:
-            # version = "0.1.0"
-            version = stripped.split("=", 1)[1].strip().strip('"').strip("'")
-            break
+    import tomllib
+    with open(pyproject, "rb") as f:
+        data = tomllib.load(f)
+    version = data.get("project", {}).get("version", "0.0.0")
     # Convert to quad format: 0.1.0 -> 0.1.0.0
     parts = version.split(".")
     while len(parts) < 4:
@@ -76,6 +73,7 @@ def build(output_dir: str = "dist") -> None:
         "--include-package=keyring.backends",
         "--assume-yes-for-downloads",
         "--windows-console-mode=disable",
+        "--output-filename=kipart-search",
         f"--output-dir={output_dir}",
         f"--windows-company-name=MecaFrog",
         f"--windows-product-name=KiPart Search",
@@ -92,7 +90,7 @@ def build(output_dir: str = "dist") -> None:
     subprocess.run(nuitka_cmd, check=True)
 
     # Print summary
-    dist_path = Path(output_dir) / "__main__.dist"
+    dist_path = Path(output_dir) / "kipart-search.dist"
     if dist_path.exists():
         files = list(dist_path.rglob("*"))
         file_count = sum(1 for f in files if f.is_file())

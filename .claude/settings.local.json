@@ -96,7 +96,25 @@
       "Bash(ls *)",
       "Bash(type *)",
       "Bash(dir *)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(gh issue:*)",
+      "Bash(where gh:*)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" issue list --state open --limit 20)",
+      "Bash(\"/c/Program Files \\(x86\\)/GitHub CLI/gh.exe\" issue list --state open --limit 20)",
+      "Bash(cmd.exe /c \"gh issue list --state open --limit 20\")",
+      "WebFetch(domain:github.com)",
+      "Bash(find /c/Git_Repo_Clones/kipart-search -name *5-4* -o -name *safety*)",
+      "Bash(gh --version)",
+      "Bash(find /c/Git_Repo_Clones/kipart-search -type f -name *.md -o -name *example*)",
+      "Bash(find /c/Git_Repo_Clones/kipart-search/.env/Lib/site-packages/kicad_python* -name \"*.md\" -o -name \"README*\")",
+      "WebFetch(domain:dev-docs.kicad.org)",
+      "Bash(cmd.exe /c \"where gh\")",
+      "Bash(gh auth:*)",
+      "Bash(find /c/Git_Repo_Clones/kipart-search -name *.kicad_sch -type f)",
+      "Bash(find /c/Git_Repo_Clones/kipart-search -name *.md -type f -exec grep -l \"escaped\\\\|escape\\\\|quote\" {})",
+      "Bash(2)",
+      "Bash(find c:/Git_Repo_Clones/kipart-search/_bmad-output/implementation-artifacts/ -type f -name *5-[56]*)",
+      "Bash(find c:/Git_Repo_Clones/kipart-search/_bmad-output/ -name *.md -o -name *.yaml)"
     ]
   }
 }

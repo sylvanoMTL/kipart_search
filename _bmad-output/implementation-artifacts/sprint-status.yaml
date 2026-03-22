@@ -1,5 +1,5 @@
 # generated: 2026-03-17
-# last_updated: 2026-03-17
+# last_updated: 2026-03-22
 # project: kipart-search
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-22  # Story 5.8 complete
+last_updated: 2026-03-22  # Story 7.1 code review done
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -95,7 +95,7 @@ development_status:
 
   # Epic 7: Build Pipeline & Distribution (Windows)
   epic-7: in-progress
-  7-1-minimal-nuitka-build: review
+  7-1-minimal-nuitka-build: done
   7-2-compiled-binary-full-functionality-verification: backlog
   7-3-license-module-and-feature-gating: backlog
   7-4-windows-zip-distribution-package: backlog
