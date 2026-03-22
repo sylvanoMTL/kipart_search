@@ -183,6 +183,18 @@ class TestReadSymbols:
         assert "Device:C" in lib_ids  # placed C1
         assert len(symbols) == 2  # only placed, not library defs
 
+    def test_escaped_quotes_in_property_value(self, tmp_path: Path):
+        """Property values containing escaped quotes must be read correctly."""
+        sch_content = MINIMAL_SCH.replace(
+            '(property "Datasheet" "~" (at 123.19 57.15 0)',
+            '(property "Datasheet" "http://example.com/\\"quoted\\"" (at 123.19 57.15 0)',
+        )
+        sch = tmp_path / "test.kicad_sch"
+        sch.write_text(sch_content, encoding="utf-8")
+        symbols = read_symbols(sch)
+        r1 = next(s for s in symbols if s.reference == "R1")
+        assert r1.fields["Datasheet"] == 'http://example.com/\\"quoted\\"'
+
 
 # ---------------------------------------------------------------------------
 # Task 2: set_field
@@ -252,6 +264,22 @@ class TestSetField:
         # Check within the property block for 'hide'
         prop_area = content[idx:idx + 200]
         assert "hide" in prop_area
+
+    def test_overwrite_field_with_escaped_quotes(self, tmp_path: Path):
+        """Overwriting a field whose old value has escaped quotes must work."""
+        sch_content = MINIMAL_SCH.replace(
+            '(property "MPN" "GRM21BR71C104KA01L"',
+            '(property "MPN" "GRM\\"21BR\\"71"',
+        )
+        sch = tmp_path / "test.kicad_sch"
+        sch.write_text(sch_content, encoding="utf-8")
+
+        result = set_field(sch, "C1", "MPN", "NEW_CLEAN_VALUE", allow_overwrite=True)
+        assert result is True
+
+        symbols = read_symbols(sch)
+        c1 = next(s for s in symbols if s.reference == "C1")
+        assert c1.fields["MPN"] == "NEW_CLEAN_VALUE"
 
     def test_nonexistent_reference_returns_false(self, tmp_path: Path):
         sch = tmp_path / "test.kicad_sch"

@@ -1,6 +1,6 @@
 # Story 5.6: Schematic File Parser Module
 
-Status: review
+Status: done
 
 ## Story
 
@@ -201,10 +201,11 @@ Claude Opus 4.6 (1M context)
 
 ### Change Log
 - 2026-03-21: Implemented Story 5.6 — `core/kicad_sch.py` S-expression parser with depth-counting, field read/write, sub-sheet discovery, lock detection. 22 new tests added. Manual validation on real KiCad 9 project (81 symbols) passed.
+- 2026-03-22: Code review fixes — Fixed regex patterns (`_PROPERTY_RE`, `set_field` field_pattern, `_find_symbol_block` ref_pattern) to handle escaped quotes in property values. Hardened `_find_insertion_point()` for compact/single-line symbol blocks. 2 new edge-case tests added (24 total).
 
 ### File List
 - `src/kipart_search/core/kicad_sch.py` — NEW: KiCad schematic file parser and field writer
-- `tests/core/test_kicad_sch.py` — NEW: 20 automated tests for kicad_sch module
+- `tests/core/test_kicad_sch.py` — NEW: 24 automated tests for kicad_sch module
 - `tests/manual_tests/sample_project/sample.kicad_pro` — NEW: sample KiCad project file for manual testing
 - `tests/manual_tests/sample_project/sample.kicad_sch` — NEW: sample root schematic with R1, R2, C1 + sub-sheet reference
 - `tests/manual_tests/sample_project/power.kicad_sch` — NEW: sample sub-sheet with C10, C11

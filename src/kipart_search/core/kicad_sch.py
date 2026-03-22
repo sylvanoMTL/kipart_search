@@ -83,7 +83,8 @@ def _find_block(text: str, start_pos: int) -> tuple[int, int]:
 # ---------------------------------------------------------------------------
 
 # Regex for extracting property name/value from an already-isolated block.
-_PROPERTY_RE = re.compile(r'\(property\s+"([^"]*?)"\s+"([^"]*?)"')
+# Handles escaped quotes (e.g. "he said \"hello\"") via (?:[^"\\]|\\.)*.
+_PROPERTY_RE = re.compile(r'\(property\s+"((?:[^"\\]|\\.)*)"\s+"((?:[^"\\]|\\.)*)"')
 
 # Regex for extracting (at x y angle) from a symbol block.
 _AT_RE = re.compile(r'\(at\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\)')
@@ -200,7 +201,7 @@ def set_field(
 
     # Check if the field already exists in this block.
     field_pattern = re.compile(
-        r'\(property\s+"' + re.escape(field_name) + r'"\s+"([^"]*?)"'
+        r'\(property\s+"' + re.escape(field_name) + r'"\s+"((?:[^"\\]|\\.)*)"'
     )
     field_match = field_pattern.search(block)
 
@@ -275,7 +276,7 @@ def _find_symbol_block(
         block = text[block_start:block_end]
 
         # Check if this block's Reference matches.
-        ref_m = re.search(r'\(property\s+"Reference"\s+"([^"]*?)"', block)
+        ref_m = re.search(r'\(property\s+"Reference"\s+"((?:[^"\\]|\\.)*)"', block)
         if ref_m and ref_m.group(1) == reference:
             return block_start, block_end
 
@@ -290,9 +291,15 @@ def _find_insertion_point(block: str) -> int:
     Insert before the first ``(pin ...)`` line, or before the closing
     ``)``, whichever comes first.
     """
+    # Try multiline first: (pin on its own line.
     pin_match = re.search(r'\n(\s*)\(pin\s', block)
     if pin_match:
         return pin_match.start() + 1  # after the newline
+
+    # Try inline (pin — no preceding newline (single-line or compact format).
+    pin_inline = re.search(r'\(pin\s', block)
+    if pin_inline:
+        return pin_inline.start()
 
     # No pin lines — insert before the closing ')'.
     # Find the last ')' and go back to the start of that line.

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-21  # Story 5.6 implementation complete, in review
+last_updated: 2026-03-22  # Story 5.6 code review passed, done
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -82,7 +82,7 @@ development_status:
   5-3-mpn-assignment-with-preview-dialog: done
   5-4-write-back-safety-guards: done
   5-5-backup-system-and-undo-log: done
-  5-6-schematic-file-parser-module: review  # core/kicad_sch.py S-expression parser
+  5-6-schematic-file-parser-module: done  # core/kicad_sch.py S-expression parser
   5-7-file-based-write-back-push-to-kicad: backlog  # NEW — Push to KiCad via .kicad_sch modification
   epic-5-retrospective: optional
 
