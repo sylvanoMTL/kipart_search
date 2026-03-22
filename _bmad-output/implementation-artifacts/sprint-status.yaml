@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-22
+last_updated: 2026-03-22  # Story 5.8 complete
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -76,7 +76,7 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5: Safe KiCad Write-Back & Assignment
-  epic-5: in-progress  # reopened: stories 5.6, 5.7, 5.8 added
+  epic-5: done  # all stories complete including 5.6, 5.7, 5.8 additions
   5-1-kicad-connection-and-board-scan: done
   5-2-click-to-highlight-cross-probe: done
   5-3-mpn-assignment-with-preview-dialog: done
@@ -84,7 +84,7 @@ development_status:
   5-5-backup-system-and-undo-log: done
   5-6-schematic-file-parser-module: done  # core/kicad_sch.py S-expression parser
   5-7-file-based-write-back-push-to-kicad: done  # Push to KiCad via .kicad_sch modification
-  5-8-dual-source-scan-schematic-pcb: backlog  # Merge schematic + PCB data during scan
+  5-8-dual-source-scan-schematic-pcb: done  # Merge schematic + PCB data during scan
   epic-5-retrospective: optional
 
   # Epic 6: Source Configuration & First-Run Experience
@@ -95,7 +95,7 @@ development_status:
 
   # Epic 7: Build Pipeline & Distribution (Windows)
   epic-7: in-progress
-  7-1-minimal-nuitka-build: ready-for-dev
+  7-1-minimal-nuitka-build: review
   7-2-compiled-binary-full-functionality-verification: backlog
   7-3-license-module-and-feature-gating: backlog
   7-4-windows-zip-distribution-package: backlog

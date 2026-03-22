@@ -288,6 +288,8 @@ class BoardComponent:
     extra_fields: dict[str, str] = field(default_factory=dict)
     verified_at: float | None = None    # time.time() when MPN verification completed
     verified_source: str | None = None  # source name used for verification (e.g. "JLCPCB")
+    source: str = "pcb_only"  # "both", "pcb_only", or "sch_only"
+    sync_mismatches: list[str] = field(default_factory=list)  # human-readable field diffs
 
     @property
     def has_mpn(self) -> bool:

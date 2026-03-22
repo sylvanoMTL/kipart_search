@@ -33,6 +33,10 @@ COLORS = {
     Confidence.RED: QColor(255, 200, 200),      # Light red
 }
 
+# Special colors for dual-source scan states
+_COLOR_SCH_ONLY = QColor(200, 224, 255)     # Light blue (#C8E0FF)
+_COLOR_DESYNC = QColor(255, 235, 180)       # Amber (same as AMBER)
+
 _EMPTY_GUIDANCE = "Scan a project or open a BOM to begin"
 
 # Hex color strings matching the COLORS QColor values
@@ -200,12 +204,16 @@ class VerifyPanel(QWidget):
         missing_mpn = 0
         issues = 0
         stale_count = 0
+        sch_only_count = 0
 
         for row, comp in enumerate(components):
             status = mpn_statuses.get(comp.reference, Confidence.RED)
 
             # Categorize
-            if not comp.has_mpn:
+            if comp.source == "sch_only":
+                sch_only_count += 1
+                issues += 1
+            elif not comp.has_mpn:
                 missing_mpn += 1
                 status = Confidence.RED
             elif status == Confidence.GREEN:
@@ -213,26 +221,45 @@ class VerifyPanel(QWidget):
             else:
                 issues += 1
 
+            # Count desync as issues too (only if not already counted as sch_only)
+            if comp.sync_mismatches and comp.source != "sch_only":
+                # Don't double-count: only increment if this comp was counted as has_mpn
+                if status == Confidence.GREEN and comp.has_mpn:
+                    has_mpn -= 1
+                    issues += 1
+
             # Stale detection (only for non-RED components with a verified_at)
             comp_is_stale = (
                 status != Confidence.RED
+                and comp.source != "sch_only"
                 and is_stale(comp, db_mtime)
             )
             if comp_is_stale:
                 stale_count += 1
 
-            # Resolve status label/tooltip — may downgrade status (e.g. Unverified)
-            if status == Confidence.RED and not comp.has_mpn:
+            # Resolve status label/tooltip — handle dual-source states first
+            if comp.source == "sch_only":
+                status_text = "Not on PCB"
+                tooltip = "Component exists only in schematic — not placed on PCB"
+                bg_color = _COLOR_SCH_ONLY
+            elif comp.sync_mismatches:
+                status_text = "PCB out of sync"
+                tooltip = "\n".join(comp.sync_mismatches)
+                tooltip += "\nRun Update PCB from Schematic (F8) in KiCad"
+                bg_color = _COLOR_DESYNC
+            elif status == Confidence.RED and not comp.has_mpn:
                 status_text = "Missing MPN"
                 tooltip = "No MPN assigned — right-click to search or assign"
+                bg_color = COLORS[status]
             elif status == Confidence.RED and comp.has_mpn and not has_active_sources:
                 status_text = _UNVERIFIED_LABEL
                 tooltip = _UNVERIFIED_TOOLTIP
                 status = Confidence.AMBER  # Downgrade: has MPN, just unverified
+                bg_color = COLORS[status]
             else:
                 status_text = _STATUS_LABELS[status]
                 tooltip = _STATUS_TOOLTIPS[status]
-            bg_color = COLORS[status]
+                bg_color = COLORS[status]
 
             # Reference
             ref_item = QTableWidgetItem(comp.reference)
@@ -255,7 +282,12 @@ class VerifyPanel(QWidget):
             status_item.setBackground(bg_color)
             status_item.setToolTip(tooltip)
             status_item.setData(Qt.ItemDataRole.UserRole, row)
-            status_item.setData(Qt.ItemDataRole.UserRole + 1, _SORT_ORDER[status])
+            # Sort desynced/sch-only as AMBER so they appear near the top
+            if comp.source == "sch_only" or comp.sync_mismatches:
+                sort_order = _SORT_ORDER[Confidence.AMBER]
+            else:
+                sort_order = _SORT_ORDER[status]
+            status_item.setData(Qt.ItemDataRole.UserRole + 1, sort_order)
             self.table.setItem(row, 3, status_item)
 
             # Freshness
@@ -284,7 +316,8 @@ class VerifyPanel(QWidget):
             self.summary_label.setStyleSheet("")
             pct = int(has_mpn / total * 100)
             self.summary_label.setText(
-                self._build_summary(total, has_mpn, issues, missing_mpn, stale_count, pct)
+                self._build_summary(total, has_mpn, issues, missing_mpn, stale_count, pct,
+                                    sch_only=sch_only_count)
             )
             self.health_bar.setMaximum(total)
             self.health_bar.setValue(has_mpn)
@@ -363,27 +396,40 @@ class VerifyPanel(QWidget):
                         )
                     break
 
-        # Recompute counts from _mpn_statuses
+        # Recompute counts from _mpn_statuses (mirror set_results() logic)
         has_mpn = 0
         missing_mpn = 0
         issues = 0
         stale_count = 0
+        sch_only_count = 0
         for comp in self._components:
             status = self._mpn_statuses.get(comp.reference, Confidence.RED)
-            if not comp.has_mpn and status == Confidence.RED:
+            if comp.source == "sch_only":
+                sch_only_count += 1
+                issues += 1
+            elif not comp.has_mpn and status == Confidence.RED:
                 missing_mpn += 1
             elif status == Confidence.GREEN:
                 has_mpn += 1
+                # Desynced GREEN components need attention, not "ready"
+                if comp.sync_mismatches:
+                    has_mpn -= 1
+                    issues += 1
             else:
                 issues += 1
-            if status != Confidence.RED and is_stale(comp, self._db_mtime):
+            if (
+                status != Confidence.RED
+                and comp.source != "sch_only"
+                and is_stale(comp, self._db_mtime)
+            ):
                 stale_count += 1
 
         total = len(self._components)
         if total > 0:
             pct = int(has_mpn / total * 100)
             self.summary_label.setText(
-                self._build_summary(total, has_mpn, issues, missing_mpn, stale_count, pct)
+                self._build_summary(total, has_mpn, issues, missing_mpn, stale_count, pct,
+                                    sch_only=sch_only_count)
             )
             self.health_bar.setValue(has_mpn)
             self.health_bar.setFormat(f"Ready: {pct}%")
@@ -392,6 +438,7 @@ class VerifyPanel(QWidget):
     @staticmethod
     def _build_summary(
         total: int, has_mpn: int, issues: int, missing_mpn: int, stale: int, pct: int,
+        sch_only: int = 0,
     ) -> str:
         """Build the health summary text."""
         summary = (
@@ -400,9 +447,11 @@ class VerifyPanel(QWidget):
             f"Needs attention: {issues} | "
             f"Missing MPN: {missing_mpn}"
         )
+        if sch_only > 0:
+            summary += f" | Not on PCB: {sch_only}"
         if stale > 0:
             summary += f" | Stale: {stale}"
-        if pct >= 100 and stale == 0:
+        if pct >= 100 and stale == 0 and sch_only == 0:
             summary += " — Ready for export"
         return summary
 
@@ -528,6 +577,15 @@ class VerifyPanel(QWidget):
         lines.append(f"<b>MPN:</b> {escape(comp.mpn) if comp.has_mpn else '<i>(missing)</i>'}<br>")
         lines.append(f"<b>Status:</b> {status_labels[status]}<br>")
         lines.append(f"<b>Footprint:</b> {escape(comp.footprint)}<br>")
+
+        if comp.source == "sch_only":
+            lines.append('<b>Source:</b> <span style="color: #3366aa;">Schematic only — not placed on PCB</span><br>')
+        elif comp.source == "both" and comp.sync_mismatches:
+            lines.append('<b>Source:</b> <span style="color: #cc8800;">PCB out of sync with schematic</span><br>')
+            lines.append("<b>Mismatches:</b><ul>")
+            for mm in comp.sync_mismatches:
+                lines.append(f"<li>{escape(mm)}</li>")
+            lines.append("</ul>")
 
         if comp.datasheet:
             url = escape(comp.datasheet)

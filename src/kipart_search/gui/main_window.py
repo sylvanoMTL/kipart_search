@@ -100,7 +100,12 @@ class ScanWorker(QThread):
                 self.error.emit("No components found on the board")
                 return
 
-            self.log.emit(f"Read {len(components)} components. Verifying MPNs ...")
+            self.log.emit(f"Read {len(components)} components from PCB.")
+
+            # Attempt schematic merge (graceful degradation)
+            components = self._merge_schematic_data(components)
+
+            self.log.emit("Verifying MPNs ...")
 
             # Capture database mtime at scan time for stale detection
             db_mtime = self.orchestrator.get_db_modified_time("JLCPCB")
@@ -135,6 +140,47 @@ class ScanWorker(QThread):
         except Exception as e:
             self.log.emit(f"Scan error: {e}")
             self.error.emit(str(e))
+
+    def _merge_schematic_data(self, components: list[BoardComponent]) -> list[BoardComponent]:
+        """Read schematic files and merge with PCB data. Falls back to PCB-only on failure."""
+        try:
+            from kipart_search.core import kicad_sch
+            from kipart_search.core.merge import merge_pcb_sch
+        except ImportError:
+            return components
+
+        try:
+            project_dir = self.bridge.get_project_dir()
+            if project_dir is None:
+                self.log.emit("Schematic files not found — using PCB data only")
+                return components
+
+            sch_files = kicad_sch.find_schematic_files(project_dir)
+            if not sch_files:
+                self.log.emit("Schematic files not found — using PCB data only")
+                return components
+
+            # Read all symbols from all sheets
+            all_symbols: list = []
+            for sch_path in sch_files:
+                try:
+                    symbols = kicad_sch.read_symbols(sch_path)
+                    all_symbols.extend(symbols)
+                except Exception as exc:
+                    self.log.emit(f"Warning: failed to read {sch_path.name}: {exc}")
+
+            self.log.emit(
+                f"Reading schematic files: {len(sch_files)} sheet(s) found, "
+                f"{len(all_symbols)} symbol(s) read"
+            )
+
+            # Merge
+            components = merge_pcb_sch(components, all_symbols)
+            return components
+
+        except Exception as exc:
+            self.log.emit(f"Schematic reading failed ({exc}) — using PCB data only")
+            return components
 
 
 class MainWindow(QMainWindow):
@@ -743,6 +789,20 @@ class MainWindow(QMainWindow):
                 f"Restored {restored} local MPN assignment(s) — not yet in KiCad"
             )
 
+        # Log schematic sync warnings
+        sch_only_count = sum(1 for c in components if c.source == "sch_only")
+        desync_count = sum(1 for c in components if c.sync_mismatches)
+        if sch_only_count > 0:
+            self.log_panel.log(
+                f"{sch_only_count} component(s) found in schematic but not placed on PCB"
+            )
+        if sch_only_count > 0 or desync_count > 0:
+            total_attention = sch_only_count + desync_count
+            self.log_panel.log(
+                f"{total_attention} component(s) need attention — run Update PCB "
+                "from Schematic (F8) in KiCad, then re-scan."
+            )
+
         # Log stale detection results
         stale_count = sum(
             1 for c in components
@@ -1028,7 +1088,24 @@ class MainWindow(QMainWindow):
 
     def _on_component_clicked(self, reference: str):
         """Highlight the clicked component in KiCad and update assign target."""
-        self._bridge.select_component(reference)
+        # Check if this is a schematic-only component (no PCB footprint to highlight)
+        is_sch_only = False
+        panel = getattr(self, "verify_panel", None)
+        if panel is not None:
+            for comp in panel.get_components():
+                if comp.reference == reference and comp.source == "sch_only":
+                    is_sch_only = True
+                    break
+
+        if is_sch_only:
+            log.info("Component %s exists only in schematic — cannot highlight in PCB", reference)
+            log_panel = getattr(self, "log_panel", None)
+            if log_panel is not None:
+                log_panel.log(
+                    f"Component {reference} exists only in schematic — cannot highlight in PCB"
+                )
+        else:
+            self._bridge.select_component(reference)
 
         # Update assign target if search panel is open
         if self.dock_search.isVisible():
