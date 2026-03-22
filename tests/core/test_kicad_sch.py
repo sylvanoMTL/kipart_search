@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 from kipart_search.core.kicad_sch import (
-    SchSymbol,
     _find_block,
     find_schematic_files,
     find_symbol_sheet,
@@ -127,6 +126,11 @@ class TestFindBlock:
 
     def test_string_with_parens(self):
         text = '(property "name(1)" "val(2)")'
+        start, end = _find_block(text, 0)
+        assert text[start:end] == text
+
+    def test_string_with_escaped_quotes(self):
+        text = r'(property "val with \"escaped\" quotes" "ok")'
         start, end = _find_block(text, 0)
         assert text[start:end] == text
 
@@ -280,6 +284,18 @@ class TestSetField:
         symbols = read_symbols(sch)
         c1 = next(s for s in symbols if s.reference == "C1")
         assert c1.fields["MPN"] == "NEW_CLEAN_VALUE"
+
+    def test_add_field_with_quotes_in_value(self, tmp_path: Path):
+        """Values containing double-quotes must be escaped on write."""
+        sch = tmp_path / "test.kicad_sch"
+        sch.write_text(MINIMAL_SCH, encoding="utf-8")
+
+        result = set_field(sch, "R1", "Description", 'Res 0.1" pitch')
+        assert result is True
+
+        symbols = read_symbols(sch)
+        r1 = next(s for s in symbols if s.reference == "R1")
+        assert r1.fields["Description"] == 'Res 0.1\\" pitch'
 
     def test_nonexistent_reference_returns_false(self, tmp_path: Path):
         sch = tmp_path / "test.kicad_sch"

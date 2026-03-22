@@ -184,17 +184,15 @@ class ParserTestWindow(QMainWindow):
             return
 
         # Check if KiCad has the file open
-        lock_file = sch_path.parent / f"~{sch_path.name}.lck"
-        locked = lock_file.exists()
-        self._log_msg(f"Lock check: {lock_file.name} exists={locked}")
+        locked = is_schematic_locked(sch_path)
+        self._log_msg(f"Lock check: {sch_path.name} locked={locked}")
         if locked:
             QMessageBox.warning(
                 self,
                 "Schematic is open in KiCad",
                 f"Cannot write to:\n{sch_path.name}\n\n"
                 f"KiCad has this schematic open. Close it in KiCad first, "
-                f"then try again.\n\n"
-                f"Lock file: {lock_file}",
+                f"then try again.",
             )
             self._log_msg(f"BLOCKED: {sch_path.name} is open in KiCad — close it first")
             # Revert cell

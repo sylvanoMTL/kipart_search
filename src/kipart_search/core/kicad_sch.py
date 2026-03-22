@@ -176,6 +176,11 @@ def read_symbols(sch_path: Path | str) -> list[SchSymbol]:
 # ---------------------------------------------------------------------------
 
 
+def _escape_sexpr_string(s: str) -> str:
+    """Escape a string for use inside an S-expression quoted value."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def set_field(
     sch_path: Path | str,
     reference: str,
@@ -212,7 +217,8 @@ def set_field(
         # Compute absolute positions.
         abs_val_start = sym_start + field_match.start(1)
         abs_val_end = sym_start + field_match.end(1)
-        text = text[:abs_val_start] + value + text[abs_val_end:]
+        escaped = _escape_sexpr_string(value)
+        text = text[:abs_val_start] + escaped + text[abs_val_end:]
     else:
         # Insert a new property before the first (pin ...) or closing ')'.
         insert_pos = _find_insertion_point(block)
@@ -236,8 +242,9 @@ def set_field(
         # Detect indentation from surrounding properties.
         indent = _detect_indent(block)
 
+        escaped = _escape_sexpr_string(value)
         new_prop = (
-            f'{indent}(property "{field_name}" "{value}"{id_part} '
+            f'{indent}(property "{field_name}" "{escaped}"{id_part} '
             f"(at {at_x} {at_y} 0)\n"
             f"{indent}  (effects (font (size 1.27 1.27)) hide))\n"
         )
