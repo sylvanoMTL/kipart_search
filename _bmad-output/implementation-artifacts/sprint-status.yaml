@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-22  # Story 5.8 added via sprint change proposal
+last_updated: 2026-03-22
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -92,3 +92,12 @@ development_status:
   6-1-source-preferences-dialog: done
   6-2-welcome-first-run-dialog: done
   epic-6-retrospective: optional
+
+  # Epic 7: Build Pipeline & Distribution (Windows)
+  epic-7: in-progress
+  7-1-minimal-nuitka-build: ready-for-dev
+  7-2-compiled-binary-full-functionality-verification: backlog
+  7-3-license-module-and-feature-gating: backlog
+  7-4-windows-zip-distribution-package: backlog
+  7-5-ci-build-pipeline: backlog
+  epic-7-retrospective: optional
