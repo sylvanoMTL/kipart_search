@@ -21,7 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 kicad = ["kicad-python"]
-dev = ["pytest"]
+dev = ["pytest", "pip-licenses"]
 
 [project.scripts]
 kipart-search = "kipart_search.__main__:main"
