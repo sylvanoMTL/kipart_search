@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import shutil
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,6 +35,7 @@ class BackupManager:
     def __init__(self, backup_dir: Path | None = None):
         self._backup_dir = backup_dir or Path.home() / ".kipart-search" / "backups"
         self._session_backup_dir: Path | None = None
+        self._sch_backed_up: bool = False
 
     # -- Public API --
 
@@ -65,6 +67,44 @@ class BackupManager:
         log.info(
             "Session backup created: %s (%d components)",
             backup_path, len(components),
+        )
+        return backup_path
+
+    def backup_schematic_files(
+        self, project_name: str, sch_paths: list[Path],
+    ) -> Path:
+        """Copy all .kicad_sch files to a timestamped backup directory.
+
+        One schematic backup per session: second+ calls return the
+        existing path without copying again.  Uses ``shutil.copy2()``
+        to preserve timestamps.
+
+        If a session backup directory already exists (e.g. from
+        ``ensure_session_backup``), the schematic files are copied
+        into that same directory rather than creating a new one.
+
+        Returns the backup directory path.
+        """
+        if self._sch_backed_up and self._session_backup_dir is not None:
+            return self._session_backup_dir
+
+        # Reuse existing session dir or create a new one
+        if self._session_backup_dir is not None:
+            backup_path = self._session_backup_dir
+        else:
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+            backup_path = self._backup_dir / project_name / timestamp
+            backup_path.mkdir(parents=True, exist_ok=True)
+            self._session_backup_dir = backup_path
+
+        for sch in sch_paths:
+            if sch.exists():
+                shutil.copy2(sch, backup_path / sch.name)
+
+        self._sch_backed_up = True
+        log.info(
+            "Schematic backup created: %s (%d files)",
+            backup_path, len(sch_paths),
         )
         return backup_path
 
@@ -164,4 +204,5 @@ class BackupManager:
     def reset_session(self) -> None:
         """Clear session state so the next write triggers a new backup."""
         self._session_backup_dir = None
+        self._sch_backed_up = False
         log.info("Backup session reset — next write will create a new backup")

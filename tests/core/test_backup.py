@@ -196,6 +196,80 @@ class TestLoadBackup:
         assert data == []
 
 
+class TestBackupSchematicFiles:
+    """Tests for backup_schematic_files() — Story 5.7."""
+
+    def test_copies_schematic_files(self, tmp_path: Path):
+        mgr = BackupManager(backup_dir=tmp_path / "backups")
+
+        # Create fake schematic files
+        sch_dir = tmp_path / "project"
+        sch_dir.mkdir()
+        sch1 = sch_dir / "main.kicad_sch"
+        sch2 = sch_dir / "power.kicad_sch"
+        sch1.write_text("(kicad_sch main)", encoding="utf-8")
+        sch2.write_text("(kicad_sch power)", encoding="utf-8")
+
+        backup_path = mgr.backup_schematic_files("test-proj", [sch1, sch2])
+
+        assert backup_path.is_dir()
+        assert (backup_path / "main.kicad_sch").exists()
+        assert (backup_path / "power.kicad_sch").exists()
+        assert (backup_path / "main.kicad_sch").read_text(encoding="utf-8") == "(kicad_sch main)"
+
+    def test_session_once_pattern(self, tmp_path: Path):
+        mgr = BackupManager(backup_dir=tmp_path / "backups")
+
+        sch_dir = tmp_path / "project"
+        sch_dir.mkdir()
+        sch = sch_dir / "main.kicad_sch"
+        sch.write_text("(kicad_sch)", encoding="utf-8")
+
+        path1 = mgr.backup_schematic_files("proj", [sch])
+        path2 = mgr.backup_schematic_files("proj", [sch])
+        assert path1 == path2
+
+    def test_reset_allows_new_backup(self, tmp_path: Path):
+        mgr = BackupManager(backup_dir=tmp_path / "backups")
+
+        sch_dir = tmp_path / "project"
+        sch_dir.mkdir()
+        sch = sch_dir / "main.kicad_sch"
+        sch.write_text("(kicad_sch)", encoding="utf-8")
+
+        path1 = mgr.backup_schematic_files("proj", [sch])
+        mgr.reset_session()
+        path2 = mgr.backup_schematic_files("proj", [sch])
+        assert path2.is_dir()
+        # May be same or different path depending on timing
+
+    def test_copies_into_existing_session_dir(self, tmp_path: Path):
+        """Schematic backup must copy files even if ensure_session_backup
+        already set _session_backup_dir (connected-mode flow)."""
+        mgr = BackupManager(backup_dir=tmp_path / "backups")
+
+        # Simulate connected-mode: ensure_session_backup runs first
+        mgr.ensure_session_backup("proj", SAMPLE_COMPONENTS)
+        session_dir = mgr._session_backup_dir
+        assert (session_dir / "components.json").exists()
+
+        # Now push-to-kicad calls backup_schematic_files
+        sch_dir = tmp_path / "project"
+        sch_dir.mkdir()
+        sch = sch_dir / "main.kicad_sch"
+        sch.write_text("(kicad_sch main)", encoding="utf-8")
+
+        path = mgr.backup_schematic_files("proj", [sch])
+
+        # Must reuse the same session directory
+        assert path == session_dir
+        # Schematic file must actually be copied
+        assert (path / "main.kicad_sch").exists()
+        assert (path / "main.kicad_sch").read_text(encoding="utf-8") == "(kicad_sch main)"
+        # components.json still present
+        assert (path / "components.json").exists()
+
+
 class TestResetSession:
 
     def test_reset_creates_new_backup(self, tmp_path: Path):

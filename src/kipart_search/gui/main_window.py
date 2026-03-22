@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QDockWidget,
+    QFileDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -154,6 +155,7 @@ class MainWindow(QMainWindow):
         self._assign_target: BoardComponent | None = None
         self._backup_manager: BackupManager | None = None
         self._local_assignments: dict[str, dict[str, str]] = {}  # ref → {field: value}
+        self._local_overwrites: dict[str, set[str]] = {}  # ref → set of overwrite-approved fields
 
         # ── Hidden central widget (QDockWidgets fill around it) ──
         # Zero width so left/right docks fill the full window width.
@@ -237,9 +239,9 @@ class MainWindow(QMainWindow):
 
         self._act_push = QAction("Push to KiCad", self)
         self._act_push.setToolTip(
-            "KiCad 9 IPC API does not support creating symbol fields. "
-            "Expected in KiCad 10."
+            "Push local MPN assignments into .kicad_sch schematic files"
         )
+        self._act_push.setEnabled(False)  # Enabled when assignments exist
         self._act_push.triggered.connect(self._on_push_to_kicad)
         self.toolbar.addAction(self._act_push)
 
@@ -575,8 +577,20 @@ class MainWindow(QMainWindow):
         else:
             self._sources_label.setText("No sources configured")
 
-        # Push to KiCad: always enabled but shows info dialog (KiCad 9 limitation)
-        self._act_push.setEnabled(True)
+        # Push to KiCad: enabled when local assignments exist
+        self._update_push_button_state()
+
+    def _update_push_button_state(self):
+        """Enable/disable Push to KiCad based on local assignments."""
+        has_assignments = bool(self._local_assignments)
+        self._act_push.setEnabled(has_assignments)
+        if has_assignments:
+            count = sum(len(f) for f in self._local_assignments.values())
+            self._act_push.setToolTip(
+                f"Push {count} local assignment(s) into .kicad_sch files"
+            )
+        else:
+            self._act_push.setToolTip("No local assignments to push")
 
     def _set_action_status(self, text: str):
         """Update the right zone of the status bar with an action message."""
@@ -749,16 +763,226 @@ class MainWindow(QMainWindow):
         self._set_action_status("Scan failed")
 
     def _on_push_to_kicad(self):
-        """Inform user that Push to KiCad is not available in KiCad 9."""
-        QMessageBox.information(
-            self,
-            "Push to KiCad — Not Available Yet",
-            "KiCad 9 IPC API only supports the PCB editor.\n\n"
-            "Custom symbol fields (MPN, Manufacturer, etc.) cannot be "
-            "created via the current API. This feature is expected in "
-            "KiCad 10 when schematic editor API support is added.\n\n"
-            "Your local MPN assignments are preserved for BOM export.",
+        """Push local MPN assignments into .kicad_sch files on disk."""
+        from kipart_search.core import kicad_sch
+
+        # Guard: anything to push?
+        if not self._local_assignments:
+            QMessageBox.information(
+                self, "No Assignments",
+                "No local assignments to push. Assign MPNs first.",
+            )
+            return
+
+        self.log_panel.section("Push to KiCad")
+
+        # Resolve project directory
+        project_dir = self._resolve_project_dir()
+        if project_dir is None:
+            self.log_panel.log("Push cancelled — no project directory")
+            return
+
+        # Discover schematic files
+        sch_files = kicad_sch.find_schematic_files(project_dir)
+        if not sch_files:
+            QMessageBox.warning(
+                self, "No Schematics Found",
+                f"No .kicad_sch files found in:\n{project_dir}\n\n"
+                "Make sure this is a valid KiCad project directory.",
+            )
+            self.log_panel.log(f"No .kicad_sch files in {project_dir}")
+            return
+
+        # Check lock files — block if any schematic is open
+        locked = [p for p in sch_files if kicad_sch.is_schematic_locked(p)]
+        if locked:
+            names = "\n".join(f"  {p.name}" for p in locked)
+            QMessageBox.warning(
+                self, "Schematic Open in KiCad",
+                "Close the schematic editor in KiCad before pushing "
+                "changes. File-based write cannot proceed while the "
+                f"schematic is open.\n\nLocked files:\n{names}",
+            )
+            self.log_panel.log("Push blocked — schematic lock file(s) detected")
+            return
+
+        # Count fields and components
+        total_fields = sum(len(flds) for flds in self._local_assignments.values())
+        total_refs = len(self._local_assignments)
+
+        # Confirmation dialog
+        reply = QMessageBox.question(
+            self, "Push to KiCad",
+            f"Push {total_fields} field(s) to {total_refs} component(s) "
+            f"into schematic files?\n\n"
+            f"This will modify .kicad_sch files on disk.\n"
+            f"A backup will be created first.",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
         )
+        if reply != QMessageBox.StandardButton.Ok:
+            self.log_panel.log("Push cancelled by user")
+            return
+
+        # Backup all schematic files
+        backup_mgr = self._ensure_backup_manager()
+        project_name = self._get_project_name()
+        try:
+            backup_path = backup_mgr.backup_schematic_files(project_name, sch_files)
+            self.log_panel.log(f"Backup created: {backup_path}")
+        except Exception as exc:
+            QMessageBox.critical(
+                self, "Backup Failed",
+                f"Cannot create backup — push aborted.\n\n{exc}",
+            )
+            self.log_panel.log(f"Backup failed: {exc} — push aborted")
+            return
+
+        # Push each assignment
+        written_count = 0
+        skipped_count = 0
+        failed_refs: list[tuple[str, str]] = []  # (ref, error)
+        written_refs: list[str] = []
+
+        for ref, field_map in list(self._local_assignments.items()):
+            # Find which sheet contains this reference
+            sheet = kicad_sch.find_symbol_sheet(project_dir, ref)
+            if sheet is None:
+                failed_refs.append((ref, "symbol not found in any schematic sheet"))
+                self.log_panel.log(f"  {ref}: symbol not found — skipped")
+                continue
+
+            # Read old values for undo log
+            old_values: dict[str, str] = {}
+            try:
+                symbols = kicad_sch.read_symbols(sheet)
+                for sym in symbols:
+                    if sym.reference == ref:
+                        old_values = dict(sym.fields)
+                        break
+            except Exception as exc:
+                log.warning("Failed to read symbols from %s: %s", sheet, exc)
+
+            ref_written = 0
+            ref_failed = False
+            overwrite_set = self._local_overwrites.get(ref, set())
+
+            for field_name, value in field_map.items():
+                allow_overwrite = field_name in overwrite_set
+                try:
+                    ok = kicad_sch.set_field(
+                        sheet, ref, field_name, value,
+                        allow_overwrite=allow_overwrite,
+                    )
+                    if ok:
+                        # Log to undo CSV
+                        old_val = old_values.get(field_name, "")
+                        backup_mgr.log_field_change(
+                            project_name, ref, field_name, old_val, value,
+                        )
+                        ref_written += 1
+                        written_count += 1
+                        self.log_panel.log(
+                            f"  {ref}.{field_name} = \"{value}\" (in {sheet.name})"
+                        )
+                    else:
+                        skipped_count += 1
+                        self.log_panel.log(
+                            f"  {ref}.{field_name}: skipped (non-empty, overwrite not approved)"
+                        )
+                except Exception as exc:
+                    ref_failed = True
+                    failed_refs.append((ref, f"{field_name}: {exc}"))
+                    self.log_panel.log(f"  {ref}.{field_name}: ERROR — {exc}")
+
+            if ref_written > 0 and not ref_failed:
+                written_refs.append(ref)
+
+        # Clear successfully written assignments
+        for ref in written_refs:
+            self._local_assignments.pop(ref, None)
+            self._local_overwrites.pop(ref, None)
+
+        # Update toolbar button state
+        self._update_push_button_state()
+
+        # Result dialog
+        if failed_refs and written_count > 0:
+            fail_lines = "\n".join(f"  {r}: {e}" for r, e in failed_refs)
+            QMessageBox.warning(
+                self, "Push Partially Complete",
+                f"Written {written_count} field(s) to "
+                f"{len(written_refs)} component(s).\n\n"
+                f"Failed components:\n{fail_lines}\n\n"
+                f"Run 'Update PCB from Schematic' (F8) in KiCad to sync the board.",
+            )
+            self.log_panel.log(
+                f"Push partial: {written_count} written, {len(failed_refs)} failed. "
+                f"Run Update PCB from Schematic (F8) to sync."
+            )
+        elif failed_refs:
+            fail_lines = "\n".join(f"  {r}: {e}" for r, e in failed_refs)
+            QMessageBox.warning(
+                self, "Push Failed",
+                f"No fields were written.\n\n{fail_lines}",
+            )
+            self.log_panel.log("Push failed — no fields written")
+        elif written_count == 0 and skipped_count > 0:
+            QMessageBox.information(
+                self, "Nothing Written",
+                f"All {skipped_count} field(s) were skipped because the "
+                f"target fields already have values and overwrite was "
+                f"not approved.\n\n"
+                f"To overwrite existing values, re-assign with the "
+                f"overwrite checkbox enabled.",
+            )
+            self.log_panel.log(
+                f"Push: {skipped_count} field(s) skipped (existing values, "
+                f"overwrite not approved)"
+            )
+        else:
+            QMessageBox.information(
+                self, "Push Complete",
+                f"Written {written_count} field(s) to "
+                f"{len(written_refs)} component(s).\n\n"
+                f"Run 'Update PCB from Schematic' (F8) in KiCad "
+                f"to sync the board.",
+            )
+            self.log_panel.log(
+                f"Pushed {written_count} field(s) to .kicad_sch — "
+                f"run Update PCB from Schematic (F8) to sync"
+            )
+
+    def _resolve_project_dir(self) -> Path | None:
+        """Determine the KiCad project directory for push operations.
+
+        Priority:
+        1. Connected KiCad: extract from board path
+        2. Standalone: derive from last-loaded BOM path (if any)
+        3. Fallback: prompt user with folder picker
+        """
+        # 1. Connected mode
+        project_dir = self._bridge.get_project_dir()
+        if project_dir is not None:
+            self.log_panel.log(f"Project directory (from KiCad): {project_dir}")
+            return project_dir
+
+        # 2. Standalone: check if BOM was loaded from file
+        bom_path = getattr(self, "_last_bom_path", None)
+        if bom_path is not None:
+            project_dir = Path(bom_path).parent
+            self.log_panel.log(f"Project directory (from BOM): {project_dir}")
+            return project_dir
+
+        # 3. Prompt user
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select KiCad Project Directory",
+        )
+        if folder:
+            self.log_panel.log(f"Project directory (user selected): {folder}")
+            return Path(folder)
+
+        return None
 
     def _on_export_bom(self):
         """Open the BOM export dialog."""
@@ -964,6 +1188,13 @@ class MainWindow(QMainWindow):
                     self._local_assignments[ref] = {}
                 for fn in local_only:
                     self._local_assignments[ref][fn] = fields[fn]
+                # Track overwrite permissions for push-to-kicad
+                if overwrite_fields:
+                    if ref not in self._local_overwrites:
+                        self._local_overwrites[ref] = set()
+                    self._local_overwrites[ref].update(
+                        fn for fn in local_only if fn in overwrite_fields
+                    )
                 self.log_panel.log(
                     f"Assigned {len(local_only)} field(s) to {ref} locally "
                     f"({', '.join(local_only)}) — KiCad 9 IPC API cannot "
@@ -1000,7 +1231,16 @@ class MainWindow(QMainWindow):
             }
         else:
             written_fields = fields
-            # Standalone mode: log all field changes to undo CSV (no snapshot)
+            # Standalone mode: store as local assignments for push-to-kicad
+            if ref not in self._local_assignments:
+                self._local_assignments[ref] = {}
+            self._local_assignments[ref].update(written_fields)
+            # Track overwrite permissions
+            if overwrite_fields:
+                if ref not in self._local_overwrites:
+                    self._local_overwrites[ref] = set()
+                self._local_overwrites[ref].update(overwrite_fields)
+            # Log all field changes to undo CSV (no snapshot)
             for field_name, value in written_fields.items():
                 backup_mgr.log_field_change(
                     project, ref, field_name,
@@ -1034,6 +1274,7 @@ class MainWindow(QMainWindow):
         self._search_target_label.setText("")
         self.detail_panel.set_assign_target(None)
         self.results_table.set_assign_target(None)
+        self._update_push_button_state()
 
     # --- Preferences ---
 

@@ -114,6 +114,23 @@ class KiCadBridge:
             pass
         return None
 
+    def get_project_dir(self) -> Path | None:
+        """Return the KiCad project directory (parent of .kicad_pcb).
+
+        Returns None if not connected or if the board path cannot be
+        determined.
+        """
+        if self._board is None:
+            return None
+        try:
+            from pathlib import Path
+            name = self._board.get_filename()
+            if name:
+                return Path(name).parent
+        except Exception:
+            pass
+        return None
+
     def get_components(self) -> list[BoardComponent]:
         """Read all components from the board."""
         if not self.is_connected:
