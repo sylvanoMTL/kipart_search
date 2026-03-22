@@ -205,10 +205,11 @@ Not applicable — this is a brownfield project. The codebase is functional with
 
 ### KiCad Integration
 
-**ADR-08: Write-Back Strategy — Investigate First, Defer if Needed**
-- **Decision:** Investigate what the existing kicad_bridge.py code can actually do with kicad-python v0.6.0 before making a fallback decision. If field write-back works: use it. If not: defer write-back to Phase 2 (wait for API expansion), and Phase 1 assigns to local state only (BOM export still works).
-- **Rationale:** The existing code may already have working write-back. No point designing a fallback for a problem that may not exist. Direct .kicad_sch file manipulation is explicitly against project rules.
-- **Affects:** `gui/kicad_bridge.py`, assign dialog behavior
+**ADR-08: Write-Back Strategy — Dual-Path (File-Based + Future IPC)**
+- **Decision:** Dual-path write-back approach. Path A (KiCad 9): file-based write-back via direct `.kicad_sch` modification. A bespoke S-expression parser in `core/kicad_sch.py` reads/writes symbol properties. Requires schematic to be closed in KiCad. Backup mandatory before every write session. Path B (KiCad 10+): IPC-based write-back via schematic editor API when available. Original IPC write logic preserved in `kicad_bridge.py` comments for re-enablement.
+- **Rationale:** IPC API investigation (2026-03-20) confirmed `board.update_items()` destroys custom fields in KiCad 9 — IPC write-back is not viable. `.kicad_sch` files are stable plain-text S-expressions; direct modification is the only working write path in KiCad 9. The backup system (Story 5.5) and undo log are already built to protect this operation.
+- **Safety:** Add-never-overwrite policy, backup before write, undo log, KiCad-open detection (refuse write if schematic is open).
+- **Affects:** New `core/kicad_sch.py`, `gui/kicad_bridge.py` (fallback path), `gui/main_window.py` ("Push to KiCad" button), `core/backup.py` (`.kicad_sch` file scope)
 
 ### Standalone Mode
 

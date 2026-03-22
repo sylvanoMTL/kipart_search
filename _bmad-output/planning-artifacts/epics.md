@@ -645,6 +645,84 @@ So that I can always recover if something goes wrong, even beyond KiCad's undo s
 **Then** a list of available backups is shown with project name and timestamp
 **And** the designer can restore any previous backup
 
+### Story 5.6: Schematic File Parser Module
+
+As a designer,
+I want KiPart Search to read and write fields in my `.kicad_sch` files,
+So that MPN assignments persist in my KiCad project files.
+
+**Acceptance Criteria:**
+
+**Given** a `.kicad_sch` file with symbol blocks containing `(property ...)` entries
+**When** `read_symbols(sch_path)` is called
+**Then** it returns a list of symbols with all their properties (Reference, Value, Footprint, MPN, Manufacturer, etc.)
+**And** the parser handles nested S-expressions correctly (depth-counting, not regex)
+
+**Given** a symbol identified by reference designator (e.g. "C12")
+**When** `set_field(sch_path, reference, field_name, value)` is called with a field that doesn't exist
+**Then** a new `(property ...)` entry is inserted into the symbol block with the correct format
+**And** the field is hidden by default (`(effects (font (size 1.27 1.27)) hide)`)
+**And** the rest of the file is preserved byte-for-byte (no reformatting)
+
+**Given** a symbol with an existing field
+**When** `set_field()` is called with `allow_overwrite=False` (default)
+**Then** the field is NOT modified and the method returns False
+**And** with `allow_overwrite=True`, the field value is updated in-place
+
+**Given** a KiCad project directory
+**When** `find_schematic_files(project_dir)` is called
+**Then** it discovers the root `.kicad_sch` and all sub-sheets referenced via `(sheet ...)` blocks
+**And** `find_symbol_sheet(project_dir, reference)` returns the path to the sheet containing the given reference
+
+**Technical constraints:**
+- Zero GUI dependencies — lives in `core/`
+- Proper S-expression depth-counting parser (not regex for block extraction)
+- Preserves file formatting, comments, and whitespace outside modified blocks
+- UTF-8 encoding throughout
+- Uses `pathlib.Path` for all file operations
+
+### Story 5.7: File-Based Write-Back via Push to KiCad
+
+As a designer,
+I want to push my MPN assignments from KiPart Search into my KiCad schematic files,
+So that my KiCad project carries all manufacturing references and future BOM exports from KiCad are already complete.
+
+**Acceptance Criteria:**
+
+**Given** the designer has made local MPN assignments (`_local_assignments` is non-empty)
+**When** they click "Push to KiCad"
+**Then** the system checks if KiCad's eeschema process has the schematic files open
+
+**Given** the schematic files are open in KiCad
+**When** the open-file check detects this
+**Then** the system shows a warning: "Close the schematic editor in KiCad before pushing changes. File-based write cannot proceed while the schematic is open."
+**And** the write is blocked — no file modification occurs
+
+**Given** the schematic files are NOT open in KiCad (or KiCad is not running)
+**When** the designer confirms the push
+**Then** all `.kicad_sch` files in the project are backed up to `~/.kipart-search/backups/{project}/{YYYY-MM-DD_HHMM}/` (extends Story 5.5)
+**And** each local assignment is written to the correct schematic file via `core/kicad_sch.py`
+**And** each write is logged to the undo CSV (timestamp, reference, field, old value, new value)
+**And** the add-never-overwrite policy is enforced (non-empty fields are not modified without explicit confirmation)
+
+**Given** the push completes successfully
+**When** the success dialog is shown
+**Then** it displays: "Written N fields to M components. Run 'Update PCB from Schematic' (F8) in KiCad to sync the board."
+**And** `_local_assignments` is cleared for the successfully written fields
+**And** the log panel records: "Pushed N field(s) to .kicad_sch — run Update PCB from Schematic to sync"
+
+**Given** a write fails for any component
+**When** the error is caught
+**Then** the system continues writing remaining components (non-atomic across components, atomic per component)
+**And** failed writes remain in `_local_assignments` for retry
+**And** the error is logged with the specific component reference and reason
+
+**Safety constraints:**
+- KiCad-open detection is mandatory — refuse to write if schematic is open
+- Backup is mandatory — no writes without a successful backup first
+- Add-never-overwrite is the default — matches existing UX-DR17 spec
+- Undo log records every change for auditability
+
 ---
 
 ## Epic 6: Source Configuration & First-Run Experience

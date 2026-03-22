@@ -86,7 +86,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 - **NEVER** import PySide6/Qt in `core/` modules — this breaks the core/GUI separation contract
 - **NEVER** overwrite non-empty KiCad component fields without explicit user confirmation (safety-first write-back)
-- **NEVER** directly modify .kicad_sch or .kicad_pcb files — always use IPC API via kicad_bridge.py
+- **NEVER** directly modify .kicad_pcb files — always use IPC API via kicad_bridge.py
+- Only modify `.kicad_sch` files via the `core/kicad_sch.py` module — never raw string manipulation elsewhere. File-based writes require: schematic closed in KiCad, backup completed, add-never-overwrite policy enforced.
 - JLCPCB database uses ASCII for cap/inductor units (uF, nF, uH) but Unicode Ω for resistors (10kΩ) — `query_transform` and `sources.py` handle this mismatch with fixup tables. Do not "fix" the inconsistency.
 - MPN field has 8+ aliases in KiCad libraries: "mpn", "manf#", "mfr part", "mfr.part", "manufacturer part number", etc. Always search all aliases via `MPN_FIELD_NAMES` set in kicad_bridge.py.
 - KiCad footprint names like `C_0805_2012Metric` need package extraction (→ "0805") — done by `_extract_package_from_footprint()` in kicad_bridge.py, which handles passive sizes, IC packages (QFN, SOIC, SOT), and connector pin counts.
