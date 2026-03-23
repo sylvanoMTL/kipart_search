@@ -108,8 +108,12 @@ def merge_pcb_sch(
                     )
                 comp.extra_fields[field_name] = field_value
 
-        # Datasheet from schematic
-        sch_ds = sym.fields.get("Datasheet", "")
+        # Datasheet from schematic (case-insensitive lookup)
+        sch_ds = ""
+        for _fk, _fv in sym.fields.items():
+            if _fk.lower().strip() == "datasheet":
+                sch_ds = _fv
+                break
         if sch_ds and sch_ds != comp.datasheet:
             if comp.datasheet and comp.datasheet != sch_ds:
                 mismatches.append(
@@ -127,18 +131,31 @@ def merge_pcb_sch(
         # Extract MPN from schematic fields
         _, mpn = _find_field(sym.fields, MPN_FIELD_NAMES)
 
-        # Collect extra fields (exclude standard KiCad properties)
+        # Collect extra fields (exclude standard KiCad properties and fields
+        # already stored as dedicated BoardComponent attributes)
+        _skip = {"reference", "value", "footprint", "datasheet"}
         extra: dict[str, str] = {}
         for fname, fval in sym.fields.items():
-            if fname.lower().strip() not in ("reference", "value", "footprint"):
-                extra[fname] = fval
+            fl = fname.lower().strip()
+            if fl in _skip:
+                continue
+            if fl in MPN_FIELD_NAMES:
+                continue
+            extra[fname] = fval
+
+        # Case-insensitive datasheet lookup
+        ds = ""
+        for _fk, _fv in sym.fields.items():
+            if _fk.lower().strip() == "datasheet":
+                ds = _fv
+                break
 
         pcb_components.append(BoardComponent(
             reference=ref,
             value=sym.value,
             footprint=sym.footprint,
             mpn=mpn,
-            datasheet=sym.fields.get("Datasheet", ""),
+            datasheet=ds,
             extra_fields=extra,
             source="sch_only",
         ))

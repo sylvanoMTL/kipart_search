@@ -114,7 +114,11 @@ class TestSchematicOnlyComponents:
         })]
         result = merge_pcb_sch(pcb, sch)
         assert result[0].datasheet == "https://example.com/ds.pdf"
-        assert "MPN" in result[0].extra_fields
+        assert result[0].mpn == "STM32F405"
+        # MPN and Datasheet are stored as dedicated attributes, not duplicated in extra_fields
+        assert "MPN" not in result[0].extra_fields
+        assert "Datasheet" not in result[0].extra_fields
+        # Manufacturer stays in extra_fields (no dedicated attribute)
         assert "Manufacturer" in result[0].extra_fields
 
 

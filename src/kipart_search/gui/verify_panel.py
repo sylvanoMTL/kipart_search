@@ -538,14 +538,21 @@ class VerifyPanel(QWidget):
         return list(self._components)
 
     def get_health_percentage(self) -> int:
-        """Return the current BOM health percentage (0-100)."""
+        """Return the current BOM health percentage (0-100).
+
+        Mirrors set_results() counting: desynced GREEN components and sch-only
+        components are NOT counted as healthy.
+        """
         total = len(self._components)
         if total == 0:
             return 0
-        has_mpn = sum(
-            1 for c in self._components
-            if self._mpn_statuses.get(c.reference) == Confidence.GREEN
-        )
+        has_mpn = 0
+        for c in self._components:
+            if c.source == "sch_only":
+                continue
+            if self._mpn_statuses.get(c.reference) == Confidence.GREEN:
+                if not c.sync_mismatches:
+                    has_mpn += 1
         return int(has_mpn / total * 100)
 
     def get_missing_mpn_count(self) -> int:
