@@ -304,6 +304,32 @@ class TestSetField:
         result = set_field(sch, "U99", "MPN", "NOPART")
         assert result is False
 
+    def test_add_field_to_symbol_without_pins(self, tmp_path: Path):
+        """Symbols without (pin ...) lines (e.g. mounting holes) must still accept new fields."""
+        no_pin_sch = """\
+(kicad_sch (version 20231120) (generator "eeschema")
+  (lib_symbols)
+  (symbol (lib_id "Mechanical:MountingHole") (at 50 50 0) (unit 1)
+    (uuid "mh-uuid")
+    (property "Reference" "MH1" (at 52 48 0)
+      (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "MountingHole" (at 52 52 0)
+      (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm" (at 50 50 0)
+      (effects (font (size 1.27 1.27)) hide))
+  )
+)
+"""
+        sch = tmp_path / "test.kicad_sch"
+        sch.write_text(no_pin_sch, encoding="utf-8")
+
+        result = set_field(sch, "MH1", "MPN", "HOLE-123")
+        assert result is True
+
+        symbols = read_symbols(sch)
+        mh1 = next(s for s in symbols if s.reference == "MH1")
+        assert mh1.fields["MPN"] == "HOLE-123"
+
 
 # ---------------------------------------------------------------------------
 # Task 3: Sub-sheet discovery

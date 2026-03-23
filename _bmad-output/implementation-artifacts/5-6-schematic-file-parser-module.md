@@ -204,10 +204,11 @@ Claude Opus 4.6 (1M context)
 - 2026-03-22: Code review fixes — Fixed regex patterns (`_PROPERTY_RE`, `set_field` field_pattern, `_find_symbol_block` ref_pattern) to handle escaped quotes in property values. Hardened `_find_insertion_point()` for compact/single-line symbol blocks. 2 new edge-case tests added (24 total).
 - 2026-03-22: Code review #2 — Added `_escape_sexpr_string()` to escape `"` and `\` in values written by `set_field()` (both insert and overwrite paths). Manual test tool now uses `is_schematic_locked()` instead of duplicating logic. Fixed `NameError` on `lock_file` reference left behind by the refactor. Removed unused `_escape_sexpr_string` import from tests. 2 new tests added (26 total).
 - 2026-03-22: Code review #3 — Fixed `_SHEETFILE_RE` to handle escaped quotes in sheet filenames (was using `[^"]+`, now matches `_PROPERTY_RE` pattern). Escaped `field_name` in `set_field()` insert path. Replaced `list.pop(0)` with `deque.popleft()` in BFS. Added clarifying comment for `_AT_RE` position assumption.
+- 2026-03-23: Code review #4 — Fixed `lib_id` regex in `read_symbols()` and `_find_symbol_block()` to handle escaped quotes (was `[^"]+`, now `(?:[^"\\]|\\.)*`). Removed dead `return None, None` after `while True` in `_find_symbol_block()`. Added warning log for multiple `.kicad_pro` files. Added test for `set_field()` on symbols without `(pin ...)` lines (27 total).
 
 ### File List
 - `src/kipart_search/core/kicad_sch.py` — NEW: KiCad schematic file parser and field writer
-- `tests/core/test_kicad_sch.py` — NEW: 26 automated tests for kicad_sch module
+- `tests/core/test_kicad_sch.py` — NEW: 27 automated tests for kicad_sch module
 - `tests/manual_tests/sample_project/sample.kicad_pro` — NEW: sample KiCad project file for manual testing
 - `tests/manual_tests/sample_project/sample.kicad_sch` — NEW: sample root schematic with R1, R2, C1 + sub-sheet reference
 - `tests/manual_tests/sample_project/power.kicad_sch` — NEW: sample sub-sheet with C10, C11

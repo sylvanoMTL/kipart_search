@@ -110,7 +110,7 @@ def read_symbols(sch_path: Path | str) -> list[SchSymbol]:
 
     # Scan for top-level (symbol (lib_id "...") ...) blocks.
     search_start = 0
-    pattern = re.compile(r'\(symbol\s+\(lib_id\s+"([^"]+)"\)')
+    pattern = re.compile(r'\(symbol\s+\(lib_id\s+"((?:[^"\\]|\\.)*)"\)')
 
     while True:
         m = pattern.search(text, search_start)
@@ -262,7 +262,7 @@ def _find_symbol_block(
     text: str, reference: str
 ) -> tuple[int | None, int | None]:
     """Find the (symbol ...) block containing the given reference designator."""
-    pattern = re.compile(r'\(symbol\s+\(lib_id\s+"[^"]+"\)')
+    pattern = re.compile(r'\(symbol\s+\(lib_id\s+"(?:[^"\\]|\\.)*"\)')
 
     # Skip lib_symbols section.
     lib_sym_start = text.find("(lib_symbols")
@@ -291,8 +291,6 @@ def _find_symbol_block(
             return block_start, block_end
 
         search_start = block_end
-
-    return None, None
 
 
 def _find_insertion_point(block: str) -> int:
@@ -366,6 +364,9 @@ def find_schematic_files(project_dir: Path | str) -> list[Path]:
     if not pro_files:
         log.warning("No .kicad_pro file found in %s", project_dir)
         return []
+
+    if len(pro_files) > 1:
+        log.warning("Multiple .kicad_pro files in %s, using %s", project_dir, pro_files[0].name)
 
     root_name = pro_files[0].stem
     root_sch = project_dir / f"{root_name}.kicad_sch"
