@@ -97,14 +97,26 @@ class BackupManager:
             backup_path.mkdir(parents=True, exist_ok=True)
             self._session_backup_dir = backup_path
 
+        copied = 0
         for sch in sch_paths:
-            if sch.exists():
-                shutil.copy2(sch, backup_path / sch.name)
+            if not sch.exists():
+                continue
+            # Preserve relative path to avoid name collisions when
+            # hierarchical sub-sheets in different directories share
+            # the same filename (e.g. subdir/power.kicad_sch).
+            try:
+                rel = sch.relative_to(sch_paths[0].parent)
+            except ValueError:
+                rel = Path(sch.name)
+            dest = backup_path / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(sch, dest)
+            copied += 1
 
         self._sch_backed_up = True
         log.info(
-            "Schematic backup created: %s (%d files)",
-            backup_path, len(sch_paths),
+            "Schematic backup created: %s (%d files copied)",
+            backup_path, copied,
         )
         return backup_path
 

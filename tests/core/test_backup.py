@@ -270,6 +270,33 @@ class TestBackupSchematicFiles:
         assert (path / "components.json").exists()
 
 
+    def test_hierarchical_sub_sheets_no_name_collision(self, tmp_path: Path):
+        """Sub-sheets in subdirectories with same filename must not collide."""
+        mgr = BackupManager(backup_dir=tmp_path / "backups")
+
+        sch_dir = tmp_path / "project"
+        sch_dir.mkdir()
+        root = sch_dir / "main.kicad_sch"
+        root.write_text("(kicad_sch root)", encoding="utf-8")
+
+        sub_dir = sch_dir / "sub"
+        sub_dir.mkdir()
+        sub_sch = sub_dir / "power.kicad_sch"
+        sub_sch.write_text("(kicad_sch sub/power)", encoding="utf-8")
+
+        # Also a root-level power sheet
+        root_power = sch_dir / "power.kicad_sch"
+        root_power.write_text("(kicad_sch root/power)", encoding="utf-8")
+
+        backup_path = mgr.backup_schematic_files(
+            "proj", [root, root_power, sub_sch],
+        )
+
+        # Both power.kicad_sch files must survive — sub-sheet in sub/ subdir
+        assert (backup_path / "power.kicad_sch").read_text(encoding="utf-8") == "(kicad_sch root/power)"
+        assert (backup_path / "sub" / "power.kicad_sch").read_text(encoding="utf-8") == "(kicad_sch sub/power)"
+
+
 class TestResetSession:
 
     def test_reset_creates_new_backup(self, tmp_path: Path):

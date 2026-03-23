@@ -184,6 +184,7 @@ Claude Opus 4.6 (1M context)
 ### Change Log
 - 2026-03-22: Implemented file-based write-back push-to-kicad (Story 5.7) — replaced placeholder info dialog with full push orchestration
 - 2026-03-22: Code review #1 — Fixed H1: schematic backup silently skipped when ensure_session_backup() already set _session_backup_dir (connected-mode flow). Added _sch_backed_up flag so backup_schematic_files() always copies .kicad_sch files into session dir. Added regression test.
+- 2026-03-23: Code review #2 — Fixed H1: backup name collision with hierarchical sub-sheets (preserves relative path structure). Fixed M1: partial failure now removes individual written fields instead of all-or-nothing per ref. Fixed M3: added guard for zero-written/zero-failed edge case. Fixed L1: backup log counts actually copied files. Added hierarchical backup test.
 
 ### File List
 - `src/kipart_search/gui/kicad_bridge.py` — added `get_project_dir()` method

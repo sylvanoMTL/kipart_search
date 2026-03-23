@@ -902,7 +902,6 @@ class MainWindow(QMainWindow):
         written_count = 0
         skipped_count = 0
         failed_refs: list[tuple[str, str]] = []  # (ref, error)
-        written_refs: list[str] = []
 
         for ref, field_map in list(self._local_assignments.items()):
             # Find which sheet contains this reference
@@ -923,8 +922,7 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 log.warning("Failed to read symbols from %s: %s", sheet, exc)
 
-            ref_written = 0
-            ref_failed = False
+            written_fields: list[str] = []
             overwrite_set = self._local_overwrites.get(ref, set())
 
             for field_name, value in field_map.items():
@@ -940,7 +938,7 @@ class MainWindow(QMainWindow):
                         backup_mgr.log_field_change(
                             project_name, ref, field_name, old_val, value,
                         )
-                        ref_written += 1
+                        written_fields.append(field_name)
                         written_count += 1
                         self.log_panel.log(
                             f"  {ref}.{field_name} = \"{value}\" (in {sheet.name})"
@@ -951,20 +949,21 @@ class MainWindow(QMainWindow):
                             f"  {ref}.{field_name}: skipped (non-empty, overwrite not approved)"
                         )
                 except Exception as exc:
-                    ref_failed = True
                     failed_refs.append((ref, f"{field_name}: {exc}"))
                     self.log_panel.log(f"  {ref}.{field_name}: ERROR — {exc}")
 
-            if ref_written > 0 and not ref_failed:
-                written_refs.append(ref)
-
-        # Clear successfully written assignments
-        for ref in written_refs:
-            self._local_assignments.pop(ref, None)
-            self._local_overwrites.pop(ref, None)
+            # Remove successfully written fields; keep failed ones for retry
+            for fn in written_fields:
+                field_map.pop(fn, None)
+            if not field_map:
+                self._local_assignments.pop(ref, None)
+                self._local_overwrites.pop(ref, None)
 
         # Update toolbar button state
         self._update_push_button_state()
+
+        # How many components had at least one field removed (= written)
+        written_refs_count = total_refs - len(self._local_assignments)
 
         # Result dialog
         if failed_refs and written_count > 0:
@@ -972,7 +971,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self, "Push Partially Complete",
                 f"Written {written_count} field(s) to "
-                f"{len(written_refs)} component(s).\n\n"
+                f"{written_refs_count} component(s).\n\n"
                 f"Failed components:\n{fail_lines}\n\n"
                 f"Run 'Update PCB from Schematic' (F8) in KiCad to sync the board.",
             )
@@ -1000,11 +999,17 @@ class MainWindow(QMainWindow):
                 f"Push: {skipped_count} field(s) skipped (existing values, "
                 f"overwrite not approved)"
             )
+        elif written_count == 0:
+            QMessageBox.information(
+                self, "Nothing to Write",
+                "No fields were written. Assignments may be empty.",
+            )
+            self.log_panel.log("Push: no fields to write")
         else:
             QMessageBox.information(
                 self, "Push Complete",
                 f"Written {written_count} field(s) to "
-                f"{len(written_refs)} component(s).\n\n"
+                f"{written_refs_count} component(s).\n\n"
                 f"Run 'Update PCB from Schematic' (F8) in KiCad "
                 f"to sync the board.",
             )
@@ -1028,6 +1033,7 @@ class MainWindow(QMainWindow):
             return project_dir
 
         # 2. Standalone: check if BOM was loaded from file
+        # TODO: wire _last_bom_path when standalone BOM import is implemented
         bom_path = getattr(self, "_last_bom_path", None)
         if bom_path is not None:
             project_dir = Path(bom_path).parent
