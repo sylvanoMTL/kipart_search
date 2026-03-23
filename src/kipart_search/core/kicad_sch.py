@@ -8,7 +8,9 @@ zero GUI dependencies — stdlib only.
 from __future__ import annotations
 
 import logging
+import os
 import re
+import tempfile
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -99,7 +101,7 @@ def read_symbols(sch_path: Path | str) -> list[SchSymbol]:
 
     Skips library definitions inside ``(lib_symbols ...)``.
     """
-    text = Path(sch_path).read_text(encoding="utf-8")
+    text = Path(sch_path).read_bytes().decode("utf-8")
     symbols: list[SchSymbol] = []
 
     # First, locate and skip the (lib_symbols ...) section.
@@ -130,10 +132,10 @@ def read_symbols(sch_path: Path | str) -> list[SchSymbol]:
 
         lib_id = m.group(1)
 
-        # Extract all properties.
+        # Extract all properties (unescape S-expression values).
         fields: dict[str, str] = {}
         for pm in _PROPERTY_RE.finditer(block):
-            fields[pm.group(1)] = pm.group(2)
+            fields[_unescape_sexpr_string(pm.group(1))] = _unescape_sexpr_string(pm.group(2))
 
         reference = fields.get("Reference", "")
         value = fields.get("Value", "")
@@ -178,6 +180,11 @@ def read_symbols(sch_path: Path | str) -> list[SchSymbol]:
 # ---------------------------------------------------------------------------
 
 
+def _unescape_sexpr_string(s: str) -> str:
+    """Unescape an S-expression quoted value to a plain Python string."""
+    return s.replace('\\"', '"').replace("\\\\", "\\")
+
+
 def _escape_sexpr_string(s: str) -> str:
     """Escape a string for use inside an S-expression quoted value."""
     return s.replace("\\", "\\\\").replace('"', '\\"')
@@ -196,7 +203,7 @@ def set_field(
     made (symbol not found, or field exists and *allow_overwrite* is False).
     """
     path = Path(sch_path)
-    text = path.read_text(encoding="utf-8")
+    text = path.read_bytes().decode("utf-8")
 
     # Locate the symbol block for the given reference.
     sym_start, sym_end = _find_symbol_block(text, reference)
@@ -232,7 +239,7 @@ def set_field(
         at_y = at_m.group(2) if at_m else "0"
 
         # Detect whether existing properties use (id N).
-        uses_ids = re.search(r'\(property\s+"[^"]*"\s+"[^"]*"\s+\(id\s+\d+\)', block)
+        uses_ids = re.search(r'\(property\s+"(?:[^"\\]|\\.)*"\s+"(?:[^"\\]|\\.)*"\s+\(id\s+\d+\)', block)
 
         id_part = ""
         if uses_ids:
@@ -254,7 +261,20 @@ def set_field(
 
         text = text[:abs_insert] + new_prop + text[abs_insert:]
 
-    path.write_text(text, encoding="utf-8")
+    # Atomic write: temp file + rename to prevent corruption on crash.
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        os.write(fd, text.encode("utf-8"))
+    finally:
+        os.close(fd)
+    try:
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     return True
 
 
@@ -381,7 +401,7 @@ def find_schematic_files(project_dir: Path | str) -> list[Path]:
     queue: deque[Path] = deque([root_sch])
     while queue:
         current = queue.popleft()
-        text = current.read_text(encoding="utf-8")
+        text = current.read_bytes().decode("utf-8")
 
         # Find all (sheet ...) blocks.
         search_pos = 0
@@ -395,7 +415,7 @@ def find_schematic_files(project_dir: Path | str) -> list[Path]:
 
             sf_m = _SHEETFILE_RE.search(sheet_block)
             if sf_m:
-                sub_path = current.parent / sf_m.group(1)
+                sub_path = current.parent / _unescape_sexpr_string(sf_m.group(1))
                 # Guard against path traversal: sub-sheet must stay
                 # inside the project directory.
                 try:

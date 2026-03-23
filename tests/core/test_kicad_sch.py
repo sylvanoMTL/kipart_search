@@ -188,7 +188,7 @@ class TestReadSymbols:
         assert len(symbols) == 2  # only placed, not library defs
 
     def test_escaped_quotes_in_property_value(self, tmp_path: Path):
-        """Property values containing escaped quotes must be read correctly."""
+        """Property values containing escaped quotes must be unescaped on read."""
         sch_content = MINIMAL_SCH.replace(
             '(property "Datasheet" "~" (at 123.19 57.15 0)',
             '(property "Datasheet" "http://example.com/\\"quoted\\"" (at 123.19 57.15 0)',
@@ -197,7 +197,7 @@ class TestReadSymbols:
         sch.write_text(sch_content, encoding="utf-8")
         symbols = read_symbols(sch)
         r1 = next(s for s in symbols if s.reference == "R1")
-        assert r1.fields["Datasheet"] == 'http://example.com/\\"quoted\\"'
+        assert r1.fields["Datasheet"] == 'http://example.com/"quoted"'
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +295,7 @@ class TestSetField:
 
         symbols = read_symbols(sch)
         r1 = next(s for s in symbols if s.reference == "R1")
-        assert r1.fields["Description"] == 'Res 0.1\\" pitch'
+        assert r1.fields["Description"] == 'Res 0.1" pitch'
 
     def test_nonexistent_reference_returns_false(self, tmp_path: Path):
         sch = tmp_path / "test.kicad_sch"
@@ -330,6 +330,36 @@ class TestSetField:
         mh1 = next(s for s in symbols if s.reference == "MH1")
         assert mh1.fields["MPN"] == "HOLE-123"
 
+    def test_round_trip_value_with_quotes(self, tmp_path: Path):
+        """Read a value, then write it back — must not double-escape."""
+        sch = tmp_path / "test.kicad_sch"
+        sch.write_text(MINIMAL_SCH, encoding="utf-8")
+
+        # Write a value containing a quote
+        set_field(sch, "R1", "Description", 'Res 0.1" pitch')
+        # Read it back (should be unescaped)
+        symbols = read_symbols(sch)
+        r1 = next(s for s in symbols if s.reference == "R1")
+        original = r1.fields["Description"]
+        assert original == 'Res 0.1" pitch'
+
+        # Write the read value back (round-trip) — must not double-escape
+        set_field(sch, "R1", "Description", original, allow_overwrite=True)
+        symbols2 = read_symbols(sch)
+        r1_2 = next(s for s in symbols2 if s.reference == "R1")
+        assert r1_2.fields["Description"] == 'Res 0.1" pitch'
+
+    def test_preserves_unix_line_endings(self, tmp_path: Path):
+        """set_field must not convert LF to CRLF on Windows."""
+        sch = tmp_path / "test.kicad_sch"
+        # Write with explicit LF (as KiCad generates)
+        sch.write_bytes(MINIMAL_SCH.encode("utf-8"))
+
+        set_field(sch, "R1", "MPN", "TEST123")
+        raw = sch.read_bytes()
+        assert b"\r\n" not in raw, "Line endings were converted to CRLF"
+        assert b"\n" in raw
+
 
 # ---------------------------------------------------------------------------
 # Task 3: Sub-sheet discovery
@@ -353,6 +383,47 @@ class TestFindSchematicFiles:
         assert "myboard.kicad_sch" in names
         assert "power.kicad_sch" in names
         assert "audio.kicad_sch" in names
+        assert len(files) == 3
+
+    def test_recursive_subsheet_discovery(self, tmp_path: Path):
+        """BFS must discover sub-sheets referenced by other sub-sheets."""
+        pro = tmp_path / "myboard.kicad_pro"
+        pro.write_text("{}", encoding="utf-8")
+        root_sch = tmp_path / "myboard.kicad_sch"
+        # Root references power.kicad_sch only
+        root_content = SCH_WITH_SHEETS.replace(
+            '(property "Sheetfile" "audio.kicad_sch"',
+            '(property "Sheetfile" "nonexistent.kicad_sch"',
+        )
+        root_sch.write_text(root_content, encoding="utf-8")
+        # power.kicad_sch references a nested sub-sheet
+        power_with_nested = """\
+(kicad_sch (version 20231120) (generator "eeschema")
+  (lib_symbols)
+  (symbol (lib_id "Device:C") (at 50 50 0) (unit 1)
+    (uuid "sub-aaa")
+    (property "Reference" "C10" (at 50 50 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "10uF" (at 50 50 0)
+      (effects (font (size 1.27 1.27))))
+    (pin "1" (uuid "sp1"))
+  )
+  (sheet (at 100 100) (size 20 15)
+    (property "Sheetname" "Nested" (at 100 99 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Sheetfile" "nested.kicad_sch" (at 100 115 0)
+      (effects (font (size 1.27 1.27))))
+  )
+)
+"""
+        (tmp_path / "power.kicad_sch").write_text(power_with_nested, encoding="utf-8")
+        (tmp_path / "nested.kicad_sch").write_text(SUBSHEET_SCH, encoding="utf-8")
+
+        files = find_schematic_files(tmp_path)
+        names = {f.name for f in files}
+        assert "myboard.kicad_sch" in names
+        assert "power.kicad_sch" in names
+        assert "nested.kicad_sch" in names
         assert len(files) == 3
 
     def test_root_only_no_sheets(self, tmp_path: Path):
