@@ -62,7 +62,7 @@ def _find_block(text: str, start_pos: int) -> tuple[int, int]:
             # Skip quoted string — advance past closing quote
             i += 1
             while i < length:
-                if text[i] == "\\":
+                if text[i] == "\\" and i + 1 < length:
                     i += 2  # skip escaped char
                     continue
                 if text[i] == '"':
@@ -395,7 +395,20 @@ def find_schematic_files(project_dir: Path | str) -> list[Path]:
             sf_m = _SHEETFILE_RE.search(sheet_block)
             if sf_m:
                 sub_path = current.parent / sf_m.group(1)
-                if sub_path.exists() and sub_path.resolve() not in visited:
+                # Guard against path traversal: sub-sheet must stay
+                # inside the project directory.
+                try:
+                    resolved = sub_path.resolve()
+                    if not resolved.is_relative_to(project_dir.resolve()):
+                        log.warning(
+                            "Ignoring sub-sheet outside project: %s", sub_path
+                        )
+                        search_pos = sheet_end
+                        continue
+                except (ValueError, OSError):
+                    search_pos = sheet_end
+                    continue
+                if sub_path.exists() and resolved not in visited:
                     visited.add(sub_path.resolve())
                     result.append(sub_path)
                     queue.append(sub_path)

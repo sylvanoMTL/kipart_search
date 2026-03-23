@@ -147,6 +147,8 @@ class DownloadDialog(QDialog):
         self.info_label.setText("Checking for updates...")
         self.download_btn.setEnabled(False)
 
+        if self._check_worker and self._check_worker.isRunning():
+            self._check_worker.wait()
         self._check_worker = UpdateCheckWorker(self._db_path)
         self._check_worker.result.connect(self._on_check_result)
         self._check_worker.start()
@@ -169,7 +171,10 @@ class DownloadDialog(QDialog):
         self.status_label.setVisible(True)
 
         # Rewire close button to cancel during download
-        self.close_btn.clicked.disconnect()
+        try:
+            self.close_btn.clicked.disconnect(self.reject)
+        except TypeError:
+            pass  # slot wasn't connected
         self.close_btn.clicked.connect(self._on_cancel)
 
         target_dir = self._db_path.parent
@@ -198,7 +203,10 @@ class DownloadDialog(QDialog):
         self.close_btn.setText("Close")
         self.close_btn.setEnabled(True)
         # Rewire close button back to reject
-        self.close_btn.clicked.disconnect()
+        try:
+            self.close_btn.clicked.disconnect(self._on_cancel)
+        except TypeError:
+            pass
         self.close_btn.clicked.connect(self.reject)
         self.browse_btn.setEnabled(True)
         self.download_complete.emit(db_path)
@@ -208,7 +216,10 @@ class DownloadDialog(QDialog):
         self.browse_btn.setEnabled(True)
         self.close_btn.setEnabled(True)
         # Rewire close button back to reject
-        self.close_btn.clicked.disconnect()
+        try:
+            self.close_btn.clicked.disconnect(self._on_cancel)
+        except TypeError:
+            pass
         self.close_btn.clicked.connect(self.reject)
         self.download_btn.setEnabled(True)
         self.download_btn.setText("Retry")

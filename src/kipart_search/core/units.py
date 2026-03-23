@@ -184,4 +184,6 @@ def generate_query_variants(query: str) -> list[str]:
     before = query[: m.start()]
     after = query[m.end() :]
 
-    return [f"{before}{v}{after}" for v in variants]
+    # Cap variants to avoid combinatorial explosion when multiple values
+    # appear in a query.
+    return [f"{before}{v}{after}" for v in variants[:10]]

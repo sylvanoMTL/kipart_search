@@ -49,7 +49,10 @@ def check_licenses() -> None:
 def read_version() -> str:
     """Read version from pyproject.toml and return X.X.X.X quad format."""
     pyproject = Path(__file__).parent / "pyproject.toml"
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib  # Python 3.10 fallback
     with open(pyproject, "rb") as f:
         data = tomllib.load(f)
     version = data.get("project", {}).get("version", "0.0.0")

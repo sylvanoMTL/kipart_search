@@ -94,6 +94,9 @@ def group_components(
     groups: dict[tuple[str, str], list[BoardComponent]] = {}
 
     for comp in components:
+        if not comp.reference:
+            log.warning("Skipping component with empty reference")
+            continue
         key = (comp.mpn.upper(), comp.extra_fields.get("manufacturer", "").upper())
         groups.setdefault(key, []).append(comp)
 

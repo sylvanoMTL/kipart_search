@@ -309,7 +309,8 @@ class ResultsTable(QWidget):
 
         if self._assign_target:
             assign_action = QAction(f"Assign to {self._assign_target}", self)
-            assign_action.triggered.connect(lambda: self.part_selected.emit(row))
+            # Capture row by value (default arg) to avoid stale index
+            assign_action.triggered.connect(lambda _=False, r=row: self.part_selected.emit(r))
             menu.addAction(assign_action)
 
         copy_action = QAction("Copy MPN", self)

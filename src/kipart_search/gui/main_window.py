@@ -511,13 +511,13 @@ class MainWindow(QMainWindow):
 
         dialog = WelcomeDialog(parent=self)
 
-        def _on_source_configured():
+        def _on_source_configured(dlg=dialog):
             # Check if it was a download or an API configuration
-            db_path = dialog.get_db_path()
+            db_path = dlg.get_db_path()
             if db_path:
                 self._on_db_downloaded(str(db_path))
             else:
-                configs = dialog.get_saved_configs()
+                configs = dlg.get_saved_configs()
                 if configs:
                     self._apply_source_configs(configs)
 
@@ -1204,8 +1204,11 @@ class MainWindow(QMainWindow):
         if not fields or self._assign_target is None:
             return
 
+        # Cache the target component reference immediately — the GUI thread
+        # could update self._assign_target if the user clicks another row.
+        comp = self._assign_target
         overwrite_fields = overwrite_fields or set()
-        ref = self._assign_target.reference
+        ref = comp.reference
         written = 0
         failed: list[tuple[str, str]] = []  # (field_name, error_msg)
         mpn_written = False
@@ -1223,7 +1226,6 @@ class MainWindow(QMainWindow):
                 log.warning("Failed to create session backup: %s", exc)
 
         # Capture old values before writing (comp state is still pre-write)
-        comp = self._assign_target
         old_values: dict[str, str] = {}
         for field_name in fields:
             if field_name == "MPN":
@@ -1300,7 +1302,7 @@ class MainWindow(QMainWindow):
 
         # Update component in-memory (both modes)
         # Include IPC-written fields + local-only fields; exclude hard failures
-        comp = self._assign_target
+        # (comp was cached at method entry to avoid race with GUI thread)
         if self._bridge.is_connected:
             failed_names = {fn for fn, _ in failed}
             written_fields = {
@@ -1324,8 +1326,13 @@ class MainWindow(QMainWindow):
                     old_values.get(field_name, ""), value,
                 )
 
-        # MPN counts as assigned if written to KiCad OR assigned locally
-        mpn_assigned = mpn_written or "MPN" in local_only
+        # MPN counts as assigned if written to KiCad, fell through IPC to
+        # local_only, or assigned in standalone mode (present in written_fields)
+        mpn_assigned = (
+            mpn_written
+            or "MPN" in local_only
+            or (not self._bridge.is_connected and "MPN" in written_fields)
+        )
 
         if comp and "MPN" in written_fields:
             comp.mpn = written_fields["MPN"]

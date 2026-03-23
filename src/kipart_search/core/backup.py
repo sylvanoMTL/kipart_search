@@ -164,7 +164,7 @@ class BackupManager:
                 try:
                     data = json.loads(comp_file.read_text(encoding="utf-8"))
                     component_count = len(data)
-                except Exception:
+                except (json.JSONDecodeError, OSError):
                     pass
 
             change_count = 0
@@ -175,7 +175,7 @@ class BackupManager:
                         rows = list(reader)
                         # Subtract header row
                         change_count = max(0, len(rows) - 1)
-                except Exception:
+                except (csv.Error, OSError):
                     pass
 
             entries.append(BackupEntry(

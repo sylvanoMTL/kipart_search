@@ -55,8 +55,9 @@ class LogPanel(QWidget):
 
     def log(self, msg: str):
         """Append a timestamped line."""
+        from html import escape
         ts = datetime.now().strftime("%H:%M:%S")
-        self._text.append(f"[{ts}] {msg}")
+        self._text.append(f"[{ts}] {escape(msg)}")
         self._scroll_to_bottom()
 
     def section(self, title: str) -> None:

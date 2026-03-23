@@ -245,6 +245,10 @@ class TestStandaloneAssignment:
         window._bridge = MagicMock(spec=KiCadBridge)
         window._bridge.is_connected = False
         window._assign_target = comp
+        window._local_assignments = {}
+        window._local_overwrites = {}
+        window._backup_manager = MagicMock()
+        window._act_push = MagicMock()
         window.verify_panel = MagicMock()
         window.log_panel = MagicMock()
         window._search_target_label = MagicMock()
@@ -270,6 +274,10 @@ class TestStandaloneAssignment:
         window._bridge = MagicMock(spec=KiCadBridge)
         window._bridge.is_connected = False
         window._assign_target = comp
+        window._local_assignments = {}
+        window._local_overwrites = {}
+        window._backup_manager = MagicMock()
+        window._act_push = MagicMock()
         window.verify_panel = MagicMock()
         window.log_panel = MagicMock()
         window._search_target_label = MagicMock()
@@ -301,6 +309,10 @@ class TestConnectedAssignment:
         window._bridge.is_connected = True
         window._bridge.write_field.return_value = True
         window._assign_target = comp
+        window._local_assignments = {}
+        window._local_overwrites = {}
+        window._backup_manager = MagicMock()
+        window._act_push = MagicMock()
         window.verify_panel = MagicMock()
         window.log_panel = MagicMock()
         window._search_target_label = MagicMock()
@@ -332,6 +344,10 @@ class TestConnectedAssignment:
         window._bridge.is_connected = True
         window._bridge.write_field.return_value = True
         window._assign_target = comp
+        window._local_assignments = {}
+        window._local_overwrites = {}
+        window._backup_manager = MagicMock()
+        window._act_push = MagicMock()
         window.verify_panel = MagicMock()
         window.log_panel = MagicMock()
         window._search_target_label = MagicMock()
@@ -353,6 +369,10 @@ class TestConnectedAssignment:
         window._bridge = MagicMock(spec=KiCadBridge)
         window._bridge.is_connected = False
         window._assign_target = comp
+        window._local_assignments = {}
+        window._local_overwrites = {}
+        window._backup_manager = MagicMock()
+        window._act_push = MagicMock()
         window.verify_panel = MagicMock()
         window.log_panel = MagicMock()
         window._search_target_label = MagicMock()
@@ -721,6 +741,10 @@ class TestApplyAssignmentErrorHandling:
         window._bridge = MagicMock(spec=KiCadBridge)
         window._bridge.is_connected = True
         window._assign_target = comp
+        window._local_assignments = {}
+        window._local_overwrites = {}
+        window._backup_manager = MagicMock()
+        window._act_push = MagicMock()
         window.verify_panel = MagicMock()
         window.log_panel = MagicMock()
         window._search_target_label = MagicMock()
@@ -754,8 +778,8 @@ class TestApplyAssignmentErrorHandling:
             "C1", Confidence.GREEN
         )
 
-    def test_total_failure_no_in_memory_update(self):
-        """Total failure: no fields written → no in-memory update, no GREEN."""
+    def test_ipc_failure_falls_through_to_local(self):
+        """IPC write_field returns False → field assigned locally, GREEN."""
         comp = _make_component(reference="C1")
         window = self._make_window(comp)
         window._bridge.write_field.return_value = False
@@ -764,18 +788,20 @@ class TestApplyAssignmentErrorHandling:
             mp.setattr("kipart_search.gui.main_window.QMessageBox", MagicMock())
             window._apply_assignment({"MPN": "ABC123"})
 
-        # No in-memory update on total failure
-        assert comp.mpn == ""
-        # No GREEN status
-        window.verify_panel.update_component_status.assert_not_called()
+        # Field falls through IPC to local assignment
+        assert comp.mpn == "ABC123"
+        # GREEN because MPN was assigned locally
+        window.verify_panel.update_component_status.assert_called_once_with(
+            "C1", Confidence.GREEN
+        )
 
-    def test_partial_failure_mpn_fails_no_green(self):
-        """When MPN write fails but other fields succeed, status stays non-GREEN."""
+    def test_mpn_ipc_fail_falls_through_to_local_green(self):
+        """When MPN IPC write returns False, MPN assigned locally → GREEN."""
         comp = _make_component(reference="C1")
         window = self._make_window(comp)
 
         def write_field_side_effect(ref, field, value, allow_overwrite=False):
-            return field != "MPN"  # MPN fails, others succeed
+            return field != "MPN"  # MPN IPC fails, Manufacturer succeeds
 
         window._bridge.write_field.side_effect = write_field_side_effect
 
@@ -785,8 +811,10 @@ class TestApplyAssignmentErrorHandling:
                 {"MPN": "ABC123", "Manufacturer": "Murata"}
             )
 
-        # MPN failed → status should NOT be set to GREEN
-        window.verify_panel.update_component_status.assert_not_called()
+        # MPN falls through IPC to local → still GREEN
+        window.verify_panel.update_component_status.assert_called_once_with(
+            "C1", Confidence.GREEN
+        )
 
     def test_apply_assignment_with_overwrite_fields(self):
         """Overwrite fields pass allow_overwrite=True to bridge."""

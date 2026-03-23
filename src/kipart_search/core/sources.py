@@ -459,6 +459,15 @@ class JLCPCBSource(DataSource):
                 tmp_db.rename(final_tmp)
                 tmp_db = final_tmp
 
+            # Verify the new database is valid before swapping
+            import sqlite3 as _sqlite3
+            try:
+                _conn = _sqlite3.connect(str(tmp_db))
+                _conn.execute("SELECT COUNT(*) FROM parts LIMIT 1")
+                _conn.close()
+            except _sqlite3.Error as e:
+                raise RuntimeError(f"Downloaded database is invalid: {e}") from e
+
             backup_db = target_dir / "parts-fts5.db.bak"
             if db_file.exists():
                 db_file.rename(backup_db)
