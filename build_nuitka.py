@@ -13,6 +13,16 @@ import sys
 from pathlib import Path
 
 
+def _split_license_tokens(license_str: str) -> list[str]:
+    """Split an SPDX license expression into individual tokens.
+
+    Handles combinators: AND, OR, semicolons, commas.
+    E.g. "LGPL-2.1 AND GPL-2.0" -> ["LGPL-2.1", "GPL-2.0"]
+    """
+    import re
+    return [t.strip() for t in re.split(r"\bAND\b|\bOR\b|[;,]", license_str) if t.strip()]
+
+
 def check_licenses() -> None:
     """Fail build if any GPL runtime dependency found (NFR16). LGPL is allowed.
 
@@ -22,12 +32,19 @@ def check_licenses() -> None:
     # Build/dev tools that are never bundled in the standalone binary
     BUILD_ONLY = {"nuitka", "pip-licenses", "piplicenses", "pytest", "prettytable"}
 
-    result = subprocess.run(
-        [sys.executable, "-m", "piplicenses", "--format=json", "--with-system"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "piplicenses", "--format=json", "--with-system"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        print("GPL firewall check failed — could not run piplicenses:")
+        if exc.stderr:
+            print(exc.stderr.strip())
+        print("Install it with: pip install pip-licenses")
+        sys.exit(1)
     packages = json.loads(result.stdout)
     violations = []
     for pkg in packages:
@@ -35,9 +52,14 @@ def check_licenses() -> None:
         if name.lower() in BUILD_ONLY:
             continue
         license_str = pkg.get("License", "").upper()
-        # GPL but NOT LGPL
-        if "GPL" in license_str and "LGPL" not in license_str:
-            violations.append(f"  {name} ({pkg['License']})")
+        # Split on SPDX combinators to check each license token individually.
+        # A dual-license like "LGPL-2.1 AND GPL-2.0" must flag on the GPL token
+        # even though LGPL is also present.
+        tokens = _split_license_tokens(license_str)
+        for token in tokens:
+            if "GPL" in token and "LGPL" not in token:
+                violations.append(f"  {name} ({pkg['License']})")
+                break
     if violations:
         print("GPL FIREWALL FAILED -- these packages have GPL licenses:")
         for v in violations:
@@ -60,7 +82,14 @@ def read_version() -> str:
     parts = version.split(".")
     while len(parts) < 4:
         parts.append("0")
-    return ".".join(parts[:4])
+    parts = parts[:4]
+    for i, p in enumerate(parts):
+        if not p.isdigit():
+            raise ValueError(
+                f"Version part '{p}' in '{version}' is not a non-negative integer. "
+                f"Windows PE version requires X.X.X.X numeric format."
+            )
+    return ".".join(parts)
 
 
 def build(output_dir: str = "dist") -> None:
@@ -78,11 +107,11 @@ def build(output_dir: str = "dist") -> None:
         "--windows-console-mode=disable",
         "--output-filename=kipart-search",
         f"--output-dir={output_dir}",
-        f"--windows-company-name=MecaFrog",
-        f"--windows-product-name=KiPart Search",
+        "--windows-company-name=MecaFrog",
+        "--windows-product-name=KiPart Search",
         f"--windows-file-version={version_quad}",
         f"--windows-product-version={version_quad}",
-        f"--windows-file-description=Parametric electronic component search",
+        "--windows-file-description=Parametric electronic component search",
         "src/kipart_search/__main__.py",
     ]
 
@@ -95,9 +124,12 @@ def build(output_dir: str = "dist") -> None:
     # Print summary
     dist_path = Path(output_dir) / "kipart-search.dist"
     if dist_path.exists():
-        files = list(dist_path.rglob("*"))
-        file_count = sum(1 for f in files if f.is_file())
-        total_size = sum(f.stat().st_size for f in files if f.is_file())
+        file_count = 0
+        total_size = 0
+        for f in dist_path.rglob("*"):
+            if f.is_file():
+                file_count += 1
+                total_size += f.stat().st_size
         size_mb = total_size / (1024 * 1024)
         print()
         print(f"Build complete: {dist_path}")

@@ -365,7 +365,6 @@ class VerifyPanel(QWidget):
         Used for live updates after MPN assignment — avoids a full re-scan.
         """
         self._mpn_statuses[reference] = new_status
-        new_bg = COLORS[new_status]
 
         # Update the visual row (sort-safe: iterate all rows, check UserRole)
         for row in range(self.table.rowCount()):
@@ -376,11 +375,29 @@ class VerifyPanel(QWidget):
             if orig_idx is not None and 0 <= orig_idx < len(self._components):
                 comp = self._components[orig_idx]
                 if comp.reference == reference:
+                    # Resolve visual state — sch-only/desynced override normal colors
+                    if comp.source == "sch_only":
+                        bg = _COLOR_SCH_ONLY
+                        label = "Not on PCB"
+                        tip = "Component exists only in schematic — not placed on PCB"
+                        sort = _SORT_ORDER[Confidence.AMBER]
+                    elif comp.sync_mismatches:
+                        bg = _COLOR_DESYNC
+                        label = "PCB out of sync"
+                        tip = "\n".join(comp.sync_mismatches)
+                        tip += "\nRun Update PCB from Schematic (F8) in KiCad"
+                        sort = _SORT_ORDER[Confidence.AMBER]
+                    else:
+                        bg = COLORS[new_status]
+                        label = _STATUS_LABELS[new_status]
+                        tip = _STATUS_TOOLTIPS[new_status]
+                        sort = _SORT_ORDER[new_status]
+
                     # Update background for all cells in this row
                     for col in range(self.table.columnCount()):
                         cell = self.table.item(row, col)
                         if cell:
-                            cell.setBackground(new_bg)
+                            cell.setBackground(bg)
                     # Update MPN cell text (column 2) if MPN was assigned
                     mpn_item = self.table.item(row, 2)
                     if mpn_item and comp.has_mpn:
@@ -388,11 +405,10 @@ class VerifyPanel(QWidget):
                     # Update MPN Status cell text and tooltip (column 3)
                     status_item = self.table.item(row, 3)
                     if status_item:
-                        status_item.setText(_STATUS_LABELS[new_status])
-                        status_item.setToolTip(_STATUS_TOOLTIPS[new_status])
+                        status_item.setText(label)
+                        status_item.setToolTip(tip)
                         status_item.setData(
-                            Qt.ItemDataRole.UserRole + 1,
-                            _SORT_ORDER[new_status],
+                            Qt.ItemDataRole.UserRole + 1, sort,
                         )
                     break
 
@@ -540,16 +556,16 @@ class VerifyPanel(QWidget):
     def get_health_percentage(self) -> int:
         """Return the current BOM health percentage (0-100).
 
-        Mirrors set_results() counting: desynced GREEN components and sch-only
-        components are NOT counted as healthy.
+        Sch-only components are excluded from both numerator and denominator
+        (they can't become healthy without placing on PCB — outside this tool's scope).
+        Desynced GREEN components are excluded from the numerator only.
         """
-        total = len(self._components)
+        pcb_components = [c for c in self._components if c.source != "sch_only"]
+        total = len(pcb_components)
         if total == 0:
             return 0
         has_mpn = 0
-        for c in self._components:
-            if c.source == "sch_only":
-                continue
+        for c in pcb_components:
             if self._mpn_statuses.get(c.reference) == Confidence.GREEN:
                 if not c.sync_mismatches:
                     has_mpn += 1

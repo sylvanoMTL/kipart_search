@@ -258,6 +258,7 @@ Claude Opus 4.6 (1M context)
 - 2026-03-22: Story 5.8 implementation complete — dual-source scan with schematic+PCB merge
 - 2026-03-22: Code review — fixed 2 MEDIUM issues: (1) desynced components now sort as AMBER instead of retaining GREEN sort order, (2) update_component_status() recount now accounts for sch-only and desynced components
 - 2026-03-23: Code review #2 — fixed 3 issues: (1) HIGH: get_health_percentage() now excludes desynced and sch-only components from healthy count, (2) MEDIUM: Datasheet field lookup is now case-insensitive matching MPN/Manufacturer approach, (3) LOW: sch-only components no longer duplicate MPN/Datasheet in extra_fields
+- 2026-03-23: Code review #3 — fixed 2 issues: (1) HIGH: update_component_status() now preserves sch-only/desynced visual state instead of overwriting to green "Verified", (2) MEDIUM: get_health_percentage() excludes sch-only components from denominator for meaningful percentage
 
 ### File List
 

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-23  # Story 7.2 created — ready-for-dev
+last_updated: 2026-03-23  # Story 5.8 code review #3 fixes
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system

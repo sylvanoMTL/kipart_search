@@ -226,6 +226,7 @@ Claude Opus 4.6 (1M context)
 ### Change Log
 - 2026-03-22: Implemented Story 7.1 — Nuitka build script with GPL firewall, keyring fallback, verified binary launch
 - 2026-03-22: Code review fixes — added `--output-filename=kipart-search` (AC #1), replaced naive version parsing with `tomllib`, added `nuitka-crash-report.xml` to `.gitignore`
+- 2026-03-23: Code review #3 fixes — GPL firewall now splits SPDX dual-license expressions (H1), added `tomli` to dev deps for Python 3.10 (H2), version validation rejects non-numeric parts (M1), piplicenses failure gives actionable error (M2), replaced vacuous tests with real assertions + added 5 new tests (M3), removed dead f-strings and double filesystem traversal (L1/L2)
 
 ### File List
 - `build_nuitka.py` (new) — Nuitka build script with GPL firewall check
