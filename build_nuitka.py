@@ -121,8 +121,9 @@ def build(output_dir: str = "dist") -> None:
 
     subprocess.run(nuitka_cmd, check=True)
 
-    # Print summary
-    dist_path = Path(output_dir) / "kipart-search.dist"
+    # Print summary — Nuitka names the folder after the entry-point module
+    # (__main__.py → __main__.dist), not the --output-filename.
+    dist_path = Path(output_dir) / "__main__.dist"
     if dist_path.exists():
         file_count = 0
         total_size = 0
