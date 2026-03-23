@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -138,7 +139,8 @@ def read_symbols(sch_path: Path | str) -> list[SchSymbol]:
         value = fields.get("Value", "")
         footprint = fields.get("Footprint", "")
 
-        # Extract position.
+        # Extract position — first (at ...) in the block is the symbol's own
+        # position, which KiCad always places before property (at ...) entries.
         at_x, at_y, at_angle = 0.0, 0.0, 0.0
         at_m = _AT_RE.search(block)
         if at_m:
@@ -242,9 +244,10 @@ def set_field(
         # Detect indentation from surrounding properties.
         indent = _detect_indent(block)
 
+        escaped_name = _escape_sexpr_string(field_name)
         escaped = _escape_sexpr_string(value)
         new_prop = (
-            f'{indent}(property "{field_name}" "{escaped}"{id_part} '
+            f'{indent}(property "{escaped_name}" "{escaped}"{id_part} '
             f"(at {at_x} {at_y} 0)\n"
             f"{indent}  (effects (font (size 1.27 1.27)) hide))\n"
         )
@@ -346,7 +349,7 @@ def is_schematic_locked(sch_path: Path | str) -> bool:
 # Sub-sheet discovery
 # ---------------------------------------------------------------------------
 
-_SHEETFILE_RE = re.compile(r'\(property\s+"Sheetfile"\s+"([^"]+)"')
+_SHEETFILE_RE = re.compile(r'\(property\s+"Sheetfile"\s+"((?:[^"\\]|\\.)*)"')
 
 
 def find_schematic_files(project_dir: Path | str) -> list[Path]:
@@ -374,9 +377,9 @@ def find_schematic_files(project_dir: Path | str) -> list[Path]:
     visited: set[Path] = {root_sch.resolve()}
 
     # BFS through sheets.
-    queue = [root_sch]
+    queue: deque[Path] = deque([root_sch])
     while queue:
-        current = queue.pop(0)
+        current = queue.popleft()
         text = current.read_text(encoding="utf-8")
 
         # Find all (sheet ...) blocks.

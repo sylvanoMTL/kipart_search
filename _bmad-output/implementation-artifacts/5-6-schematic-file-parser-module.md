@@ -203,6 +203,7 @@ Claude Opus 4.6 (1M context)
 - 2026-03-21: Implemented Story 5.6 — `core/kicad_sch.py` S-expression parser with depth-counting, field read/write, sub-sheet discovery, lock detection. 22 new tests added. Manual validation on real KiCad 9 project (81 symbols) passed.
 - 2026-03-22: Code review fixes — Fixed regex patterns (`_PROPERTY_RE`, `set_field` field_pattern, `_find_symbol_block` ref_pattern) to handle escaped quotes in property values. Hardened `_find_insertion_point()` for compact/single-line symbol blocks. 2 new edge-case tests added (24 total).
 - 2026-03-22: Code review #2 — Added `_escape_sexpr_string()` to escape `"` and `\` in values written by `set_field()` (both insert and overwrite paths). Manual test tool now uses `is_schematic_locked()` instead of duplicating logic. Fixed `NameError` on `lock_file` reference left behind by the refactor. Removed unused `_escape_sexpr_string` import from tests. 2 new tests added (26 total).
+- 2026-03-22: Code review #3 — Fixed `_SHEETFILE_RE` to handle escaped quotes in sheet filenames (was using `[^"]+`, now matches `_PROPERTY_RE` pattern). Escaped `field_name` in `set_field()` insert path. Replaced `list.pop(0)` with `deque.popleft()` in BFS. Added clarifying comment for `_AT_RE` position assumption.
 
 ### File List
 - `src/kipart_search/core/kicad_sch.py` — NEW: KiCad schematic file parser and field writer
