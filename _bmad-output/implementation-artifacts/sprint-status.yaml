@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-23  # Story 5.8 code review #3 fixes
+last_updated: 2026-03-23  # Epics 1-6 retrospectives completed
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -50,7 +50,7 @@ development_status:
   1-4-layout-persistence-and-empty-states: done
   1-5-context-menus-and-accessibility-labels: done
   1-6-persistent-session-log: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   # Epic 2: Production-Ready BOM Export
   epic-2: done
@@ -58,7 +58,7 @@ development_status:
   2-2-preset-cm-templates-jlcpcb-newbury-electronics: done
   2-3-health-summary-bar-with-live-updates: done
   2-4-bom-export-dialog-with-template-selection-and-preview: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # Epic 3: Search & Verification Enhancements
   epic-3: done
@@ -66,14 +66,14 @@ development_status:
   3-2-two-mode-search-architecture-specific-vs-unified: done
   3-3-verification-dashboard-enhancements: done
   3-4-stale-data-indicators: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # Epic 4: Caching & Offline Resilience
   epic-4: done
   4-1-sqlite-query-cache: done
   4-2-jlcpcb-database-download-and-refresh: done
   4-3-full-offline-operation: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # Epic 5: Safe KiCad Write-Back & Assignment
   epic-5: done  # all stories complete including 5.6, 5.7, 5.8 additions
@@ -85,13 +85,13 @@ development_status:
   5-6-schematic-file-parser-module: done  # core/kicad_sch.py S-expression parser
   5-7-file-based-write-back-push-to-kicad: done  # Push to KiCad via .kicad_sch modification
   5-8-dual-source-scan-schematic-pcb: done  # Merge schematic + PCB data during scan
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
 
   # Epic 6: Source Configuration & First-Run Experience
   epic-6: done
   6-1-source-preferences-dialog: done
   6-2-welcome-first-run-dialog: done
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
 
   # Epic 7: Build Pipeline & Distribution (Windows)
   epic-7: in-progress
