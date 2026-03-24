@@ -74,7 +74,7 @@ class TestPCBWayTemplate:
 # ── Grouping Tests ──
 
 class TestGrouping:
-    def test_grouping_by_mpn(self, three_components, tmp_path):
+    def test_grouping_by_mpn(self, three_components, tmp_path, pro_license):
         out = tmp_path / "bom.xlsx"
         export_bom(three_components, PCBWAY_TEMPLATE, out)
 
@@ -158,7 +158,7 @@ class TestMountTypeDetection:
 # ── Excel Output Tests ──
 
 class TestExcelOutput:
-    def test_excel_output(self, three_components, tmp_path):
+    def test_excel_output(self, three_components, tmp_path, pro_license):
         out = tmp_path / "bom.xlsx"
         result = export_bom(three_components, PCBWAY_TEMPLATE, out)
 
@@ -177,7 +177,7 @@ class TestExcelOutput:
         rows = list(ws.iter_rows(min_row=2, values_only=True))
         assert len(rows) == 2
 
-    def test_item_numbers_sequential(self, three_components, tmp_path):
+    def test_item_numbers_sequential(self, three_components, tmp_path, pro_license):
         out = tmp_path / "bom.xlsx"
         export_bom(three_components, PCBWAY_TEMPLATE, out)
 
@@ -189,7 +189,7 @@ class TestExcelOutput:
         item_numbers = [r[0] for r in rows]
         assert item_numbers == [1, 2]
 
-    def test_package_column_populated(self, three_components, tmp_path):
+    def test_package_column_populated(self, three_components, tmp_path, pro_license):
         out = tmp_path / "bom.xlsx"
         export_bom(three_components, PCBWAY_TEMPLATE, out)
 
@@ -203,7 +203,7 @@ class TestExcelOutput:
         assert "0805" in packages
         assert "0402" in packages
 
-    def test_type_column_populated(self, three_components, tmp_path):
+    def test_type_column_populated(self, three_components, tmp_path, pro_license):
         out = tmp_path / "bom.xlsx"
         export_bom(three_components, PCBWAY_TEMPLATE, out)
 
@@ -243,7 +243,7 @@ class TestCSVOutput:
 # ── Edge Cases ──
 
 class TestEdgeCases:
-    def test_empty_component_list(self, tmp_path):
+    def test_empty_component_list(self, tmp_path, pro_license):
         out = tmp_path / "empty.xlsx"
         export_bom([], PCBWAY_TEMPLATE, out)
 
@@ -259,7 +259,7 @@ class TestEdgeCases:
         headers = [cell.value for cell in ws[1]]
         assert len(headers) == 9
 
-    def test_components_with_no_mpn(self, tmp_path):
+    def test_components_with_no_mpn(self, tmp_path, pro_license):
         comps = [
             _make_comp("R1", "10k", "Resistor_SMD:R_0805_2012Metric", mpn=""),
             _make_comp("R2", "10k", "Resistor_SMD:R_0805_2012Metric", mpn=""),
@@ -382,7 +382,7 @@ class TestNewburyTemplate:
     def test_file_format_xlsx(self):
         assert NEWBURY_TEMPLATE.file_format == "xlsx"
 
-    def test_export_with_supplier_fields(self, tmp_path):
+    def test_export_with_supplier_fields(self, tmp_path, pro_license):
         comps = [
             BoardComponent(
                 reference="U1", value="STM32F103",
@@ -416,7 +416,7 @@ class TestNewburyTemplate:
         assert row[7] == "U1"                            # Designator
         assert row[8] in ("", None)                      # Notes
 
-    def test_description_field(self, tmp_path):
+    def test_description_field(self, tmp_path, pro_license):
         # No description in extra_fields → falls back to value
         comps = [
             BoardComponent(
@@ -436,7 +436,7 @@ class TestNewburyTemplate:
 
         assert rows[0][1] == "10k"  # Description falls back to value
 
-    def test_supplier_fallback_aliases(self, tmp_path):
+    def test_supplier_fallback_aliases(self, tmp_path, pro_license):
         comps = [
             BoardComponent(
                 reference="U1", value="STM32F103",
@@ -506,7 +506,7 @@ class TestCSVExportAllTemplates:
         assert rows[1][1] == "C1,C2"
         assert rows[1][3] == "C12345"
 
-    def test_newbury_csv_output(self, tmp_path):
+    def test_newbury_csv_output(self, tmp_path, pro_license):
         comps = [
             BoardComponent(
                 reference="R1", value="10k",

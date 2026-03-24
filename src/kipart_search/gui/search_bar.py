@@ -97,13 +97,32 @@ class SearchBar(QWidget):
         return self._source_selector.currentText()
 
     def set_sources(self, sources: list[str]) -> None:
-        """Update the source selector dropdown with available source names."""
+        """Update the source selector dropdown with available source names.
+
+        Non-JLCPCB sources are disabled with a 'Pro' tooltip when free tier.
+        """
+        from kipart_search.core.license import License
+
         self._source_selector.blockSignals(True)
         current = self._source_selector.currentText()
         self._source_selector.clear()
         self._source_selector.addItem("All Sources")
         for name in sources:
             self._source_selector.addItem(name)
+
+        # Disable non-local sources when free tier
+        is_pro = License.instance().has("multi_distributor_search")
+        if not is_pro:
+            _LOCAL_SOURCES = {"JLCPCB"}
+            model = self._source_selector.model()
+            for i in range(self._source_selector.count()):
+                text = self._source_selector.itemText(i)
+                if text != "All Sources" and text not in _LOCAL_SOURCES:
+                    item = model.item(i)
+                    if item:
+                        item.setEnabled(False)
+                        item.setToolTip("Requires Pro license")
+
         # Restore previous selection if still available
         idx = self._source_selector.findText(current)
         self._source_selector.setCurrentIndex(idx if idx >= 0 else 0)

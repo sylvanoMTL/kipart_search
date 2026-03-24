@@ -223,8 +223,30 @@ class _SourceRow(QWidget):
                 self._config_manager.delete_credential(self.source_name, kf)
 
 
+class LicenseValidationWorker(QThread):
+    """Background worker that validates a license key online.
+
+    Only performs the network call — activation (tier change, keyring
+    storage, GUI callbacks) must happen on the main thread via the
+    signal handler to avoid Qt cross-thread parenting errors.
+    """
+
+    result_ready = Signal(bool, str)  # success, message
+
+    def __init__(self, key: str):
+        super().__init__()
+        self._key = key
+
+    def run(self):
+        from kipart_search.core.license import License
+        ok, msg = License._validate_online(self._key)
+        self.result_ready.emit(ok, msg)
+
+
 class SourcePreferencesDialog(QDialog):
     """Modal dialog for configuring data sources, API keys, and defaults."""
+
+    license_changed = Signal()  # Emitted when license tier changes
 
     def __init__(
         self,
@@ -237,8 +259,45 @@ class SourcePreferencesDialog(QDialog):
 
         self._config_manager = config_manager or SourceConfigManager()
         self._source_rows: list[_SourceRow] = []
+        self._license_worker: LicenseValidationWorker | None = None
 
         layout = QVBoxLayout(self)
+
+        # ── License section ──
+        license_group = QGroupBox("License")
+        license_layout = QVBoxLayout(license_group)
+
+        # Tier display
+        from kipart_search.core.license import License
+        lic = License.instance()
+
+        self._tier_label = QLabel()
+        self._update_tier_label(lic)
+        license_layout.addWidget(self._tier_label)
+
+        # Key input + activate button
+        key_row = QHBoxLayout()
+        self._license_input = QLineEdit()
+        self._license_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self._license_input.setPlaceholderText("Enter license key")
+        key_row.addWidget(self._license_input)
+
+        self._activate_btn = QPushButton("Activate")
+        self._activate_btn.clicked.connect(self._on_activate_license)
+        key_row.addWidget(self._activate_btn)
+
+        self._deactivate_btn = QPushButton("Deactivate")
+        self._deactivate_btn.clicked.connect(self._on_deactivate_license)
+        self._deactivate_btn.setVisible(lic.is_pro)
+        key_row.addWidget(self._deactivate_btn)
+
+        license_layout.addLayout(key_row)
+
+        # Validation status label
+        self._license_status = QLabel()
+        license_layout.addWidget(self._license_status)
+
+        layout.addWidget(license_group)
 
         # Load current configs
         configs = self._config_manager.get_all_configs()
@@ -284,6 +343,74 @@ class SourcePreferencesDialog(QDialog):
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
+
+    # ── License methods ───────────────────────────────────────────
+
+    def _update_tier_label(self, lic) -> None:
+        """Update the tier display label."""
+        if lic.is_pro:
+            self._tier_label.setText("  Pro (licensed)  ")
+            self._tier_label.setStyleSheet(
+                "background-color: #2d7d46; color: white; padding: 4px 12px; "
+                "border-radius: 8px; font-weight: bold; font-size: 12px;"
+            )
+        else:
+            self._tier_label.setText("  Free  ")
+            self._tier_label.setStyleSheet(
+                "background-color: #6b7280; color: white; padding: 4px 12px; "
+                "border-radius: 8px; font-weight: bold; font-size: 12px;"
+            )
+
+    def _on_activate_license(self) -> None:
+        """Validate the entered license key in a background thread."""
+        key = self._license_input.text().strip()
+        if not key:
+            self._license_status.setText("\u2718 Please enter a license key")
+            self._license_status.setStyleSheet("color: red;")
+            return
+
+        self._activate_btn.setEnabled(False)
+        self._license_status.setText("Validating...")
+        self._license_status.setStyleSheet("")
+
+        self._license_worker = LicenseValidationWorker(key)
+        self._license_worker.result_ready.connect(self._on_license_result)
+        self._license_worker.start()
+
+    def _on_license_result(self, success: bool, message: str) -> None:
+        """Handle license validation result — runs on main thread.
+
+        The worker only validated online; we do the actual activation
+        (tier change, keyring, callbacks) here on the GUI thread.
+        """
+        self._activate_btn.setEnabled(True)
+        from kipart_search.core.license import License
+        lic = License.instance()
+
+        if success:
+            # Complete activation on main thread (safe for GUI callbacks);
+            # skip re-validation — the worker already confirmed the key.
+            key = self._license_input.text().strip()
+            lic.activate(key, _skip_validation=True)
+            self._license_status.setText(f"\u2714 {message}")
+            self._license_status.setStyleSheet("color: green;")
+            self._deactivate_btn.setVisible(True)
+            self._update_tier_label(lic)
+            self.license_changed.emit()
+        else:
+            self._license_status.setText(f"\u2718 {message}")
+            self._license_status.setStyleSheet("color: red;")
+
+    def _on_deactivate_license(self) -> None:
+        """Deactivate the current license."""
+        from kipart_search.core.license import License
+        lic = License.instance()
+        lic.deactivate()
+        self._deactivate_btn.setVisible(False)
+        self._update_tier_label(lic)
+        self._license_status.setText("License deactivated")
+        self._license_status.setStyleSheet("color: #6b7280;")
+        self.license_changed.emit()
 
     def _refresh_default_combo(self):
         """Update default source combo to reflect currently enabled sources."""

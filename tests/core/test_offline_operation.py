@@ -157,7 +157,7 @@ class TestSearchOrchestratorOfflineFallback:
 class TestCachedResultsWhenOffline:
     """Test that cached results are served when source is offline (5.4)."""
 
-    def test_cached_search_results_served_when_source_offline(self, cache: QueryCache):
+    def test_cached_search_results_served_when_source_offline(self, cache: QueryCache, pro_license):
         """Pre-cached results are returned even if source is unreachable."""
         # Pre-populate cache with results for the API source
         part = _make_part(source="FakeAPI", mpn="CACHED-100nF")

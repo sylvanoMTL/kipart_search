@@ -172,8 +172,25 @@ def export_bom(
     Groups components by (MPN, manufacturer), applies column transforms,
     and writes to xlsx or csv based on template.file_format.
 
+    License gates:
+    - CSV export is always free
+    - Excel export requires Pro ("excel_export")
+    - CM templates (PCBWay, Newbury Electronics) require Pro ("cm_export")
+
     Returns the output path.
     """
+    from kipart_search.core.license import License
+    lic = License.instance()
+
+    # Gate Excel format (Pro only)
+    if template.file_format != "csv":
+        lic.require("excel_export")
+
+    # Gate CM-specific templates (Pro only); JLCPCB CSV is free
+    _CM_TEMPLATES = {"PCBWay", "Newbury Electronics"}
+    if template.name in _CM_TEMPLATES:
+        lic.require("cm_export")
+
     rows = group_components(components)
 
     if template.file_format == "csv":

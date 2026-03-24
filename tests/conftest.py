@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
 import pytest
@@ -15,3 +16,29 @@ def _skip_welcome_dialog():
         return_value=None,
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_license_singleton():
+    """Reset the License singleton between tests so tier state doesn't leak.
+
+    Blocks keyring and env var reads during reset so a real cached JWT
+    (e.g. from manual dev-key testing) doesn't promote the test to Pro.
+    """
+    from kipart_search.core.license import License
+    with patch("kipart_search.core.license._keyring_get", return_value=None), \
+         patch.dict("os.environ", {}, clear=False):
+        import os
+        os.environ.pop("KIPART_LICENSE_KEY", None)
+        License._reset()
+        yield
+        License._reset()
+
+
+@pytest.fixture
+def pro_license(monkeypatch):
+    """Activate Pro license for the duration of a test."""
+    from kipart_search.core.license import License
+    lic = License.instance()
+    monkeypatch.setattr(lic, "_tier", "pro")
+    return lic

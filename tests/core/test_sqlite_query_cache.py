@@ -60,7 +60,11 @@ def _make_part(**overrides) -> PartResult:
 
 
 class FakeSource(DataSource):
-    """Fake DataSource for testing orchestrator cache integration."""
+    """Fake DataSource for testing orchestrator cache integration.
+
+    Marked as local so cache tests don't depend on license tier (free tier
+    filters out non-local sources).
+    """
 
     def __init__(self, name: str = "FakeSource", results: list[PartResult] | None = None):
         self._name = name
@@ -71,6 +75,10 @@ class FakeSource(DataSource):
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def is_local(self) -> bool:
+        return True
 
     @property
     def needs_key(self) -> bool:

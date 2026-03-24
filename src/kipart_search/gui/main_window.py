@@ -203,6 +203,11 @@ class MainWindow(QMainWindow):
         self._local_assignments: dict[str, dict[str, str]] = {}  # ref → {field: value}
         self._local_overwrites: dict[str, set[str]] = {}  # ref → set of overwrite-approved fields
 
+        # License — subscribe to tier changes
+        from kipart_search.core.license import License
+        self._license = License.instance()
+        self._license.on_change(self._on_license_changed)
+
         # ── Hidden central widget (QDockWidgets fill around it) ──
         # Zero width so left/right docks fill the full window width.
         # Height left unconstrained so the vertical splitter between
@@ -299,7 +304,7 @@ class MainWindow(QMainWindow):
         # ── Menus (order: File, View, Help) ──
         self._build_menus()
 
-        # ── Status bar with 3 zones ──
+        # ── Status bar with 3 zones + license badge ──
         self.status_bar = QStatusBar()
         self._mode_label = QLabel("  Standalone  ")
         self._mode_label.setAccessibleName("Connection mode")
@@ -307,8 +312,11 @@ class MainWindow(QMainWindow):
         self._sources_label.setAccessibleName("Active sources")
         self._action_label = QLabel("Ready")
         self._action_label.setAccessibleName("Current action")
+        self._license_badge = QLabel()
+        self._license_badge.setAccessibleName("License tier")
         self.status_bar.addWidget(self._mode_label)
         self.status_bar.addWidget(self._sources_label, 1)
+        self.status_bar.addPermanentWidget(self._license_badge)
         self.status_bar.addPermanentWidget(self._action_label)
         self.setStatusBar(self.status_bar)
 
@@ -571,8 +579,42 @@ class MainWindow(QMainWindow):
             self._orchestrator.add_source(self._jlcpcb_source)
         self.search_bar.set_sources(self._orchestrator.get_source_names())
 
+    def _on_license_changed(self) -> None:
+        """React to license tier changes — update badge and gated UI."""
+        self._update_license_badge()
+        self._update_license_gated_actions()
+        self.verify_panel.update_license_state()
+        self.search_bar.set_sources(self._orchestrator.get_source_names())
+
+    def _update_license_badge(self) -> None:
+        """Show/hide the Pro badge in the status bar."""
+        if self._license.is_pro:
+            self._license_badge.setText("  Pro  ")
+            self._license_badge.setStyleSheet(
+                "background-color: #2d7d46; color: white; padding: 2px 8px; "
+                "border-radius: 8px; font-weight: bold; font-size: 11px;"
+            )
+            self._license_badge.setVisible(True)
+        else:
+            self._license_badge.setVisible(False)
+
+    def _update_license_gated_actions(self) -> None:
+        """Enable/disable toolbar actions based on license tier."""
+        is_pro = self._license.is_pro
+        pro_tip = "" if is_pro else " (requires Pro license)"
+
+        # Push to KiCad (batch) — gated
+        if not is_pro:
+            self._act_push.setToolTip("Push to KiCad" + pro_tip)
+
+        # Export BOM tooltip update
+        self._act_export.setToolTip("Export BOM to Excel or CSV" + pro_tip)
+
     def _update_status(self):
         """Update the status bar 3 zones: mode badge, sources, action."""
+        # License badge
+        self._update_license_badge()
+        self._update_license_gated_actions()
         # Left zone: mode badge
         if self._bridge.is_connected:
             self._mode_label.setText("  Connected to KiCad  ")
@@ -825,6 +867,17 @@ class MainWindow(QMainWindow):
     def _on_push_to_kicad(self):
         """Push local MPN assignments into .kicad_sch files on disk."""
         from kipart_search.core import kicad_sch
+        from kipart_search.core.license import FeatureNotAvailable, License
+
+        # License gate: batch write-back requires Pro
+        if not License.instance().has("batch_writeback"):
+            QMessageBox.information(
+                self, "Pro Feature",
+                "Batch 'Push to KiCad' requires a Pro license.\n\n"
+                "Single-component assignment is available in the free tier.\n"
+                "Go to Tools > Preferences > License to activate.",
+            )
+            return
 
         # Guard: anything to push?
         if not self._local_assignments:
@@ -1381,6 +1434,7 @@ class MainWindow(QMainWindow):
 
         mgr = SourceConfigManager()
         dialog = SourcePreferencesDialog(config_manager=mgr, parent=self)
+        dialog.license_changed.connect(self._on_license_changed)
         if dialog.exec():
             configs = dialog.get_saved_configs()
             self._apply_source_configs(configs)

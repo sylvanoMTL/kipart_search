@@ -96,6 +96,13 @@ Modelled on KiCost's `QueryCache` pattern but using SQLite.
 - Environment variable overrides supported
 - GUI settings dialog for entering/validating credentials
 
+### License activation
+
+- **Production**: One-time license key validated via LemonSqueezy API (not yet configured — no product exists yet)
+- **Env var override**: `KIPART_LICENSE_KEY=anything` → activates Pro immediately, no validation
+- **Dev bypass key**: Enter `dev-pro-unlock` in Preferences > License > Activate. Works only in source builds (rejected in compiled Nuitka binaries). Exercises the full GUI activation flow without a real LemonSqueezy account.
+- Validated licenses are cached as HMAC-signed JWTs in keyring for offline use
+
 ### BOM verification / design audit (`core/verify.py`)
 
 When connected to a KiCad project via the IPC API, the tool reads the board/schematic BOM and runs a series of checks on every component. The verification panel displays a table of all components with a per-field status (pass / warning / fail / missing).

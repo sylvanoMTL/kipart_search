@@ -96,6 +96,9 @@ class ExportDialog(QDialog):
         controls.addStretch()
         layout.addLayout(controls)
 
+        # ── License gating for export options ──
+        self._apply_license_gates()
+
         # ── Preview table ──
         self._preview_table = QTableWidget()
         self._preview_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -231,3 +234,39 @@ class ExportDialog(QDialog):
         """Open the exported file with the system default application."""
         if self._exported_path and self._exported_path.exists():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._exported_path)))
+
+    def _apply_license_gates(self) -> None:
+        """Disable Pro-only export options when free tier."""
+        from kipart_search.core.license import License
+        lic = License.instance()
+        is_pro = lic.is_pro
+
+        # Gate CM templates (PCBWay, Newbury) in template combo
+        _CM_NAMES = {"PCBWay", "Newbury Electronics"}
+        model = self._template_combo.model()
+        for i in range(self._template_combo.count()):
+            name = self._template_combo.itemText(i)
+            if name in _CM_NAMES and not is_pro:
+                # Append " [Pro]" indicator and disable item
+                self._template_combo.setItemText(i, f"{name} [Pro]")
+                item = model.item(i)
+                if item:
+                    item.setEnabled(False)
+
+        # Gate Excel format option
+        excel_idx = self._format_combo.findData("xlsx")
+        if excel_idx >= 0 and not is_pro:
+            self._format_combo.setItemText(excel_idx, "Excel (.xlsx) [Pro]")
+            item = self._format_combo.model().item(excel_idx)
+            if item:
+                item.setEnabled(False)
+            # Default to CSV when free tier
+            csv_idx = self._format_combo.findData("csv")
+            if csv_idx >= 0:
+                self._format_combo.setCurrentIndex(csv_idx)
+
+        # Select JLCPCB template by default when free tier
+        if not is_pro:
+            jlcpcb_idx = self._template_combo.findText("JLCPCB")
+            if jlcpcb_idx >= 0:
+                self._template_combo.setCurrentIndex(jlcpcb_idx)

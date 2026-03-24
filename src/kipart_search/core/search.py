@@ -45,6 +45,10 @@ class SearchOrchestrator:
         source = next((s for s in self.active_sources if s.name == source_name), None)
         if source is None:
             return []
+        # License gate: non-JLCPCB sources require Pro
+        if not source.is_local:
+            from kipart_search.core.license import License
+            License.instance().require("multi_distributor_search")
         return self._search_sources([source], query, filters, limit)
 
     def search(
@@ -55,12 +59,18 @@ class SearchOrchestrator:
         Generates equivalent unit variants (e.g. 0.1µF → 100nF) and
         searches each variant, deduplicating by MPN.
 
+        When free tier, only local sources (JLCPCB) are searched.
+
         TODO:
         - Run searches in parallel (QThread workers)
         - Calculate confidence score per result
         - Apply parameter template filtering
         """
-        return self._search_sources(self.active_sources, query, filters, limit)
+        from kipart_search.core.license import License
+        sources = self.active_sources
+        if not License.instance().has("multi_distributor_search"):
+            sources = [s for s in sources if s.is_local]
+        return self._search_sources(sources, query, filters, limit)
 
     def _search_sources(
         self, sources: list[DataSource], query: str, filters: dict | None, limit: int

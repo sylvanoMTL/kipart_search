@@ -25,6 +25,10 @@ from PySide6.QtWidgets import (
 
 from kipart_search.core.models import BoardComponent, Confidence, is_stale
 
+# Pro-gated verification columns (future: datasheet URL check, footprint consistency)
+# These columns will show a "Pro" tooltip when the full checks are implemented.
+_PRO_VERIFY_COLUMNS = {"Datasheet", "Symbol"}
+
 
 # Colours for confidence levels
 COLORS = {
@@ -574,6 +578,20 @@ class VerifyPanel(QWidget):
     def get_missing_mpn_count(self) -> int:
         """Return the count of components missing an MPN."""
         return sum(1 for c in self._components if not c.has_mpn)
+
+    def update_license_state(self) -> None:
+        """Update Pro-gated visual indicators based on current license tier.
+
+        Currently the verify panel only performs basic MPN presence checks
+        (free tier). When full verification is implemented (datasheet URL
+        reachability, footprint consistency against distributor data, symbol
+        validation), this method will enable/disable those check columns.
+        """
+        from kipart_search.core.license import License
+
+        is_pro = License.instance().has("full_verification")
+        # Future: when Datasheet/Symbol columns are added to VERIFY_COLUMNS,
+        # gray them out and add "Requires Pro license" tooltip when !is_pro.
 
     def clear(self):
         """Clear the verification table."""
