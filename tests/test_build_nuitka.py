@@ -365,6 +365,173 @@ class TestMainArgs:
             mock_build.assert_called_once()
             mock_package.assert_called_once()
 
+    def test_installer_only_skips_build(self, fake_dist):
+        """--installer-only compiles installer without build or license check."""
+        with patch("build_nuitka.build") as mock_build, \
+             patch("build_nuitka.check_licenses") as mock_check, \
+             patch("build_nuitka.compile_installer") as mock_inst:
+            sys.argv = ["build_nuitka.py", "--installer-only",
+                        "--output-dir", str(fake_dist)]
+            result = build_nuitka.main()
+            assert result == 0
+            mock_build.assert_not_called()
+            mock_check.assert_not_called()
+            mock_inst.assert_called_once_with(output_dir=str(fake_dist))
+
+    def test_installer_flag_calls_build_package_and_installer(self):
+        """--installer calls build(), package(), then compile_installer()."""
+        with patch("build_nuitka.build") as mock_build, \
+             patch("build_nuitka.package") as mock_package, \
+             patch("build_nuitka.compile_installer") as mock_inst, \
+             patch("build_nuitka.check_licenses"):
+            sys.argv = ["build_nuitka.py", "--installer", "--skip-license-check"]
+            result = build_nuitka.main()
+            assert result == 0
+            mock_build.assert_called_once()
+            mock_package.assert_called_once()
+            mock_inst.assert_called_once()
+
+    def test_mutually_exclusive_flags(self):
+        """--package and --installer cannot be used together."""
+        with pytest.raises(SystemExit):
+            sys.argv = ["build_nuitka.py", "--package", "--installer"]
+            build_nuitka.main()
+
+
+# ---------------------------------------------------------------------------
+# Inno Setup .iss file validation tests
+# ---------------------------------------------------------------------------
+
+class TestIssFile:
+    ISS_PATH = ROOT / "installer" / "kipart-search.iss"
+
+    def test_iss_file_exists(self):
+        """installer/kipart-search.iss must exist."""
+        assert self.ISS_PATH.exists()
+
+    def test_iss_has_app_id(self):
+        """AppId must be set (and never change between versions)."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "AppId={{62ac5603-5867-4e62-9bdf-30df22d7bc2c}" in content
+
+    def test_iss_has_autopf(self):
+        """{autopf} is used instead of {pf} for 64-bit compat."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "{autopf}" in content
+        assert "{pf}" not in content.replace("{autopf}", "")
+
+    def test_iss_has_version_define(self):
+        """#define MyAppVersion exists for /D override."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert '#define MyAppVersion' in content
+
+    def test_iss_has_publisher(self):
+        """Publisher is MecaFrog."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "MecaFrog" in content
+
+    def test_iss_has_close_applications(self):
+        """CloseApplications is set for handling running instances."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "CloseApplications=yes" in content
+        assert "CloseApplicationsFilter" in content
+
+    def test_iss_has_desktop_shortcut_unchecked(self):
+        """Desktop shortcut is opt-in (unchecked by default)."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "desktopicon" in content
+        assert "unchecked" in content
+
+    def test_iss_has_uninstall_user_data_prompt(self):
+        """Uninstall prompts to delete user data in %LOCALAPPDATA%."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "KiPartSearch" in content
+        assert "CurUninstallStepChanged" in content
+        assert "MB_DEFBUTTON2" in content  # Default is NO
+
+    def test_iss_output_dir(self):
+        """Output goes to dist/ directory."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "OutputDir=..\\dist" in content
+
+    def test_iss_output_filename(self):
+        """Output filename includes version placeholder."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "kipart-search-{#MyAppVersion}-setup" in content
+
+    def test_iss_no_file_associations(self):
+        """No file associations are registered (AC #10)."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "[Registry]" not in content
+        assert "FileAssoc" not in content.lower()
+
+    def test_iss_source_path(self):
+        """Source path points to Nuitka output relative to installer/ dir."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "..\\dist\\__main__.dist\\*" in content
+
+    def test_iss_has_start_menu(self):
+        """Start Menu shortcut is created."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "{group}" in content
+        assert "kipart-search.exe" in content
+
+
+# ---------------------------------------------------------------------------
+# compile_installer() tests
+# ---------------------------------------------------------------------------
+
+class TestCompileInstaller:
+    def test_fails_without_iss_file(self, fake_dist, tmp_path):
+        """compile_installer() exits if .iss file is missing."""
+        with patch.object(Path, "__truediv__", side_effect=Path.__truediv__):
+            # Temporarily rename the iss file check
+            with patch("build_nuitka.Path") as mock_path_cls:
+                mock_path_cls.return_value.__truediv__ = Path.__truediv__
+                # Simpler: just patch the iss path existence check
+                pass
+        # Direct approach: move iss_path to a non-existent location
+        with patch("build_nuitka.Path.__new__", wraps=Path.__new__):
+            pass
+        # Simplest: patch at function level
+        iss_path = ROOT / "installer" / "kipart-search.iss"
+        with patch.object(Path, "exists", side_effect=lambda self=None: False):
+            with pytest.raises(SystemExit):
+                build_nuitka.compile_installer(output_dir=str(fake_dist))
+
+    def test_fails_without_nuitka_output(self, tmp_path):
+        """compile_installer() exits if __main__.dist/kipart-search.exe is missing."""
+        with pytest.raises(SystemExit):
+            build_nuitka.compile_installer(output_dir=str(tmp_path))
+
+    def test_fails_without_iscc(self, fake_dist):
+        """compile_installer() exits with helpful error if iscc is not found."""
+        inno_default = Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe")
+        _real_exists = Path.exists
+
+        def fake_exists(p):
+            if str(p) == str(inno_default):
+                return False
+            return _real_exists(p)
+
+        with patch("build_nuitka.shutil.which", return_value=None), \
+             patch.object(Path, "exists", fake_exists):
+            with pytest.raises(SystemExit):
+                build_nuitka.compile_installer(output_dir=str(fake_dist))
+
+    def test_invokes_iscc_with_version(self, fake_dist):
+        """compile_installer() calls iscc with /DMyAppVersion={version}."""
+        version = build_nuitka.read_base_version()
+        with patch("build_nuitka.shutil.which", return_value="iscc"), \
+             patch("build_nuitka.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            build_nuitka.compile_installer(output_dir=str(fake_dist))
+            mock_run.assert_called_once()
+            cmd = mock_run.call_args[0][0]
+            assert cmd[0] == "iscc"
+            assert f"/DMyAppVersion={version}" in cmd
+            assert any("kipart-search.iss" in arg for arg in cmd)
+
 
 # ---------------------------------------------------------------------------
 # __main__.py --version flag tests

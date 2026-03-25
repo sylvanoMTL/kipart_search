@@ -4,6 +4,8 @@ Usage:
     python build_nuitka.py
     python build_nuitka.py --package
     python build_nuitka.py --package-only
+    python build_nuitka.py --installer
+    python build_nuitka.py --installer-only
     python build_nuitka.py --skip-license-check --output-dir build
 """
 from __future__ import annotations
@@ -200,6 +202,55 @@ MIT License - Copyright (c) 2026 Sylvain Boyer (MecaFrog)
     print(f"  Zip size: {zip_size_mb:.1f} MB")
 
 
+def compile_installer(output_dir: str = "dist") -> None:
+    """Compile the Inno Setup installer from existing Nuitka build output.
+
+    Requires Inno Setup 6 installed with iscc on PATH or at the default location.
+    """
+    version = read_base_version()
+    iss_path = Path(__file__).parent / "installer" / "kipart-search.iss"
+
+    if not iss_path.exists():
+        print(f"ERROR: Inno Setup script not found at {iss_path}")
+        sys.exit(1)
+
+    # Verify Nuitka build output exists
+    nuitka_dist = Path(output_dir) / "__main__.dist"
+    if not (nuitka_dist / "kipart-search.exe").exists():
+        print(f"ERROR: {nuitka_dist / 'kipart-search.exe'} not found.")
+        print("Run a Nuitka build first, or use --installer instead of --installer-only.")
+        sys.exit(1)
+
+    # Find iscc — check PATH first, then default Inno Setup 6 install location
+    iscc = shutil.which("iscc")
+    if iscc is None:
+        default_iscc = Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe")
+        if default_iscc.exists():
+            iscc = str(default_iscc)
+        else:
+            print("ERROR: iscc not found on PATH or at default location.")
+            print("Install Inno Setup 6 from https://jrsoftware.org/isdl.php")
+            print(f"Expected: {default_iscc}")
+            sys.exit(1)
+
+    cmd = [iscc, f"/DMyAppVersion={version}", str(iss_path)]
+    print(f"Compiling installer v{version}")
+    print("  " + " ".join(cmd))
+    print()
+    subprocess.run(cmd, check=True)
+
+    # Verify output and print summary
+    installer_name = f"kipart-search-{version}-setup.exe"
+    installer_path = Path(output_dir) / installer_name
+    if installer_path.exists():
+        size_mb = installer_path.stat().st_size / (1024 * 1024)
+        print()
+        print(f"Installer complete: {installer_path}")
+        print(f"  Size: {size_mb:.1f} MB")
+    else:
+        print(f"WARNING: Expected installer {installer_path} not found.")
+
+
 def build(output_dir: str = "dist") -> None:
     """Run Nuitka standalone build."""
     version_quad = read_version()
@@ -274,12 +325,28 @@ def main() -> int:
         action="store_true",
         help="Skip Nuitka build; only run the packaging step (requires prior build)",
     )
+    pkg_group.add_argument(
+        "--installer",
+        action="store_true",
+        help="Build with Nuitka, package zip, then compile Inno Setup installer",
+    )
+    pkg_group.add_argument(
+        "--installer-only",
+        action="store_true",
+        help="Compile Inno Setup installer only (requires prior Nuitka build)",
+    )
     args = parser.parse_args()
 
     if args.package_only:
         # Skip license check and build — just package
         print("Packaging only (skipping Nuitka build)")
         package(output_dir=args.output_dir)
+        return 0
+
+    if args.installer_only:
+        # Skip license check and build — just compile installer
+        print("Installer only (skipping Nuitka build)")
+        compile_installer(output_dir=args.output_dir)
         return 0
 
     if not args.skip_license_check:
@@ -291,6 +358,10 @@ def main() -> int:
 
     if args.package:
         package(output_dir=args.output_dir)
+
+    if args.installer:
+        package(output_dir=args.output_dir)
+        compile_installer(output_dir=args.output_dir)
 
     return 0
 
