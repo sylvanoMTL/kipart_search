@@ -1,9 +1,11 @@
-"""Tests for build_nuitka.py — GPL firewall and version parsing."""
+"""Tests for build_nuitka.py — GPL firewall, version parsing, and packaging."""
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import zipfile
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -189,3 +191,146 @@ class TestKeyringFallback:
                     # Re-import to pick up the patched modules
                     main_mod._init_keyring_compiled()
                     mock_keyring.set_keyring.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# read_base_version tests
+# ---------------------------------------------------------------------------
+
+class TestReadBaseVersion:
+    def test_returns_raw_version(self):
+        """Base version should be the raw string from pyproject.toml (no quad)."""
+        version = build_nuitka.read_base_version()
+        assert version == "0.1.0"
+
+    def test_matches_init_version(self):
+        """Base version from pyproject.toml must match __init__.py __version__."""
+        from kipart_search import __version__
+        assert build_nuitka.read_base_version() == __version__
+
+
+# ---------------------------------------------------------------------------
+# package() tests — use tmp_path to simulate dist layout
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def fake_dist(tmp_path):
+    """Create a fake Nuitka dist folder with a dummy exe."""
+    nuitka_dir = tmp_path / "__main__.dist"
+    nuitka_dir.mkdir()
+    exe = nuitka_dir / "kipart-search.exe"
+    exe.write_bytes(b"FAKE_EXE_CONTENT")
+    # Add a fake DLL to simulate real output
+    (nuitka_dir / "python310.dll").write_bytes(b"FAKE_DLL")
+    return tmp_path
+
+
+class TestPackage:
+    def test_creates_zip_with_correct_name(self, fake_dist):
+        """Zip file name includes base version."""
+        build_nuitka.package(output_dir=str(fake_dist))
+        version = build_nuitka.read_base_version()
+        zip_path = fake_dist / f"kipart-search-{version}-windows.zip"
+        assert zip_path.exists()
+
+    def test_zip_contains_top_level_folder(self, fake_dist):
+        """All files in zip are under kipart-search/ prefix."""
+        build_nuitka.package(output_dir=str(fake_dist))
+        version = build_nuitka.read_base_version()
+        zip_path = fake_dist / f"kipart-search-{version}-windows.zip"
+        with zipfile.ZipFile(zip_path) as zf:
+            for name in zf.namelist():
+                assert name.startswith("kipart-search/"), f"Unexpected path: {name}"
+
+    def test_zip_contains_exe(self, fake_dist):
+        """kipart-search.exe is at kipart-search/kipart-search.exe in zip."""
+        build_nuitka.package(output_dir=str(fake_dist))
+        version = build_nuitka.read_base_version()
+        zip_path = fake_dist / f"kipart-search-{version}-windows.zip"
+        with zipfile.ZipFile(zip_path) as zf:
+            assert "kipart-search/kipart-search.exe" in zf.namelist()
+
+    def test_zip_contains_readme(self, fake_dist):
+        """README.txt is included in the zip."""
+        build_nuitka.package(output_dir=str(fake_dist))
+        version = build_nuitka.read_base_version()
+        zip_path = fake_dist / f"kipart-search-{version}-windows.zip"
+        with zipfile.ZipFile(zip_path) as zf:
+            assert "kipart-search/README.txt" in zf.namelist()
+
+    def test_readme_content(self, fake_dist):
+        """README.txt has quick start, system requirements, and docs link."""
+        build_nuitka.package(output_dir=str(fake_dist))
+        readme = fake_dist / "kipart-search" / "README.txt"
+        content = readme.read_text(encoding="utf-8")
+        assert "Double-click kipart-search.exe" in content
+        assert "Windows 10" in content
+        assert "github.com/sylvanoMTL/kipart-search" in content
+
+    def test_readme_contains_version(self, fake_dist):
+        """README.txt header includes the version."""
+        build_nuitka.package(output_dir=str(fake_dist))
+        readme = fake_dist / "kipart-search" / "README.txt"
+        content = readme.read_text(encoding="utf-8")
+        version = build_nuitka.read_base_version()
+        assert f"v{version}" in content
+
+    def test_preserves_nuitka_dist(self, fake_dist):
+        """__main__.dist/ is NOT modified or deleted by packaging."""
+        build_nuitka.package(output_dir=str(fake_dist))
+        assert (fake_dist / "__main__.dist" / "kipart-search.exe").exists()
+
+    def test_package_dir_is_separate_copy(self, fake_dist):
+        """kipart-search/ folder is created as a copy, not a rename."""
+        build_nuitka.package(output_dir=str(fake_dist))
+        assert (fake_dist / "__main__.dist").exists()
+        assert (fake_dist / "kipart-search").exists()
+
+    def test_prints_zip_size(self, fake_dist, capsys):
+        """Zip file size is printed to stdout."""
+        build_nuitka.package(output_dir=str(fake_dist))
+        captured = capsys.readouterr()
+        assert "Zip size:" in captured.out
+        assert "MB" in captured.out
+
+    def test_fails_without_build_output(self, tmp_path):
+        """package() exits with error if __main__.dist/ doesn't exist."""
+        with pytest.raises(SystemExit) as exc_info:
+            build_nuitka.package(output_dir=str(tmp_path))
+        assert exc_info.value.code == 1
+
+    def test_idempotent_repackage(self, fake_dist):
+        """Running package() twice succeeds (cleans up previous kipart-search/)."""
+        build_nuitka.package(output_dir=str(fake_dist))
+        build_nuitka.package(output_dir=str(fake_dist))
+        version = build_nuitka.read_base_version()
+        zip_path = fake_dist / f"kipart-search-{version}-windows.zip"
+        assert zip_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# main() argument handling tests
+# ---------------------------------------------------------------------------
+
+class TestMainArgs:
+    def test_package_only_skips_build(self, fake_dist):
+        """--package-only runs packaging without calling build()."""
+        with patch("build_nuitka.build") as mock_build, \
+             patch("build_nuitka.check_licenses") as mock_check:
+            sys.argv = ["build_nuitka.py", "--package-only",
+                        "--output-dir", str(fake_dist)]
+            result = build_nuitka.main()
+            assert result == 0
+            mock_build.assert_not_called()
+            mock_check.assert_not_called()
+
+    def test_package_flag_calls_both(self):
+        """--package calls build() then package()."""
+        with patch("build_nuitka.build") as mock_build, \
+             patch("build_nuitka.package") as mock_package, \
+             patch("build_nuitka.check_licenses"):
+            sys.argv = ["build_nuitka.py", "--package", "--skip-license-check"]
+            result = build_nuitka.main()
+            assert result == 0
+            mock_build.assert_called_once()
+            mock_package.assert_called_once()
