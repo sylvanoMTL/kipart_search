@@ -102,33 +102,78 @@ class KiCadBridge:
         return self._board is not None
 
     def get_project_name(self) -> str | None:
-        """Return the board filename stem, or None if not connected."""
+        """Return the project name, or None if not connected."""
         if self._board is None:
             return None
+
+        # kipy/KiCad 9+: Project object via get_project()
         try:
-            from pathlib import Path
-            name = self._board.get_filename()
+            project = self._board.get_project()
+            if hasattr(project, "name") and project.name:
+                return project.name
+        except Exception:
+            pass
+
+        # Fallback: board.name (filename)
+        try:
+            name = getattr(self._board, "name", None)
             if name:
+                from pathlib import Path
                 return Path(name).stem
         except Exception:
             pass
+
+        # Legacy: get_filename()
+        try:
+            name = self._board.get_filename()
+            if name:
+                from pathlib import Path
+                return Path(name).stem
+        except Exception:
+            pass
+
         return None
 
     def get_project_dir(self) -> Path | None:
-        """Return the KiCad project directory (parent of .kicad_pcb).
+        """Return the KiCad project directory.
 
-        Returns None if not connected or if the board path cannot be
-        determined.
+        Tries multiple kipy API approaches:
+        1. board.get_project().path (Project object, kipy/KiCad 9+)
+        2. board.document.project.path (protobuf document)
+        3. board.get_filename() parent (legacy kipy)
         """
         if self._board is None:
             return None
+        from pathlib import Path
+
+        # 1. Project object via get_project()
         try:
-            from pathlib import Path
+            project = self._board.get_project()
+            if hasattr(project, "path") and project.path:
+                p = Path(project.path)
+                if p.is_dir():
+                    return p
+        except Exception:
+            pass
+
+        # 2. Document protobuf — project.path field
+        try:
+            doc = self._board.document
+            if hasattr(doc, "project") and hasattr(doc.project, "path"):
+                p = Path(doc.project.path)
+                if p.is_dir():
+                    return p
+        except Exception:
+            pass
+
+        # 3. Legacy: get_filename() returns full .kicad_pcb path
+        try:
             name = self._board.get_filename()
             if name:
                 return Path(name).parent
         except Exception:
             pass
+
         return None
 
     def get_components(self) -> list[BoardComponent]:

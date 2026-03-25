@@ -222,6 +222,9 @@ class MainWindow(QMainWindow):
         self._connect_worker: _ConnectWorker | None = None
         self._local_assignments: dict[str, dict[str, str]] = {}  # ref → {field: value}
         self._local_overwrites: dict[str, set[str]] = {}  # ref → set of overwrite-approved fields
+        self._cached_mpn_statuses: dict[str, Confidence] = {}  # ref → last-known status
+        self._cached_mpn_values: dict[str, str] = {}  # ref → MPN at time of caching
+        self._project_dir: Path | None = None  # cached project dir for push
 
         # License — subscribe to tier changes
         from kipart_search.core.license import License
@@ -793,13 +796,16 @@ class MainWindow(QMainWindow):
             self.log_panel.log("Waiting for auto-connect to finish...")
             self._connect_worker.wait(5000)
 
+        # Always reconnect to get a fresh board object (may be stale after push)
+        ok, error_msg = self._bridge.connect()
+        if not ok:
+            self.log_panel.log(f"KiCad connection failed: {error_msg}")
+            self._show_connection_error(error_msg)
+            return
         if not self._bridge.is_connected:
-            ok, error_msg = self._bridge.connect()
-            if not ok:
-                self.log_panel.log(f"KiCad connection failed: {error_msg}")
-                self._show_connection_error(error_msg)
-                return
-            self.log_panel.log("Connected to KiCad IPC API")
+            self.log_panel.log("KiCad connection failed: bridge not connected")
+            return
+        self.log_panel.log("Connected to KiCad IPC API")
 
         self._update_status()
         self._act_scan.setEnabled(False)
@@ -813,18 +819,23 @@ class MainWindow(QMainWindow):
         self._scan_worker.start()
 
     def _on_reverify(self):
-        """Re-run verification using fresh data from KiCad."""
-        if not self._bridge.is_connected:
+        """Re-run verification using fresh data from KiCad.
+
+        Forces a fresh reconnect to pick up board changes after push + F8.
+        """
+        self.log_panel.section("Re-verify")
+        ok, error_msg = self._bridge.connect()
+        if not ok:
             QMessageBox.warning(
                 self, "Not Connected",
-                "KiCad connection lost. Use Scan Project to reconnect.",
+                f"Cannot reconnect to KiCad: {error_msg}\n\n"
+                "Make sure KiCad is running.",
             )
             return
 
         self.verify_panel.reverify_button.setEnabled(False)
         self._act_scan.setEnabled(False)
         self._set_action_status("Re-verifying...")
-        self.log_panel.section("Re-verify")
         self.log_panel.log(
             f"Re-verifying {len(self.verify_panel.get_components())} components..."
         )
@@ -837,7 +848,12 @@ class MainWindow(QMainWindow):
 
     def _on_scan_complete(self, components, mpn_statuses, db_mtime):
         """Display scan/verification results."""
-        from kipart_search.core.models import is_stale
+        # Cache project directory from bridge while connection is active
+        if self._project_dir is None and self._bridge.is_connected:
+            bridge_dir = self._bridge.get_project_dir()
+            if bridge_dir is not None:
+                self._project_dir = bridge_dir
+                self.log_panel.log(f"Project directory: {bridge_dir}")
 
         # Reset backup session so next write creates a fresh backup
         if self._backup_manager is not None:
@@ -860,6 +876,28 @@ class MainWindow(QMainWindow):
                     restored += 1
 
         has_sources = bool(self._orchestrator.active_sources)
+
+        # Restore cached MPN statuses for components whose MPN hasn't changed.
+        # After push + re-scan, the MPN is now in the schematic but the source
+        # may not find it (e.g. JLCPCB doesn't stock it) — cached GREEN is valid
+        # as long as the MPN text is identical.
+        cache_restored = 0
+        for comp in components:
+            ref = comp.reference
+            cached_status = self._cached_mpn_statuses.get(ref)
+            if cached_status == Confidence.GREEN and mpn_statuses.get(ref) != Confidence.GREEN:
+                cached_mpn = self._cached_mpn_values.get(ref)
+                if comp.has_mpn and comp.mpn == cached_mpn:
+                    mpn_statuses[ref] = cached_status
+                    cache_restored += 1
+
+        # Update cache with current results
+        self._cached_mpn_statuses = dict(mpn_statuses)
+        self._cached_mpn_values = {
+            comp.reference: comp.mpn
+            for comp in components
+            if comp.has_mpn
+        }
         self.verify_panel.set_results(
             components, mpn_statuses, has_sources, db_mtime=db_mtime,
         )
@@ -872,6 +910,10 @@ class MainWindow(QMainWindow):
         if restored > 0:
             self.log_panel.log(
                 f"Restored {restored} local MPN assignment(s) — not yet in KiCad"
+            )
+        if cache_restored > 0:
+            self.log_panel.log(
+                f"Restored {cache_restored} verified MPN status(es) from previous scan"
             )
 
         # Log schematic sync warnings
@@ -886,18 +928,6 @@ class MainWindow(QMainWindow):
             self.log_panel.log(
                 f"{total_attention} component(s) need attention — run Update PCB "
                 "from Schematic (F8) in KiCad, then re-scan."
-            )
-
-        # Log stale detection results
-        stale_count = sum(
-            1 for c in components
-            if mpn_statuses.get(c.reference) != Confidence.RED
-            and is_stale(c, db_mtime)
-        )
-        if stale_count > 0:
-            self.log_panel.log(
-                f"{stale_count} component(s) verified before last database update "
-                "— re-scan recommended"
             )
 
     def _on_scan_error(self, error_msg: str):
@@ -1118,31 +1148,40 @@ class MainWindow(QMainWindow):
         """Determine the KiCad project directory for push operations.
 
         Priority:
-        1. Connected KiCad: extract from board path
-        2. Standalone: derive from last-loaded BOM path (if any)
-        3. Fallback: prompt user with folder picker
+        1. Cached project directory (from previous scan or resolution)
+        2. Connected KiCad: extract from board path
+        3. Standalone: derive from last-loaded BOM path (if any)
+        4. Fallback: prompt user with folder picker
         """
-        # 1. Connected mode
+        # 1. Cached from previous scan/resolution (validate still exists)
+        if self._project_dir is not None and self._project_dir.exists():
+            self.log_panel.log(f"Project directory (cached): {self._project_dir}")
+            return self._project_dir
+
+        # 2. Connected mode
         project_dir = self._bridge.get_project_dir()
         if project_dir is not None:
+            self._project_dir = project_dir
             self.log_panel.log(f"Project directory (from KiCad): {project_dir}")
             return project_dir
 
-        # 2. Standalone: check if BOM was loaded from file
+        # 3. Standalone: check if BOM was loaded from file
         # TODO: wire _last_bom_path when standalone BOM import is implemented
         bom_path = getattr(self, "_last_bom_path", None)
         if bom_path is not None:
             project_dir = Path(bom_path).parent
+            self._project_dir = project_dir
             self.log_panel.log(f"Project directory (from BOM): {project_dir}")
             return project_dir
 
-        # 3. Prompt user
+        # 4. Prompt user
         folder = QFileDialog.getExistingDirectory(
             self, "Select KiCad Project Directory",
         )
         if folder:
+            self._project_dir = Path(folder)
             self.log_panel.log(f"Project directory (user selected): {folder}")
-            return Path(folder)
+            return self._project_dir
 
         return None
 
@@ -1292,12 +1331,18 @@ class MainWindow(QMainWindow):
         return name if name else "standalone"
 
     def _ensure_backup_manager(self) -> BackupManager:
-        """Lazily create the BackupManager on first use."""
-        mgr = getattr(self, "_backup_manager", None)
-        if mgr is None:
-            mgr = BackupManager()
-            self._backup_manager = mgr
-        return mgr
+        """Lazily create the BackupManager on first use.
+
+        Uses project-scoped backup dir when a project directory is known,
+        falls back to ~/.kipart-search/backups/ for standalone mode.
+        """
+        if self._backup_manager is None:
+            if self._project_dir is not None:
+                backup_dir = self._project_dir / ".kipart-search" / "backups"
+            else:
+                backup_dir = Path.home() / ".kipart-search" / "backups"
+            self._backup_manager = BackupManager(backup_dir=backup_dir)
+        return self._backup_manager
 
     def _apply_assignment(
         self, fields: dict[str, str], overwrite_fields: set[str] | None = None,
@@ -1449,6 +1494,11 @@ class MainWindow(QMainWindow):
         # Live-update the verify panel — GREEN if MPN was assigned (IPC or local)
         if mpn_assigned or "MPN" not in fields:
             self.verify_panel.update_component_status(ref, Confidence.GREEN)
+            # Update MPN status cache so re-verify preserves GREEN
+            self._cached_mpn_statuses[ref] = Confidence.GREEN
+            mpn_val = fields.get("MPN", comp.mpn)
+            if mpn_val:
+                self._cached_mpn_values[ref] = mpn_val
             pct = self.verify_panel.get_health_percentage()
             self.log_panel.log(f"{ref} status updated to Verified — BOM health: {pct}%")
         elif self._bridge.is_connected:

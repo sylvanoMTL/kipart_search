@@ -32,8 +32,8 @@ class BackupManager:
     to the undo log CSV.
     """
 
-    def __init__(self, backup_dir: Path | None = None):
-        self._backup_dir = backup_dir or Path.home() / ".kipart-search" / "backups"
+    def __init__(self, backup_dir: Path):
+        self._backup_dir = backup_dir
         self._session_backup_dir: Path | None = None
         self._sch_backed_up: bool = False
 

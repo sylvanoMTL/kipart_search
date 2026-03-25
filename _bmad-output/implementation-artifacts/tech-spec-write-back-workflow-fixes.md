@@ -2,7 +2,7 @@
 title: 'Write-back Workflow Fixes'
 slug: 'write-back-workflow-fixes'
 created: '2026-03-25'
-status: 'ready-for-dev'
+status: 'implementation-complete'
 stepsCompleted: [1, 2, 3, 4]
 tech_stack: ['Python 3.10+', 'PySide6']
 files_to_modify: ['src/kipart_search/gui/main_window.py', 'src/kipart_search/core/backup.py', 'src/kipart_search/gui/verify_panel.py']
@@ -78,34 +78,34 @@ The write-back → re-verify cycle is broken in three ways:
 
 ### Tasks
 
-- [ ] Task 1: Cache mpn_statuses on MainWindow across re-scans
+- [x] Task 1: Cache mpn_statuses on MainWindow across re-scans
   - File: `src/kipart_search/gui/main_window.py`
   - Action: Add `self._cached_mpn_statuses: dict[str, Confidence] = {}` in `__init__`. In `_on_scan_complete()`, after the local-assignments restore block (line 817), add a second restore block: for each component where `mpn_statuses[ref]` is RED but `self._cached_mpn_statuses.get(ref)` is GREEN and the component's MPN matches the cached MPN, upgrade `mpn_statuses[ref]` to the cached value. After all restores, update the cache: `self._cached_mpn_statuses = dict(mpn_statuses)`.
   - Notes: Need to also cache the MPN value alongside the status to avoid restoring stale status when MPN changes. Use a secondary dict `self._cached_mpn_values: dict[str, str] = {}` that maps ref → mpn at scan time. Only restore if `comp.mpn == self._cached_mpn_values.get(ref)`.
 
-- [ ] Task 2: Cache project directory after first resolution
+- [x] Task 2: Cache project directory after first resolution
   - File: `src/kipart_search/gui/main_window.py`
   - Action: Add `self._project_dir: Path | None = None` in `__init__`. In `_resolve_project_dir()`, check `self._project_dir` first (before bridge). When any resolution succeeds, store to `self._project_dir`. Log the source (cached/KiCad/BOM/user). Remove the direct QFileDialog fallback — instead, if auto-detect fails, show a `QMessageBox.question` confirming the auto-detected path or allowing the user to browse.
   - Notes: Also cache project_dir from scan — after `_on_scan_complete`, if bridge is connected, store `self._project_dir = self._bridge.get_project_dir()`. This way even if bridge disconnects between scan and push, the cached dir is available.
 
-- [ ] Task 3: Update `_resolve_project_dir()` fallback to show confirmation instead of raw picker
+- [x] Task 3: Update `_resolve_project_dir()` fallback to show confirmation instead of raw picker
   - File: `src/kipart_search/gui/main_window.py`
   - Action: Replace the `QFileDialog.getExistingDirectory()` fallback (lines 1097-1102) with a two-step flow: (a) if `self._project_dir` is set, show `QMessageBox.question("Use project directory: {path}?", Yes/Browse)` — Yes reuses cached, Browse opens picker; (b) if no cached dir, then show the picker as last resort.
   - Notes: This eliminates the "folder picker appears out of nowhere" UX issue.
 
-- [ ] Task 4: Move backup directory to project-scoped path
+- [x] Task 4: Move backup directory to project-scoped path
   - File: `src/kipart_search/core/backup.py`
   - Action: Change `BackupManager.__init__` default from `Path.home() / ".kipart-search" / "backups"` to accept an explicit `backup_dir` parameter with no default. Callers must provide it.
   - File: `src/kipart_search/gui/main_window.py`
   - Action: In `_ensure_backup_manager()` (or wherever BackupManager is created), compute backup_dir as `project_dir / ".kipart-search" / "backups"` when project_dir is available, or fall back to `Path.home() / ".kipart-search" / "backups"` when not. Pass to `BackupManager(backup_dir=...)`.
   - Notes: The `.kipart-search/` directory in the project root should be added to a suggested `.gitignore` entry in the push confirmation dialog message, or at minimum logged.
 
-- [ ] Task 5: Remove Freshness column from verify_panel
+- [x] Task 5: Remove Freshness column from verify_panel
   - File: `src/kipart_search/gui/verify_panel.py`
   - Action: Remove `"Freshness"` from `VERIFY_COLUMNS` list (line 69). Delete `_make_freshness_item()` method (lines 339-364). Remove `freshness_col` variable and `self.table.setItem(row, freshness_col, freshness_item)` call. Remove `stale_count` tracking, `_STALE_LABEL`, `_FRESHNESS_SORT` constants, and stale-related display in `_build_summary()` and `_update_health_bar_style()`. Remove `is_stale` import if no longer used in this file.
   - Notes: Keep `is_stale()` in `core/models.py` and `verified_at`/`verified_source` fields on `BoardComponent` — they may be useful for future features. Only remove the GUI column and its rendering logic.
 
-- [ ] Task 6: Remove stale logging from main_window scan complete
+- [x] Task 6: Remove stale logging from main_window scan complete
   - File: `src/kipart_search/gui/main_window.py`
   - Action: Remove the stale detection log block (lines 848-858) that logs `"{stale_count} component(s) verified before last database update"`. Remove the `is_stale` import at line 797 if no longer used.
   - Notes: The `db_mtime` parameter can remain in the signal and `set_results()` signature for now — removing it would be a larger refactor for minimal gain.
