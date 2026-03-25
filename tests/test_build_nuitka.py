@@ -84,7 +84,10 @@ class TestReadVersion:
             # __truediv__ is used by Path(__file__).parent / "pyproject.toml"
             pass
         # Simpler: just write a real toml and point read_version at it
-        import tomllib
+        try:
+            import tomllib
+        except ModuleNotFoundError:
+            import tomli as tomllib  # Python 3.10 fallback
         with patch("builtins.open", return_value=open(toml_file, "rb")):
             with pytest.raises(ValueError, match="not a non-negative integer"):
                 build_nuitka.read_version()
