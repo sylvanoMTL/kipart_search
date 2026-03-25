@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import logging
+from collections import OrderedDict
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -17,7 +18,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
-    QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
 )
 
@@ -107,7 +109,7 @@ class BackupBrowserDialog(QDialog):
         return self._entries[rows[0].row()]
 
     def _on_view_log(self):
-        """Show the undo log CSV for the selected backup."""
+        """Show the undo log CSV for the selected backup as a collapsible tree."""
         entry = self._selected_entry()
         if entry is None:
             return
@@ -118,19 +120,54 @@ class BackupBrowserDialog(QDialog):
             return
 
         try:
-            content = csv_path.read_text(encoding="utf-8")
+            with open(csv_path, encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
         except Exception as exc:
             QMessageBox.warning(self, "Error", f"Failed to read undo log: {exc}")
             return
 
+        if not rows:
+            QMessageBox.information(self, "Empty Log", "The undo log contains no changes.")
+            return
+
+        # Group rows by reference
+        by_ref: OrderedDict[str, list[dict]] = OrderedDict()
+        for row in rows:
+            ref = row.get("reference", "?")
+            by_ref.setdefault(ref, []).append(row)
+
         dlg = QDialog(self)
-        dlg.setWindowTitle(f"Undo Log — {entry.timestamp}")
-        dlg.setMinimumSize(600, 400)
+        dlg.setWindowTitle(f"Undo Log \u2014 {entry.timestamp}")
+        dlg.setMinimumSize(650, 450)
         layout = QVBoxLayout(dlg)
-        text = QTextEdit()
-        text.setReadOnly(True)
-        text.setPlainText(content)
-        layout.addWidget(text)
+
+        tree = QTreeWidget()
+        tree.setHeaderLabels(["Reference / Field", "Old Value", "New Value", "Timestamp"])
+        tree.setAlternatingRowColors(True)
+        tree.setRootIsDecorated(True)
+
+        for ref, changes in by_ref.items():
+            parent = QTreeWidgetItem(tree, [f"{ref}  ({len(changes)} change{'s' if len(changes) != 1 else ''})"])
+            parent.setFlags(parent.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            font = parent.font(0)
+            font.setBold(True)
+            parent.setFont(0, font)
+
+            for ch in changes:
+                child = QTreeWidgetItem(parent, [
+                    ch.get("field", ""),
+                    ch.get("old_value", ""),
+                    ch.get("new_value", ""),
+                    ch.get("timestamp", ""),
+                ])
+            parent.setExpanded(True)
+
+        tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        tree.header().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(tree)
 
         close_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         close_box.rejected.connect(dlg.reject)
