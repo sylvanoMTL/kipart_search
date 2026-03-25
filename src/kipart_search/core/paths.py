@@ -67,9 +67,9 @@ def migrate_legacy_data() -> None:
 
     new_root = data_dir()
 
-    # Only migrate if new location has no files yet
-    if any(new_root.iterdir()):
-        log.debug("New data dir already has content — skipping migration")
+    # Only migrate if new location has no files yet (empty subdirs don't count)
+    if any(f.is_file() for f in new_root.rglob("*")):
+        log.debug("New data dir already has files — skipping migration")
         return
 
     log.info("Migrating data from %s to %s", _LEGACY_DIR, new_root)
