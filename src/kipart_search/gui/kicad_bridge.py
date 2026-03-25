@@ -248,7 +248,14 @@ class KiCadBridge:
             return False
 
         try:
-            self._board.clear_selection()
+            # clear_selection() is not supported in KiCad 9 IPC API
+            # ("no handler available for request of type ...ClearSelection").
+            # Ignore the error — add_to_selection still works, it just
+            # won't deselect previously selected items.
+            try:
+                self._board.clear_selection()
+            except Exception:
+                pass
             self._board.add_to_selection(fp)
             return True
         except Exception as e:
