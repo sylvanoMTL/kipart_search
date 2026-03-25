@@ -1,0 +1,61 @@
+============================================================
+SMOKE TEST RESULTS
+============================================================
+Start: 2026-03-25 15:54:08
+End:   2026-03-25 16:02:09
+
+Total:   12
+Passed:  9
+Failed:  2
+Skipped: 1
+
+FAILURES:
+  - green-preserved-rescan: After re-verify completes, check the previously assigned component. It should still show as Verified (GREEN), not 'Not found' (RED). The health percentage should not drop to 0%.
+    Notes: components that were green are now in orange "needs attention" and percentage has drop to 0%
+  - standalone-folder-picker: Close KiCad entirely. Restart KiPart Search. Assign an MPN to a component (if possible without scan). Click Push to KiCad. A folder picker should appear as last resort. SKIP this test if standalone push is not easily reachable.
+    Notes: this test does not make sense, restarting kipart-search in standalone, there is no folder selection !
+
+DETAILED RESULTS:
+  [PASS] 1. no-freshness-column
+         Scan a project. Check the verify table columns: Reference, Value, MPN, MPN Status, Footprint. There should be NO 'Freshness' column.
+         AC: AC 7: Freshness column removed
+  [PASS] 2. no-stale-log
+         After the scan completes, check the log panel. There should be NO message about 'verified before last database update' or 'stale' or 're-scan recommended'.
+         AC: AC 8: No stale-related log messages
+  [PASS] 3. project-dir-detected
+         After scanning, check the log panel for a line like: 'Project directory (from KiCad): C:\...\MyProject'. This confirms get_project_dir() works with kipy.
+         AC: AC 3: Project directory auto-detected from KiCad board
+  [PASS] 4. assign-mpn
+         Double-click a component with missing MPN (e.g. C6). Search for a part, select it, click Assign. Verify the component turns GREEN in the verify table.
+         AC: Setup: MPN assigned locally for push test
+  [PASS] 5. push-no-picker
+         Close the schematic editor in KiCad. Click 'Push to KiCad'. Confirm in the dialog. Verify NO folder picker dialog appears. Check the log for 'Project directory (cached): ...'.
+         AC: AC 3: No folder picker when project dir is cached
+  [PASS] 6. backup-project-scoped
+         After the push, check the log for the backup path. It should be inside the KiCad project folder: {project}/.kipart-search/backups/{project-name}/{timestamp}/. NOT in ~/.kipart-search/backups/.
+         AC: AC 5: Backup stored in project directory
+  [PASS] 7. reverify-after-push
+         Click 'Re-verify'. Verify it reconnects to KiCad (log shows 'Re-verify' section) and rescans all components. The scan should complete with component count, not 'No components found'.
+         AC: Re-verify works after push (forces reconnect)
+  [FAIL] 8. green-preserved-rescan
+         After re-verify completes, check the previously assigned component. It should still show as Verified (GREEN), not 'Not found' (RED). The health percentage should not drop to 0%.
+         AC: AC 1: Verified statuses preserved across re-scans
+         Notes: components that were green are now in orange "needs attention" and percentage has drop to 0%
+  [PASS] 9. changed-mpn-fresh-status
+         In KiCad schematic editor, manually change a component's MPN field to a bogus value (e.g. 'INVALID_MPN'). Save. Close schematic. Click Re-verify in KiPart Search. That component should show RED/Not found (not cached GREEN).
+         AC: AC 2: Changed MPN gets fresh verification, not cached
+  [FAIL] 10. standalone-folder-picker
+         Close KiCad entirely. Restart KiPart Search. Assign an MPN to a component (if possible without scan). Click Push to KiCad. A folder picker should appear as last resort. SKIP this test if standalone push is not easily reachable.
+         AC: AC 4: Folder picker appears in standalone mode
+         Notes: this test does not make sense, restarting kipart-search in standalone, there is no folder selection !
+  [SKIP] 11. standalone-backup-fallback
+         If standalone push was tested above, check the backup path. It should fall back to ~/.kipart-search/backups/ when no project directory is available. SKIP if standalone push was not tested.
+         AC: AC 6: Backup falls back to user home in standalone mode
+         Notes: standalone mode not available, cannot scan or open a kicad project or BOM
+  [PASS] 12. path-with-spaces
+         Verify the test KiCad project path contains spaces (e.g. 'MecaFrog Rowing power meter'). If so, confirm that push and backup worked correctly with that path (no path-related errors in log).
+         AC: Edge case: Spaces in project path handled correctly
+
+============================================================
+VERDICT: HAS FAILURES
+============================================================

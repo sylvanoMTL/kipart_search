@@ -424,6 +424,7 @@ kipart-search/
 │       │   ├── units.py              # Engineering value normalization, generate_query_variants()
 │       │   ├── query_transform.py    # 3-stage query pipeline: prefix → EE units → SI normalization
 │       │   ├── bom_export.py         # [NEW] BOM export engine: BOMTemplate + ComponentData → Excel/CSV
+│       │   ├── project_state.py      # [NEW] Per-project verification state (JSON persistence)
 │       │   └── verify.py            # [FUTURE] BOM verification engine
 │       │
 │       ├── gui/                       # *** ALL PySide6 CODE ***
@@ -520,6 +521,7 @@ kipart-search/
 | **JLCPCB Database** (FR7-9) | `sources.py` (JLCPCBSource) | `download_dialog.py` |
 | **KiCad Integration** (FR10-15) | — | `kicad_bridge.py`, `verify_panel.py` |
 | **Verification Dashboard** (FR16-20) | `models.py` (ComponentData) | `verify_panel.py` |
+| **User Verification Status** (FR36-39) | `project_state.py`, `models.py` (UserVerificationStatus) | `verify_panel.py` |
 | **MPN Assignment** (FR21-23) | — | `assign_dialog.py`, `kicad_bridge.py` |
 | **BOM Export** (FR24-29) | `bom_export.py` | `export_dialog.py` |
 | **Caching** (FR30-31) | `cache.py` | — |

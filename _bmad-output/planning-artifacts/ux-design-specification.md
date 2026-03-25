@@ -860,7 +860,7 @@ flowchart TD
 - View menu: toggle panel visibility, reset layout
 - File menu: open BOM, export, quit
 - Help menu: about, credits
-- Right-click context menu on table rows: "Search for this component", "Assign MPN", "Copy MPN"
+- Right-click context menu on table rows: "Search for this component", "Assign MPN", "Copy MPN", separator, "Mark as Verified", "Mark as Needs Attention", "Mark as Rejected", "Clear Review Status"
 
 **Button placement rule:**
 - Destructive or irreversible actions (Push to KiCad, Export) always require confirmation dialog
@@ -937,7 +937,15 @@ flowchart TD
 | Column header click | Sort by column (toggle asc/desc) |
 | Row background color | Status-coded (green/amber/red) in verify table. Neutral in results table |
 
-**Selection is always single-row** — no multi-select needed for current journeys. Can be added later for batch operations.
+**Selection supports multi-row** (Ctrl+click, Shift+click) for batch review status operations. Single-row for KiCad highlight and detail panel updates.
+
+**Review column in verification table:**
+- Empty cell = not yet reviewed (NONE)
+- Green background with "Verified" = engineer confirms correct
+- Amber background with "Needs Attention" = engineer flags for follow-up
+- Red background with "Rejected" = engineer flags as wrong or incomplete
+- Review status is independent of auto-check — both columns always visible
+- Health bar uses user status when set (VERIFIED = healthy, REJECTED/ATTENTION = unhealthy), falls back to auto-check when NONE
 
 ## Responsive Design & Accessibility
 

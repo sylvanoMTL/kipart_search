@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from html import escape
+from pathlib import Path
 
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QAction, QColor
@@ -22,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kipart_search.core.models import BoardComponent, Confidence
+from kipart_search.core.models import BoardComponent, Confidence, UserVerificationStatus
 
 # Pro-gated verification columns (future: datasheet URL check, footprint consistency)
 # These columns will show a "Pro" tooltip when the full checks are implemented.
@@ -65,7 +66,26 @@ _STATUS_TOOLTIPS = {
     Confidence.RED: "MPN not found in any configured source",
 }
 
-VERIFY_COLUMNS = ["Reference", "Value", "MPN", "MPN Status", "Footprint"]
+VERIFY_COLUMNS = ["Reference", "Value", "MPN", "MPN Status", "Review", "Footprint"]
+
+# User review status colors and labels
+_REVIEW_COLORS = {
+    UserVerificationStatus.VERIFIED: QColor(200, 255, 200),   # Light green
+    UserVerificationStatus.ATTENTION: QColor(255, 235, 180),  # Light amber
+    UserVerificationStatus.REJECTED: QColor(255, 200, 200),   # Light red
+}
+_REVIEW_LABELS = {
+    UserVerificationStatus.NONE: "",
+    UserVerificationStatus.VERIFIED: "Verified",
+    UserVerificationStatus.ATTENTION: "Needs Attention",
+    UserVerificationStatus.REJECTED: "Rejected",
+}
+_REVIEW_SORT_ORDER = {
+    UserVerificationStatus.NONE: 3,
+    UserVerificationStatus.REJECTED: 0,
+    UserVerificationStatus.ATTENTION: 1,
+    UserVerificationStatus.VERIFIED: 2,
+}
 
 # Sort order for status: red first, then amber, then green
 _SORT_ORDER = {Confidence.RED: 0, Confidence.AMBER: 1, Confidence.GREEN: 2}
@@ -89,6 +109,7 @@ class VerifyPanel(QWidget):
     search_for_component = Signal(int)  # Emits row index on double-click missing MPN
     manual_assign_requested = Signal(str)  # Emits reference for manual MPN assignment
     refresh_requested = Signal()  # Emitted when Refresh BOM button is clicked
+    user_status_changed = Signal(list, object)  # Emits (references, UserVerificationStatus)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -136,6 +157,7 @@ class VerifyPanel(QWidget):
             QHeaderView.ResizeMode.Interactive
         )
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSortingEnabled(True)
         self.table.setAlternatingRowColors(True)
@@ -168,6 +190,8 @@ class VerifyPanel(QWidget):
         self._mpn_statuses: dict[str, Confidence] = {}
         self._has_active_sources: bool = True
         self._db_mtime: float | None = None
+        self._user_statuses: dict[str, UserVerificationStatus] = {}
+        self._project_dir: Path | None = None
 
     def set_results(
         self,
@@ -175,6 +199,8 @@ class VerifyPanel(QWidget):
         mpn_statuses: dict[str, Confidence],
         has_active_sources: bool = True,
         db_mtime: float | None = None,
+        user_statuses: dict[str, UserVerificationStatus] | None = None,
+        project_dir: Path | None = None,
     ) -> None:
         """Populate the verification table.
 
@@ -183,11 +209,17 @@ class VerifyPanel(QWidget):
             mpn_statuses: Map of reference -> confidence level from MPN verification
             has_active_sources: Whether any data sources were available for verification
             db_mtime: Database file modification time for stale detection
+            user_statuses: Map of reference -> user review status (persisted per-project)
+            project_dir: KiCad project directory for state persistence
         """
         self._components = list(components)
         self._mpn_statuses = dict(mpn_statuses)
         self._has_active_sources = has_active_sources
         self._db_mtime = db_mtime
+        if user_statuses is not None:
+            self._user_statuses = dict(user_statuses)
+        if project_dir is not None:
+            self._project_dir = project_dir
         self._detail.clear()
 
         # Disable sorting during insertion to avoid mid-build reorder
@@ -195,33 +227,10 @@ class VerifyPanel(QWidget):
         self.table.setRowCount(len(components))
 
         footprint_col = VERIFY_COLUMNS.index("Footprint")
-
-        has_mpn = 0
-        missing_mpn = 0
-        issues = 0
-        sch_only_count = 0
+        review_col = VERIFY_COLUMNS.index("Review")
 
         for row, comp in enumerate(components):
             status = mpn_statuses.get(comp.reference, Confidence.RED)
-
-            # Categorize
-            if comp.source == "sch_only":
-                sch_only_count += 1
-                issues += 1
-            elif not comp.has_mpn:
-                missing_mpn += 1
-                status = Confidence.RED
-            elif status == Confidence.GREEN:
-                has_mpn += 1
-            else:
-                issues += 1
-
-            # Count desync as issues too (only if not already counted as sch_only)
-            if comp.sync_mismatches and comp.source != "sch_only":
-                # Don't double-count: only increment if this comp was counted as has_mpn
-                if status == Confidence.GREEN and comp.has_mpn:
-                    has_mpn -= 1
-                    issues += 1
 
             # Resolve status label/tooltip — handle dual-source states first
             if comp.source == "sch_only":
@@ -276,6 +285,24 @@ class VerifyPanel(QWidget):
             status_item.setData(Qt.ItemDataRole.UserRole + 1, sort_order)
             self.table.setItem(row, 3, status_item)
 
+            # Review (user verification status)
+            user_status = self._user_statuses.get(
+                comp.reference, UserVerificationStatus.NONE
+            )
+            review_item = _StatusItem(_REVIEW_LABELS[user_status])
+            review_item.setData(Qt.ItemDataRole.UserRole, row)
+            review_item.setData(
+                Qt.ItemDataRole.UserRole + 1, _REVIEW_SORT_ORDER[user_status]
+            )
+            if user_status != UserVerificationStatus.NONE:
+                review_item.setBackground(_REVIEW_COLORS[user_status])
+            review_item.setToolTip(
+                "Right-click to set your review decision"
+                if user_status == UserVerificationStatus.NONE
+                else f"Your review: {_REVIEW_LABELS[user_status]}"
+            )
+            self.table.setItem(row, review_col, review_item)
+
             # Footprint
             fp_item = QTableWidgetItem(comp.footprint_short)
             fp_color = COLORS[Confidence.GREEN] if comp.footprint else COLORS[Confidence.RED]
@@ -290,28 +317,8 @@ class VerifyPanel(QWidget):
         status_col = VERIFY_COLUMNS.index("MPN Status")
         self.table.sortByColumn(status_col, Qt.SortOrder.AscendingOrder)
 
-        # Update summary
-        total = len(components)
-        if total > 0:
-            self.summary_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            self.summary_label.setStyleSheet("")
-            pct = int(has_mpn / total * 100)
-            self.summary_label.setText(
-                self._build_summary(total, has_mpn, issues, missing_mpn, pct,
-                                    sch_only=sch_only_count)
-            )
-            self.health_bar.setMaximum(total)
-            self.health_bar.setValue(has_mpn)
-            self.health_bar.setFormat(f"Ready: {pct}%")
-            self.health_bar.setVisible(True)
-            self._update_health_bar_style(pct)
-            self.refresh_button.setVisible(True)
-        else:
-            self.summary_label.setText("No components found")
-            self.summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.summary_label.setStyleSheet("color: #888;")
-            self.health_bar.setVisible(False)
-            self.refresh_button.setVisible(False)
+        # Update summary using shared counting logic
+        self._refresh_health_bar()
 
     def update_component_status(self, reference: str, new_status: Confidence) -> None:
         """Update a single component's MPN status and refresh the health bar.
@@ -347,8 +354,11 @@ class VerifyPanel(QWidget):
                         tip = _STATUS_TOOLTIPS[new_status]
                         sort = _SORT_ORDER[new_status]
 
-                    # Update background for all cells in this row
+                    # Update background for all cells except Review column
+                    review_col = VERIFY_COLUMNS.index("Review")
                     for col in range(self.table.columnCount()):
+                        if col == review_col:
+                            continue  # Review column has its own color
                         cell = self.table.item(row, col)
                         if cell:
                             cell.setBackground(bg)
@@ -366,36 +376,7 @@ class VerifyPanel(QWidget):
                         )
                     break
 
-        # Recompute counts from _mpn_statuses (mirror set_results() logic)
-        has_mpn = 0
-        missing_mpn = 0
-        issues = 0
-        sch_only_count = 0
-        for comp in self._components:
-            status = self._mpn_statuses.get(comp.reference, Confidence.RED)
-            if comp.source == "sch_only":
-                sch_only_count += 1
-                issues += 1
-            elif not comp.has_mpn and status == Confidence.RED:
-                missing_mpn += 1
-            elif status == Confidence.GREEN:
-                has_mpn += 1
-                # Desynced GREEN components need attention, not "ready"
-                if comp.sync_mismatches:
-                    has_mpn -= 1
-                    issues += 1
-            else:
-                issues += 1
-        total = len(self._components)
-        if total > 0:
-            pct = int(has_mpn / total * 100)
-            self.summary_label.setText(
-                self._build_summary(total, has_mpn, issues, missing_mpn, pct,
-                                    sch_only=sch_only_count)
-            )
-            self.health_bar.setValue(has_mpn)
-            self.health_bar.setFormat(f"Ready: {pct}%")
-            self._update_health_bar_style(pct)
+        self._refresh_health_bar()
 
     @staticmethod
     def _build_summary(
@@ -414,6 +395,83 @@ class VerifyPanel(QWidget):
         if pct >= 100 and sch_only == 0:
             summary += " — Ready for export"
         return summary
+
+    def _is_healthy(self, comp: BoardComponent) -> bool:
+        """Determine if a component is healthy for health bar counting.
+
+        User review status overrides auto-check:
+        - VERIFIED → healthy (regardless of auto-check)
+        - REJECTED / ATTENTION → unhealthy (regardless of auto-check)
+        - NONE → fall back to auto-check logic
+        """
+        user_status = self._user_statuses.get(
+            comp.reference, UserVerificationStatus.NONE
+        )
+        if user_status == UserVerificationStatus.VERIFIED:
+            return True
+        if user_status in (UserVerificationStatus.REJECTED, UserVerificationStatus.ATTENTION):
+            return False
+        # NONE — fall back to auto-check
+        if comp.source == "sch_only":
+            return False
+        if comp.sync_mismatches:
+            return False
+        return self._mpn_statuses.get(comp.reference) == Confidence.GREEN
+
+    def _compute_health_counts(self) -> tuple[int, int, int, int, int]:
+        """Compute health counts respecting user review overrides.
+
+        Returns (total, healthy, issues, missing_mpn, sch_only).
+        """
+        healthy = 0
+        missing_mpn = 0
+        issues = 0
+        sch_only_count = 0
+
+        for comp in self._components:
+            if comp.source == "sch_only":
+                sch_only_count += 1
+                issues += 1
+                continue
+
+            if self._is_healthy(comp):
+                healthy += 1
+            elif not comp.has_mpn:
+                user_status = self._user_statuses.get(
+                    comp.reference, UserVerificationStatus.NONE
+                )
+                if user_status == UserVerificationStatus.NONE:
+                    missing_mpn += 1
+                else:
+                    issues += 1
+            else:
+                issues += 1
+
+        return len(self._components), healthy, issues, missing_mpn, sch_only_count
+
+    def _refresh_health_bar(self) -> None:
+        """Recompute and update the health bar and summary label."""
+        total, healthy, issues, missing_mpn, sch_only = self._compute_health_counts()
+        if total > 0:
+            self.summary_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            self.summary_label.setStyleSheet("")
+            pct = int(healthy / total * 100)
+            self.summary_label.setText(
+                self._build_summary(total, healthy, issues, missing_mpn, pct,
+                                    sch_only=sch_only)
+            )
+            self.health_bar.setMaximum(total)
+            self.health_bar.setValue(healthy)
+            self.health_bar.setFormat(f"Ready: {pct}%")
+            self.health_bar.setVisible(True)
+            self._update_health_bar_style(pct)
+            self.refresh_button.setVisible(True)
+        else:
+            self.summary_label.setText("No components found")
+            self.summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.summary_label.setStyleSheet("color: #888;")
+            self.health_bar.setVisible(False)
+            self.refresh_button.setVisible(False)
 
     def _update_health_bar_style(self, pct: int) -> None:
         """Apply color-coded stylesheet to the health bar based on percentage."""
@@ -450,7 +508,7 @@ class VerifyPanel(QWidget):
 
     def _on_cell_double_clicked(self, row: int, _col: int):
         """Double-click any row to open guided search for that component."""
-        if 0 <= row < len(self._components):
+        if self.get_component(row) is not None:
             self.search_for_component.emit(row)
 
     def _on_context_menu(self, pos: QPoint):
@@ -462,6 +520,20 @@ class VerifyPanel(QWidget):
         menu = self._build_context_menu(row)
         if menu:
             menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _get_selected_references(self) -> list[str]:
+        """Return references for all selected rows."""
+        refs: list[str] = []
+        seen_rows: set[int] = set()
+        for item in self.table.selectedItems():
+            visual_row = item.row()
+            if visual_row in seen_rows:
+                continue
+            seen_rows.add(visual_row)
+            comp = self.get_component(visual_row)
+            if comp:
+                refs.append(comp.reference)
+        return refs
 
     def _build_context_menu(self, row: int) -> QMenu | None:
         """Build context menu for the given row. Returns None if row is invalid."""
@@ -491,6 +563,24 @@ class VerifyPanel(QWidget):
             copy_action.setEnabled(False)
         menu.addAction(copy_action)
 
+        # --- User review status ---
+        menu.addSeparator()
+
+        for label, status in [
+            ("Mark as Verified", UserVerificationStatus.VERIFIED),
+            ("Mark as Needs Attention", UserVerificationStatus.ATTENTION),
+            ("Mark as Rejected", UserVerificationStatus.REJECTED),
+            ("Clear Review Status", UserVerificationStatus.NONE),
+        ]:
+            action = QAction(label, self)
+            # Capture status in closure via default arg
+            action.triggered.connect(
+                lambda checked=False, s=status: self.set_user_status(
+                    self._get_selected_references(), s
+                )
+            )
+            menu.addAction(action)
+
         return menu
 
     def get_components(self) -> list[BoardComponent]:
@@ -500,24 +590,78 @@ class VerifyPanel(QWidget):
     def get_health_percentage(self) -> int:
         """Return the current BOM health percentage (0-100).
 
-        Sch-only components are excluded from both numerator and denominator
-        (they can't become healthy without placing on PCB — outside this tool's scope).
-        Desynced GREEN components are excluded from the numerator only.
+        User review status overrides auto-check:
+        - VERIFIED → healthy (regardless of auto-check)
+        - REJECTED / ATTENTION → unhealthy (regardless of auto-check)
+        - NONE → fall back to auto-check logic
+
+        Sch-only components are excluded from both numerator and denominator.
         """
         pcb_components = [c for c in self._components if c.source != "sch_only"]
         total = len(pcb_components)
         if total == 0:
             return 0
-        has_mpn = 0
-        for c in pcb_components:
-            if self._mpn_statuses.get(c.reference) == Confidence.GREEN:
-                if not c.sync_mismatches:
-                    has_mpn += 1
-        return int(has_mpn / total * 100)
+        healthy = sum(1 for c in pcb_components if self._is_healthy(c))
+        return int(healthy / total * 100)
 
     def get_missing_mpn_count(self) -> int:
         """Return the count of components missing an MPN."""
         return sum(1 for c in self._components if not c.has_mpn)
+
+    def set_user_status(
+        self, references: list[str], status: UserVerificationStatus
+    ) -> None:
+        """Update user review status for given components. Persists immediately."""
+        if not references:
+            return
+
+        review_col = VERIFY_COLUMNS.index("Review")
+
+        for ref in references:
+            if status == UserVerificationStatus.NONE:
+                self._user_statuses.pop(ref, None)
+            else:
+                self._user_statuses[ref] = status
+
+            # Update the visual Review cell
+            for row in range(self.table.rowCount()):
+                item = self.table.item(row, 0)
+                if item is None:
+                    continue
+                orig_idx = item.data(Qt.ItemDataRole.UserRole)
+                if orig_idx is not None and 0 <= orig_idx < len(self._components):
+                    if self._components[orig_idx].reference == ref:
+                        review_item = self.table.item(row, review_col)
+                        if review_item:
+                            review_item.setText(_REVIEW_LABELS[status])
+                            review_item.setData(
+                                Qt.ItemDataRole.UserRole + 1,
+                                _REVIEW_SORT_ORDER[status],
+                            )
+                            if status != UserVerificationStatus.NONE:
+                                review_item.setBackground(
+                                    _REVIEW_COLORS[status]
+                                )
+                                review_item.setToolTip(
+                                    f"Your review: {_REVIEW_LABELS[status]}"
+                                )
+                            else:
+                                review_item.setBackground(QColor())
+                                review_item.setToolTip(
+                                    "Right-click to set your review decision"
+                                )
+                        break
+
+        self._refresh_health_bar()
+        self.user_status_changed.emit(references, status)
+
+    def get_project_dir(self) -> Path | None:
+        """Return the current project directory (or None if not set)."""
+        return self._project_dir
+
+    def get_user_statuses(self) -> dict[str, UserVerificationStatus]:
+        """Return the current user verification statuses dict."""
+        return dict(self._user_statuses)
 
     def update_license_state(self) -> None:
         """Update Pro-gated visual indicators based on current license tier.
@@ -542,6 +686,8 @@ class VerifyPanel(QWidget):
         self.health_bar.setVisible(False)
         self.refresh_button.setVisible(False)
         self._detail.clear()
+        self._user_statuses.clear()
+        self._project_dir = None
 
     @staticmethod
     def _render_detail(comp: BoardComponent, status: Confidence) -> str:

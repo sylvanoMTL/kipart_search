@@ -256,6 +256,7 @@ class MainWindow(QMainWindow):
         self.verify_panel.search_for_component.connect(self._on_guided_search)
         self.verify_panel.manual_assign_requested.connect(self._on_manual_assign)
         self.verify_panel.refresh_requested.connect(self._on_refresh_bom)
+        self.verify_panel.user_status_changed.connect(self._on_user_status_changed)
 
         self.search_bar = SearchBar()
         self.search_bar.search_requested.connect(self._on_search)
@@ -960,8 +961,21 @@ class MainWindow(QMainWindow):
             for comp in components
             if comp.has_mpn
         }
+
+        # Load per-project user verification statuses
+        user_statuses = {}
+        if self._project_dir is not None:
+            from kipart_search.core.project_state import load_user_statuses
+
+            user_statuses = load_user_statuses(self._project_dir)
+            if user_statuses:
+                self.log_panel.log(
+                    f"Restored {len(user_statuses)} user review status(es)"
+                )
+
         self.verify_panel.set_results(
             components, mpn_statuses, has_sources, db_mtime=db_mtime,
+            user_statuses=user_statuses, project_dir=self._project_dir,
         )
         self._act_scan.setEnabled(True)
         self.verify_panel.refresh_button.setEnabled(True)
@@ -994,6 +1008,25 @@ class MainWindow(QMainWindow):
                 f"{total_attention} component(s) need attention — run Update PCB "
                 "from Schematic (F8) in KiCad, then re-scan."
             )
+
+    def _on_user_status_changed(self, references: list[str], status) -> None:
+        """Persist user review status changes and log them."""
+        from kipart_search.core.models import UserVerificationStatus
+        from kipart_search.core.project_state import save_user_statuses
+
+        label = {
+            UserVerificationStatus.VERIFIED: "Verified",
+            UserVerificationStatus.ATTENTION: "Needs Attention",
+            UserVerificationStatus.REJECTED: "Rejected",
+            UserVerificationStatus.NONE: "cleared",
+        }.get(status, str(status))
+
+        for ref in references:
+            self.log_panel.log(f"Marked {ref} as {label}")
+
+        project_dir = self.verify_panel.get_project_dir()
+        if project_dir:
+            save_user_statuses(project_dir, self.verify_panel.get_user_statuses())
 
     def _on_scan_error(self, error_msg: str):
         """Handle scan error."""

@@ -312,6 +312,13 @@ KiPart Search is a standalone PySide6 desktop application that runs as an indepe
 - **FR34:** Designer can access a Help/About dialog with app name, version, author, and license information
 - **FR35:** Designer can see a clear status indicator showing current data mode (e.g., "Local DB" vs "Online — 3 sources active")
 
+### User Verification Status
+
+- **FR36:** Designer can set a manual verification status on any component via right-click context menu: Verified (green), Needs Attention (amber), Rejected (red), or None (clear)
+- **FR37:** User verification status is persisted per-project in a local JSON file and survives across sessions
+- **FR38:** The health bar reflects user verification decisions — components marked Verified by the user count as healthy regardless of auto-check status; components marked Rejected count as unhealthy regardless of auto-check status
+- **FR39:** Both auto-check status and user status are visible in the verification table (auto-check column + user review column)
+
 ## Non-Functional Requirements
 
 ### Performance

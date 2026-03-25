@@ -642,3 +642,48 @@ class TestWorkflowFile:
         content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
         assert "GITHUB_REF_NAME" in content
         assert "read_base_version" in content
+
+    def test_workflow_installs_inno_setup(self):
+        """Workflow installs Inno Setup via Chocolatey."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "choco install innosetup" in content
+
+    def test_workflow_verifies_inno_setup(self):
+        """Workflow verifies iscc is available after install."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "Inno Setup" in content
+        assert "iscc" in content.lower() or "ISCC" in content
+
+    def test_workflow_compiles_installer(self):
+        """Workflow runs build_nuitka.py --installer-only."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "--installer-only" in content
+
+    def test_workflow_verifies_installer_artifact(self):
+        """Workflow checks that setup.exe was produced."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "setup.exe" in content
+
+    def test_workflow_generates_sha256_checksums(self):
+        """Workflow generates SHA256 checksums for release artifacts."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "sha256sum" in content
+        assert "checksums" in content
+
+    def test_workflow_uploads_installer_and_checksums(self):
+        """Workflow uploads ZIP, installer, and checksums to release."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "kipart-search-*-windows.zip" in content
+        assert "kipart-search-*-setup.exe" in content
+        assert "checksums-*-sha256.txt" in content
+
+    def test_workflow_has_multiplatform_stubs(self):
+        """Workflow has commented-out multi-platform build stubs."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "macos-latest" in content
+        assert "ubuntu-latest" in content
+
+    def test_workflow_timeout_30_minutes(self):
+        """Workflow timeout remains at 30 minutes."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "timeout-minutes: 30" in content

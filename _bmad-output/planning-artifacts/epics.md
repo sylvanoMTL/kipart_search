@@ -1153,3 +1153,90 @@ So that a failed update never leaves me without a working application.
 **When** the main window appears
 **Then** a non-modal dialog shows the failure reason and offers [Try Again] or [Download Manually]
 **And** in all failure cases, the previous working installation in Program Files is never corrupted — Inno Setup's atomic install guarantees this
+
+---
+
+## Epic 9: User Verification & Per-Project State
+
+Engineers can record their manual review decisions (Verified / Needs Attention / Rejected) on each component, independent of the tool's auto-check. These decisions persist across sessions in per-project state files and influence the health bar. This separates "what the tool found" from "what the engineer decided."
+
+**FRs covered:** FR36, FR37, FR38, FR39
+**NFRs addressed:** NFR11 (no data loss), NFR15 (platform-agnostic paths)
+
+### Story 9.1: User Verification Status with Per-Project Persistence
+
+As a designer,
+I want to mark each component with my own review status (Verified / Needs Attention / Rejected) via right-click,
+So that I can track my engineering decisions separately from the tool's auto-check and see my progress toward a fully-reviewed BOM.
+
+**Acceptance Criteria:**
+
+**Given** a board has been scanned and the verification table is displayed
+**When** the designer right-clicks a component row
+**Then** the context menu includes: "Mark as Verified", "Mark as Needs Attention", "Mark as Rejected", "Clear Review Status"
+
+**Given** the designer selects "Mark as Verified" on component C12
+**When** the context menu action executes
+**Then** the "Review" column for C12 shows a green "Verified" indicator
+**And** the health bar recalculates to include C12 as healthy (regardless of auto-check status)
+**And** the change is immediately persisted to `{data_dir}/projects/{project-hash}/verification-state.json`
+**And** the log panel shows: "[HH:MM:SS] Marked C12 as Verified"
+
+**Given** the designer selects multiple components (Ctrl+click or Shift+click)
+**When** they right-click and choose a review status
+**Then** all selected components receive the chosen status
+**And** the log shows one entry per component
+
+**Given** the designer closes and reopens the app
+**When** they scan the same KiCad project
+**Then** previously saved user verification statuses are restored from the project state file
+**And** the Review column and health bar reflect the restored statuses
+
+**Given** a component's auto-check status is RED (MPN not found)
+**When** the designer marks it as "Verified" (because they know the MPN is correct, just not in the local DB)
+**Then** the auto-check column still shows RED/Not Found
+**But** the Review column shows green/Verified
+**And** the health bar counts this component as healthy
+
+**Given** a component's auto-check status is GREEN
+**When** the designer marks it as "Rejected" (e.g., wants to change to a different part)
+**Then** the auto-check column still shows GREEN/Verified
+**But** the Review column shows red/Rejected
+**And** the health bar counts this component as unhealthy
+
+**Given** the project state file does not exist (first scan of a new project)
+**When** the verification table loads
+**Then** all components have empty Review status (NONE)
+**And** the health bar uses auto-check status only (existing behavior)
+
+**Implementation Details:**
+
+1. **`core/models.py`** — Add `UserVerificationStatus` enum (NONE, VERIFIED, ATTENTION, REJECTED)
+
+2. **`core/paths.py`** — Add `projects_dir()` returning `{data_dir}/projects/`. Add `project_state_path(project_id: str)` returning `{projects_dir}/{project_id}/verification-state.json`.
+
+3. **`core/project_state.py`** (NEW) — Functions:
+   - `compute_project_id(kicad_project_path: str) -> str` — SHA256 hash of the normalized absolute path, truncated to 16 hex chars
+   - `load_user_statuses(project_id: str) -> dict[str, UserVerificationStatus]` — reads JSON, returns {reference: status}. Returns empty dict if file doesn't exist.
+   - `save_user_statuses(project_id: str, statuses: dict[str, UserVerificationStatus]) -> None` — atomic write (write to .tmp, rename)
+   - Zero GUI dependencies. Pure dict-in, dict-out.
+
+4. **`gui/verify_panel.py`** — Changes:
+   - Add "Review" to `VERIFY_COLUMNS` (between "MPN Status" and "Footprint")
+   - Store `_user_statuses: dict[str, UserVerificationStatus]` alongside `_mpn_statuses`
+   - In `_build_context_menu()`: add separator + 4 review status actions after existing items
+   - Support multi-row selection: actions apply to all selected rows
+   - New method `set_user_status(references: list[str], status: UserVerificationStatus)` — updates table cells, recalculates health bar, calls `project_state.save_user_statuses()`
+   - `get_health_percentage()` updated: user VERIFIED overrides auto-check for healthy count; user REJECTED/ATTENTION overrides for unhealthy count
+   - `populate()` accepts optional `user_statuses` parameter to restore persisted state
+
+5. **Project ID computation:** The KiCad project path is available from `kicad_bridge.py` (connected mode) or from the opened BOM file path (standalone mode). The hash ensures unique state per project without exposing file paths in the state directory name.
+
+**Definition of Done:**
+- Right-click context menu shows review status options
+- Multi-select works for batch marking
+- Review column displays correctly with color coding
+- Health bar reflects user decisions
+- State persists across app restarts for the same project
+- Auto-check column is unchanged — both statuses coexist
+- Tests: mark components, close/reopen, verify persistence; test health bar with mixed auto/user statuses

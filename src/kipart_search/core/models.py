@@ -15,6 +15,14 @@ class Confidence(Enum):
     RED = "red"        # Failed, clear mismatch or not found
 
 
+class UserVerificationStatus(Enum):
+    """Engineer's manual review decision — independent of auto-check."""
+    NONE = "none"           # Not yet reviewed (default)
+    VERIFIED = "verified"   # Engineer confirms: correct
+    ATTENTION = "attention" # Engineer flags: come back to this
+    REJECTED = "rejected"   # Engineer flags: wrong or incomplete
+
+
 @dataclass
 class PriceBreak:
     """A single price break from a distributor."""

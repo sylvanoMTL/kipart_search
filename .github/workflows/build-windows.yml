@@ -7,6 +7,16 @@ on:
 permissions:
   contents: write
 
+# --- Future multi-platform builds ---
+# To enable, uncomment and add platform-specific steps:
+#   macos-latest: create .app bundle, DMG packaging
+#   ubuntu-latest: AppImage or .deb packaging
+# build-matrix:
+#   strategy:
+#     matrix:
+#       os: [windows-latest, macos-latest, ubuntu-latest]
+#   runs-on: ${{ matrix.os }}
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -65,8 +75,48 @@ jobs:
       - name: Run unit tests
         run: python -m pytest tests/test_build_nuitka.py -v
 
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+        shell: pwsh
+
+      - name: Verify Inno Setup installation
+        run: |
+          if command -v iscc &> /dev/null; then
+            echo "iscc found on PATH"
+            iscc /? || true
+          elif [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+            echo "ISCC.exe found at default location"
+          else
+            echo "ERROR: Inno Setup not found"
+            exit 1
+          fi
+
+      - name: Compile Inno Setup installer
+        run: python build_nuitka.py --installer-only
+
+      - name: Verify installer artifact
+        run: |
+          VERSION=$(python -c "from build_nuitka import read_base_version; print(read_base_version())")
+          if [ ! -f "dist/kipart-search-${VERSION}-setup.exe" ]; then
+            echo "ERROR: dist/kipart-search-${VERSION}-setup.exe not found"
+            ls -la dist/
+            exit 1
+          fi
+          echo "Installer built: dist/kipart-search-${VERSION}-setup.exe"
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd dist
+          VERSION=$(python -c "from build_nuitka import read_base_version; print(read_base_version())")
+          sha256sum "kipart-search-${VERSION}-windows.zip" "kipart-search-${VERSION}-setup.exe" > "checksums-${VERSION}-sha256.txt"
+          echo "Checksums:"
+          cat "checksums-${VERSION}-sha256.txt"
+
       - name: Upload release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/kipart-search-*-windows.zip
+          files: |
+            dist/kipart-search-*-windows.zip
+            dist/kipart-search-*-setup.exe
+            dist/checksums-*-sha256.txt
           generate_release_notes: true
