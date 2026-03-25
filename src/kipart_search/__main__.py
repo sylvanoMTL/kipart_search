@@ -3,6 +3,14 @@
 import sys
 
 
+def _check_version_flag() -> None:
+    """Print version and exit if --version is passed. No GUI, no imports."""
+    if "--version" in sys.argv:
+        from kipart_search import __version__
+        print(f"kipart-search {__version__}")
+        sys.exit(0)
+
+
 def _init_keyring_compiled() -> None:
     """Force Windows keyring backend when running as Nuitka-compiled binary.
 
@@ -21,6 +29,7 @@ def _init_keyring_compiled() -> None:
 
 
 def main():
+    _check_version_flag()
     _init_keyring_compiled()
     from kipart_search.gui.main_window import run_app
     return run_app()

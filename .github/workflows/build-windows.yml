@@ -1,0 +1,69 @@
+name: Build Windows Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install nuitka
+
+      - name: Cache Nuitka ccache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Nuitka\Nuitka\Cache
+          key: nuitka-ccache-${{ runner.os }}-py3.10-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            nuitka-ccache-${{ runner.os }}-py3.10-
+
+      - name: GPL firewall check
+        run: python -c "from build_nuitka import check_licenses; check_licenses()"
+
+      - name: Verify tag matches pyproject.toml version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TOML_VERSION=$(python -c "from build_nuitka import read_base_version; print(read_base_version())")
+          if [ "$TAG_VERSION" != "$TOML_VERSION" ]; then
+            echo "ERROR: Tag version ($TAG_VERSION) does not match pyproject.toml version ($TOML_VERSION)"
+            exit 1
+          fi
+          echo "Version verified: $TAG_VERSION"
+
+      - name: Build and package
+        run: python build_nuitka.py --package
+
+      - name: Smoke test compiled binary
+        run: |
+          if [ ! -f "dist/__main__.dist/kipart-search.exe" ]; then
+            echo "ERROR: kipart-search.exe not found"
+            exit 1
+          fi
+          dist/__main__.dist/kipart-search.exe --version
+
+      - name: Run unit tests
+        run: python -m pytest tests/test_build_nuitka.py -v
+
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/kipart-search-*-windows.zip
+          generate_release_notes: true

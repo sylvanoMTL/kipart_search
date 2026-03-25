@@ -104,6 +104,41 @@ All network I/O and heavy computation runs in `QThread` workers:
 
 Workers communicate via Qt signals (`results_ready`, `error`, `log`, `progress`).
 
+## Licensing & Dependency Audit
+
+### Project license
+
+**Currently MIT** — under review. A freemium model may require a more restrictive license (source-available, dual-license, or closed-source) to protect paid features from being stripped and redistributed.
+
+### Dependency licenses
+
+All runtime dependencies are MIT, BSD, Apache-2.0, MPL-2.0, or LGPL — none require the project to be open-source.
+
+| Category | Packages | License | Obligation |
+|----------|----------|---------|------------|
+| **Qt/GUI** | PySide6, PySide6_Addons, PySide6_Essentials, shiboken6 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only | Used under **LGPL-3.0** (user's choice via SPDX OR). Qt DLLs must remain separate files so users can replace them. This is why Nuitka uses `--standalone` (separate DLLs), not `--onefile`. |
+| **HTTP** | httpx, httpcore, h11, idna | BSD | None |
+| **TLS certs** | certifi | MPL-2.0 | File-level copyleft only — no impact on project license |
+| **Secrets** | keyring, pywin32-ctypes | MIT / BSD | None |
+| **KiCad IPC** | kicad-python, protobuf, pynng | MIT / BSD | None |
+| **Utilities** | anyio, sniffio, cffi, pycparser, packaging, etc. | MIT / BSD / Apache-2.0 | None |
+| **Vendored** | units.py (from KiBoM) | MIT | Attribution header in file |
+
+### Build-only tools (not shipped in binary)
+
+| Package | License | Why it's safe |
+|---------|---------|---------------|
+| Nuitka | AGPL-3.0 | Compiler — not bundled in output binary |
+| pytest, pip-licenses, prettytable | MIT / BSD | Dev tools only |
+
+### GPL firewall
+
+`build_nuitka.py` runs an automated GPL firewall check before every build. It scans all pip dependencies and blocks the build if any runtime package has a GPL-only license (no LGPL or permissive alternative). SPDX OR expressions are handled correctly — `LGPL OR GPL` passes because LGPL is a valid choice.
+
+### LGPL-3.0 compliance (PySide6)
+
+LGPL requires that users can replace the LGPL library with a modified version. The Nuitka `--standalone` build satisfies this: Qt6Core.dll, Qt6Gui.dll, Qt6Widgets.dll, and other Qt/PySide6 shared libraries are separate files in the distribution ZIP, not merged into the executable. **Do not use `--onefile` mode** — it would embed the DLLs and violate LGPL.
+
 ## Build & Package
 
 ```bash
@@ -123,7 +158,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-Test suite is currently empty (`tests/__init__.py` only). Testing approach: start with manual testing, add pytest later.
+Test suite covers `build_nuitka.py` (GPL firewall, version parsing, packaging) and `core/` modules. Run with `pytest` from the project root.
 
 ## Database Management
 

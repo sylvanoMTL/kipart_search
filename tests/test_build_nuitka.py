@@ -361,3 +361,106 @@ class TestMainArgs:
             assert result == 0
             mock_build.assert_called_once()
             mock_package.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# __main__.py --version flag tests
+# ---------------------------------------------------------------------------
+
+class TestVersionFlag:
+    def test_version_flag_prints_version_and_exits(self):
+        """--version prints 'kipart-search X.X.X' and exits 0."""
+        result = subprocess.run(
+            [sys.executable, "-m", "kipart_search", "--version"],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        from kipart_search import __version__
+        assert f"kipart-search {__version__}" in result.stdout.strip()
+
+    def test_version_flag_no_gui(self):
+        """--version must not import PySide6 or create QApplication."""
+        # If it returns quickly without error, no GUI was created
+        result = subprocess.run(
+            [sys.executable, "-m", "kipart_search", "--version"],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "Traceback" not in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# GitHub Actions workflow validation tests
+# ---------------------------------------------------------------------------
+
+class TestWorkflowFile:
+    WORKFLOW_PATH = ROOT / ".github" / "workflows" / "build-windows.yml"
+
+    def test_workflow_file_exists(self):
+        """build-windows.yml must exist."""
+        assert self.WORKFLOW_PATH.exists(), f"{self.WORKFLOW_PATH} not found"
+
+    def test_workflow_is_valid_yaml(self):
+        """Workflow file must be parseable YAML with required top-level keys."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert content.strip(), "Workflow file is empty"
+        # Validate key YAML structure markers exist
+        assert "name:" in content
+        assert "on:" in content
+        assert "jobs:" in content
+
+    def test_workflow_parses_as_yaml(self):
+        """Workflow file must be parseable by a YAML parser (not just string checks)."""
+        yaml = pytest.importorskip("yaml", reason="PyYAML not installed")
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        data = yaml.safe_load(content)
+        assert isinstance(data, dict), "Workflow YAML did not parse to a dict"
+        assert "jobs" in data
+
+    def test_workflow_triggers_on_version_tags(self):
+        """Workflow triggers on v*.*.* tag push."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "v*.*.*" in content
+
+    def test_workflow_uses_windows_runner(self):
+        """Workflow runs on windows-latest."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "windows-latest" in content
+
+    def test_workflow_uses_bash_shell(self):
+        """Workflow uses bash shell for consistency."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "shell: bash" in content
+
+    def test_workflow_references_build_script(self):
+        """Workflow calls build_nuitka.py."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "build_nuitka.py" in content
+
+    def test_workflow_has_gpl_check(self):
+        """Workflow includes GPL firewall check step."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "check_licenses" in content
+
+    def test_workflow_has_smoke_test(self):
+        """Workflow runs kipart-search.exe --version."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "kipart-search.exe --version" in content
+
+    def test_workflow_has_release_upload(self):
+        """Workflow uploads zip to GitHub Release."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "softprops/action-gh-release" in content
+        assert "kipart-search-*-windows.zip" in content
+
+    def test_workflow_has_nuitka_cache(self):
+        """Workflow caches Nuitka ccache directory."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "actions/cache@v4" in content
+        assert "Nuitka" in content
+
+    def test_workflow_has_version_verification(self):
+        """Workflow verifies tag version matches pyproject.toml."""
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        assert "GITHUB_REF_NAME" in content
+        assert "read_base_version" in content

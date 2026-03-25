@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-25  # Story 7.4 done
+last_updated: 2026-03-25  # Story 7.5 done (code review passed)
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -99,5 +99,17 @@ development_status:
   7-2-compiled-binary-full-functionality-verification: done
   7-3-license-module-and-feature-gating: done
   7-4-windows-zip-distribution-package: done
-  7-5-ci-build-pipeline: backlog
+  7-5-ci-build-pipeline: done
   epic-7-retrospective: optional
+
+  # Epic 8: Installer, Auto-Update & Release Pipeline
+  epic-8: backlog
+  8-1-platformdirs-data-path-migration: backlog
+  8-2-inno-setup-installer-script: backlog
+  8-3-automated-release-build-script: backlog
+  8-4-extend-ci-for-inno-setup-and-release-assets: backlog
+  8-5-in-app-version-check: backlog
+  8-6-update-dialog-with-download: backlog
+  8-7-update-shim-and-auto-install: backlog
+  8-8-update-failure-resilience: backlog
+  epic-8-retrospective: optional

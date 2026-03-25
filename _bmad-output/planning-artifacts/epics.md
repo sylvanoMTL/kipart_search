@@ -56,7 +56,7 @@ FR37: Compiled binary retains full functionality: PySide6 GUI, keyring, httpx, o
 FR38: Application supports a license key system with revised free/paid tier split: free tier includes JLCPCB search, KiCad scan/highlight, basic verification, single-component write-back, CSV export; paid tier gates multi-distributor search, CM BOM exports, full verification, batch write-back, Excel export
 FR39: License validation works both online (LemonSqueezy/Gumroad API) and offline (signed JWT fallback), with one-time license fee (not subscription)
 FR40: Compiled binary distributed as a Windows zip package (standalone folder with .exe); installer (NSIS/Inno Setup) deferred to later story
-FR41: Build pipeline produces platform-specific packages for Linux AppImage and macOS .app bundle (deferred to future Epic 8)
+FR41: Windows installer (Inno Setup), in-app auto-update flow, platformdirs data path migration, automated release pipeline, multi-platform framework-ready (Epic 8)
 
 ### NonFunctional Requirements
 
@@ -169,7 +169,7 @@ FR37: Epic 7 - Compiled binary full functionality verification
 FR38: Epic 7 - License key system (revised free/paid tier split)
 FR39: Epic 7 - Online + offline license validation (one-time fee)
 FR40: Epic 7 - Windows zip distribution package
-FR41: Epic 8 (future) - Cross-platform builds (Linux, macOS)
+FR41: Epic 8 - Installer, auto-update, platformdirs, release pipeline, multi-platform framework
 
 ## Epic List
 
@@ -213,6 +213,11 @@ Designers can configure which data sources are active, enter and validate API ke
 Developers can compile KiPart Search into a standalone Windows binary using Nuitka, enforce dependency license compliance, and gate premium features behind a one-time license key — enabling closed-source distribution and monetization without requiring end-users to install Python. Free tier remains genuinely useful (JLCPCB search, scan, basic verify, single write-back). Pro tier gates productivity-at-scale features (multi-distributor, CM exports, batch write-back, full verification).
 **FRs covered:** FR36, FR37, FR38, FR39, FR40
 **NFRs addressed:** NFR14, NFR16, NFR17, NFR18, NFR19
+
+### Epic 8: Installer, Auto-Update & Release Pipeline
+Users can install KiPart Search via a standard Windows installer (Inno Setup) with Start Menu entry, Add/Remove Programs, and upgrade detection. The app checks for updates on startup and offers a seamless in-app update flow (download → close → silent install → relaunch). All user data lives in platform-correct locations via `platformdirs`. A local release script automates the full build chain. Multi-platform framework is ready but only Windows builds are active for v1.0.
+**FRs covered:** FR41 (expanded: full distribution pipeline, not just cross-platform)
+**NFRs addressed:** NFR14, NFR15
 
 ---
 
@@ -976,3 +981,175 @@ So that distribution builds are reproducible and not dependent on my local machi
 **And** the zip is uploaded as a GitHub Release asset attached to the tag
 **And** the pipeline completes in under 30 minutes
 **And** build artifacts are cached between runs where possible (Nuitka ccache, pip cache)
+
+---
+
+## Epic 8: Installer, Auto-Update & Release Pipeline
+
+Users can install KiPart Search via a standard Windows installer (Inno Setup) with Start Menu entry, Add/Remove Programs, and upgrade detection. The app checks for updates on startup and offers a seamless in-app update flow (download → close → silent install → relaunch). All user data lives in platform-correct locations via `platformdirs`. A local release script automates the full build chain. Multi-platform framework is ready but only Windows builds are active for v1.0.
+
+**FRs covered:** FR41 (expanded: full distribution pipeline, not just cross-platform)
+**NFRs addressed:** NFR14, NFR15
+
+### Story 8.1: platformdirs Data Path Migration
+
+As a developer,
+I want all user data paths to use `platformdirs` instead of hardcoded `~/.kipart-search/`,
+So that data is stored in platform-correct locations and the app follows Windows conventions for installed programs.
+
+**Acceptance Criteria:**
+
+**Given** the application uses `Path.home() / ".kipart-search"` for config, cache, database, backups, and templates
+**When** the developer replaces all paths with `platformdirs.user_data_dir("KiPartSearch")`
+**Then** on Windows, data is stored under `%LOCALAPPDATA%\KiPartSearch\` (not roaming — the JLCPCB database is ~500 MB)
+**And** on Linux, data follows XDG conventions (`~/.local/share/KiPartSearch/`)
+**And** on macOS, data uses `~/Library/Application Support/KiPartSearch/`
+**And** a one-time migration runs on first launch: if old `~/.kipart-search/` exists and new location is empty, files are copied atomically (per file: copy → verify → delete old)
+**And** if migration fails mid-way, both copies are preserved and a warning is logged
+**And** the app checks both locations as a fallback until migration completes
+**And** `platformdirs` is added to `pyproject.toml` dependencies (BSD license — GPL firewall safe)
+**And** all existing tests and functionality work with the new paths
+
+### Story 8.2: Inno Setup Installer Script
+
+As a developer,
+I want an Inno Setup installer script that packages the Nuitka build output into a standard Windows installer,
+So that users get Start Menu entries, Add/Remove Programs integration, and clean upgrade paths.
+
+**Acceptance Criteria:**
+
+**Given** a successful Nuitka build output in `dist/__main__.dist/`
+**When** the Inno Setup compiler processes the `.iss` script
+**Then** an installer `.exe` is produced that installs to `C:\Program Files\KiPart Search\` by default
+**And** the user can change the install path via the folder selection page
+**And** a Start Menu shortcut is created under "KiPart Search"
+**And** a desktop shortcut is offered as opt-in (default unchecked) via the "Additional Tasks" page
+**And** Add/Remove Programs entry is created with app name, version, publisher, and uninstaller
+**And** the installer uses a unique `AppId` to detect existing installations and offer upgrade
+**And** on upgrade, the installer detects the previous install path and re-uses it (no duplicate installs)
+**And** the uninstaller removes Program Files contents but preserves user data in `%LOCALAPPDATA%\KiPartSearch\` by default (optional prompt to remove)
+**And** the installer has `CloseApplications=yes` with filter for `kipart-search.exe` to handle running instances
+**And** the version number is injected from `pyproject.toml` via a `#define MyAppVersion` preprocessor directive
+**And** the `.iss` file is committed to the repository as a versioned source file
+**And** no file associations are registered (the app is workflow-driven, not file-driven)
+
+### Story 8.3: Automated Release Build Script
+
+As a developer,
+I want a single release script that chains all build steps (tests → GPL check → Nuitka → ZIP → Inno Setup → checksums),
+So that releases are reproducible, complete, and can't miss a step.
+
+**Acceptance Criteria:**
+
+**Given** the developer runs `python release.py`
+**When** the script executes
+**Then** it runs the test suite and fails fast if any test fails
+**And** it runs the GPL firewall check and fails fast if GPL deps are detected
+**And** it executes the Nuitka build via `build_nuitka.py`
+**And** it produces the ZIP package (`kipart-search-{version}-windows.zip`)
+**And** it compiles the Inno Setup installer (`kipart-search-{version}-setup.exe`)
+**And** it generates SHA256 checksums for all output files
+**And** it performs a version gate: reads version from `pyproject.toml`, checks latest GitHub release tag, refuses to build if version is unchanged
+**And** on success, it prints a human checklist: upload files to GitHub Release, tag commit, write release notes
+**And** the script fails fast on any step — no partial builds left in ambiguous state
+
+### Story 8.4: Extend CI for Inno Setup and Release Assets
+
+As a developer,
+I want the GitHub Actions CI pipeline to compile the Inno Setup installer and upload both ZIP and installer as release assets,
+So that the full release package is built automatically on every tagged release.
+
+**Acceptance Criteria:**
+
+**Given** the existing `.github/workflows/build-windows.yml` from Story 7.5
+**When** a version tag (`v*.*.*`) is pushed
+**Then** the pipeline installs Inno Setup (via `jrsoftware/iscc` or Chocolatey) on the Windows runner
+**And** after the Nuitka build and ZIP packaging, the Inno Setup `.iss` script is compiled
+**And** both `kipart-search-{version}-windows.zip` and `kipart-search-{version}-setup.exe` are uploaded as GitHub Release assets
+**And** SHA256 checksums are generated and included in the release notes or as a separate checksums file
+**And** macOS and Linux build jobs exist as commented-out stubs in the workflow matrix, ready to enable
+**And** the pipeline still completes in under 30 minutes
+
+### Story 8.5: In-App Version Check
+
+As a user,
+I want the app to check for updates on startup and show me when a new version is available,
+So that I know when to update without manually checking GitHub.
+
+**Acceptance Criteria:**
+
+**Given** the application launches
+**When** the startup sequence runs
+**Then** a background thread checks `api.github.com/repos/{owner}/{repo}/releases/latest` for the latest release tag
+**And** the check has a 5-second timeout and runs in a background thread — the app launches immediately regardless
+**And** if the latest tag is newer than the running version, a non-blocking notification is shown (status bar or banner)
+**And** the check result is cached with a 24-hour TTL — only one check per day
+**And** if GitHub is unreachable (firewall, outage, rate limit 403), the check is silently skipped
+**And** the cached "last check" timestamp and result are stored in the config directory
+**And** no authentication is required (unauthenticated GitHub API, 60 req/hr per IP)
+
+### Story 8.6: Update Dialog with Download
+
+As a user,
+I want to see release notes and choose how to handle an available update (install now, remind later, or skip this version),
+So that I control when and whether updates are applied.
+
+**Acceptance Criteria:**
+
+**Given** the version check from Story 8.5 detects a newer release
+**When** the update notification is shown
+**Then** clicking it opens an update dialog showing: version number, release notes summary (from GitHub release body), and three buttons: [Update Now] / [Remind Me Later] / [Skip This Version]
+**And** "Remind Me Later" dismisses the dialog — the check runs again on next launch
+**And** "Skip This Version" persists the skipped version in config — only alerts for even newer versions
+**And** "Update Now" starts downloading the correct platform asset (`.exe` installer for Windows) with a progress bar
+**And** the download goes to `%TEMP%\kipart-search-update-v{version}.exe` (using `.partial` extension during download, renamed after completion)
+**And** the downloaded file size is verified against the GitHub release asset size
+**And** if the download fails or file is missing after download (AV quarantine), a fallback message is shown: "Download may have been blocked. Download manually from GitHub." with a clickable link
+**And** the dialog selects the correct asset based on `sys.platform` (framework-ready for future multi-platform)
+
+### Story 8.7: Update Shim and Auto-Install
+
+As a user,
+I want the app to close, install the update silently, and relaunch automatically,
+So that updating is seamless — like VS Code or Discord.
+
+**Acceptance Criteria:**
+
+**Given** the installer has been downloaded and verified in Story 8.6
+**When** the user clicks "Install" (or the download completes and proceeds automatically)
+**Then** the app shows a pre-close warning: "Windows will ask for permission to install. Click Yes to continue."
+**And** the app writes an `update.bat` shim to `%TEMP%` that: (1) waits for `kipart-search.exe` to exit (max 30s), (2) runs the installer with `/VERYSILENT /SUPPRESSMSGBOXES`, (3) checks the exit code, (4) if success → relaunches `kipart-search.exe`, (5) if failure → relaunches old exe with `--update-failed` flag
+**And** the app launches the shim and exits
+**And** the Inno Setup installer runs silently, upgrades Program Files, and the app relaunches
+**And** macOS (`.sh` replacing `.app` bundle) and Linux (`.sh` replacing AppImage) shim stubs exist as documented placeholders
+**And** the entire flow completes without the user needing to manually navigate to a download page
+
+### Story 8.8: Update Failure Resilience
+
+As a user,
+I want the update process to recover gracefully from any failure (AV quarantine, UAC denial, network drop, corrupted download),
+So that a failed update never leaves me without a working application.
+
+**Acceptance Criteria:**
+
+**Given** the update shim from Story 8.7 is running
+**When** the user denies the UAC prompt
+**Then** the shim detects the non-zero exit code, relaunches the old app with `--update-failed`, and shows: "Update needs administrator permission. [Try Again] [Download Manually]"
+
+**Given** the downloaded installer is quarantined by antivirus
+**When** the app tries to verify the downloaded file
+**Then** if the file is missing after download, a message is shown: "Your antivirus may have blocked the update. Download manually from GitHub." with a clickable link and the URL copied to clipboard
+
+**Given** a network drop during download
+**When** the download is interrupted
+**Then** the `.partial` file is left in temp and cleaned up on next app startup
+**And** the user can retry the download from the update dialog
+
+**Given** the shim itself cannot execute (e.g., script execution policy blocks `.bat` from `%TEMP%`)
+**When** the shim fails to spawn
+**Then** the app shows: "Automatic update couldn't start. Installer saved to [path]. Please close KiPart Search and run it manually." with the path copied to clipboard
+
+**Given** the app launches with `--update-failed` flag
+**When** the main window appears
+**Then** a non-modal dialog shows the failure reason and offers [Try Again] or [Download Manually]
+**And** in all failure cases, the previous working installation in Program Files is never corrupted — Inno Setup's atomic install guarantees this
