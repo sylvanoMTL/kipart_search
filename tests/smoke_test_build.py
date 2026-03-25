@@ -47,6 +47,10 @@ class SmokeTestSuite:
     def skip_count(self) -> int:
         return sum(1 for t in self.tests if t.result == "skip")
 
+    @property
+    def pending_count(self) -> int:
+        return sum(1 for t in self.tests if t.result == "pending")
+
     def summary_text(self) -> str:
         total = len(self.tests)
         lines = [
@@ -63,8 +67,10 @@ class SmokeTestSuite:
             f"Passed:  {self.pass_count}",
             f"Failed:  {self.fail_count}",
             f"Skipped: {self.skip_count}",
-            "",
         ]
+        if self.pending_count > 0:
+            lines.append(f"Pending: {self.pending_count}")
+        lines.append("")
         if self.fail_count > 0:
             lines.append("FAILURES:")
             for t in self.tests:
@@ -94,7 +100,7 @@ class SmokeTestSuite:
 
     def save_results(self, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
-        date_str = self.start_time.strftime("%Y-%m-%d")
+        date_str = self.start_time.strftime("%Y-%m-%d-%H%M")
         path = output_dir / f"smoke-test-results-{date_str}.txt"
         path.write_text(self.summary_text(), encoding="utf-8")
         return path

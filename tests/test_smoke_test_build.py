@@ -34,18 +34,22 @@ class TestSmokeTestSuite:
         assert suite.pass_count == 0
         assert suite.fail_count == 0
         assert suite.skip_count == 0
+        assert suite.pending_count == 0
 
     def test_counts_mixed(self) -> None:
         suite = SmokeTestSuite()
         suite.add("a", "d", "ac")
         suite.add("b", "d", "ac")
         suite.add("c", "d", "ac")
+        suite.add("d", "d", "ac")
         suite.tests[0].result = "pass"
         suite.tests[1].result = "fail"
         suite.tests[2].result = "skip"
+        # tests[3] stays "pending"
         assert suite.pass_count == 1
         assert suite.fail_count == 1
         assert suite.skip_count == 1
+        assert suite.pending_count == 1
 
     def test_summary_text_contains_results(self) -> None:
         suite = SmokeTestSuite()
@@ -116,7 +120,11 @@ class TestBuildChecklist:
         assert len(names) == len(set(names)), f"Duplicate names: {names}"
 
     def test_covers_all_acceptance_criteria(self) -> None:
-        """Verify the checklist references all ACs from the story."""
+        """Verify the checklist references ACs #1-#8 (the testable feature ACs).
+
+        AC #9 (smoke test script exists) and AC #10 (fix Nuitka flags) are
+        meta-ACs about the script itself — not features to verify interactively.
+        """
         suite = build_checklist()
         all_acs = " ".join(t.acceptance_criteria for t in suite.tests)
         for ac_num in range(1, 9):

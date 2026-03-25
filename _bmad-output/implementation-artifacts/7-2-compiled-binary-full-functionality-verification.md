@@ -1,6 +1,6 @@
 # Story 7.2: Compiled Binary Full Functionality Verification
 
-Status: in-progress
+Status: done
 
 ## Story
 
@@ -210,8 +210,9 @@ Claude Opus 4.6 (1M context)
 - 2026-03-23: Built binary, verified launch, fixed dist path in build_nuitka.py (Task 3)
 - 2026-03-23: Documented findings in Dev Agent Record (Task 4)
 - 2026-03-23: Code review #1 — fixed summary_text() empty line bug, corrected Task 3.2/3.5 completion status (interactive testing pending), clarified console mode note
+- 2026-03-25: Code review #2 — save_results uses timestamp in filename to prevent same-day overwrites, added pending_count property, clarified AC coverage test docstring
 
 ### File List
-- tests/smoke_test_build.py (new) — Interactive smoke test checklist script
-- tests/test_smoke_test_build.py (new) — Pytest tests for smoke test framework
+- tests/smoke_test_build.py (modified) — Interactive smoke test checklist script
+- tests/test_smoke_test_build.py (modified) — Pytest tests for smoke test framework
 - build_nuitka.py (modified) — Fixed dist path comment (__main__.dist, not kipart-search.dist)
