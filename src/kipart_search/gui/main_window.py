@@ -83,14 +83,16 @@ class SearchWorker(QThread):
 class ScanWorker(QThread):
     """Background thread for scanning and verifying a KiCad project."""
 
-    scan_complete = Signal(list, dict, object)  # components, mpn_statuses, db_mtime (float|None)
+    scan_complete = Signal(list, dict, object, bool)  # components, mpn_statuses, db_mtime, is_refresh
     error = Signal(str)
     log = Signal(str)
 
-    def __init__(self, bridge: KiCadBridge, orchestrator: SearchOrchestrator):
+    def __init__(self, bridge: KiCadBridge, orchestrator: SearchOrchestrator,
+                 skip_verify: bool = False):
         super().__init__()
         self.bridge = bridge
         self.orchestrator = orchestrator
+        self.skip_verify = skip_verify
 
     def run(self):
         try:
@@ -104,6 +106,12 @@ class ScanWorker(QThread):
 
             # Attempt schematic merge (graceful degradation)
             components = self._merge_schematic_data(components)
+
+            if self.skip_verify:
+                # Refresh BOM: skip MPN verification, emit empty statuses
+                self.log.emit(f"Refresh complete: {len(components)} components read.")
+                self.scan_complete.emit(components, {}, None, True)
+                return
 
             self.log.emit("Verifying MPNs ...")
 
@@ -136,7 +144,7 @@ class ScanWorker(QThread):
                 f"Scan complete: {green} verified, {red} missing/not found, "
                 f"{len(components) - green - red} uncertain."
             )
-            self.scan_complete.emit(components, mpn_statuses, db_mtime)
+            self.scan_complete.emit(components, mpn_statuses, db_mtime, False)
         except Exception as e:
             self.log.emit(f"Scan error: {e}")
             self.error.emit(str(e))
@@ -224,6 +232,8 @@ class MainWindow(QMainWindow):
         self._local_overwrites: dict[str, set[str]] = {}  # ref → set of overwrite-approved fields
         self._cached_mpn_statuses: dict[str, Confidence] = {}  # ref → last-known status
         self._cached_mpn_values: dict[str, str] = {}  # ref → MPN at time of caching
+        self._last_has_sources: bool | None = None  # cached from previous scan for Refresh BOM
+        self._last_db_mtime: float | None = None  # cached db mtime for Refresh BOM
         self._project_dir: Path | None = None  # cached project dir for push
 
         # License — subscribe to tier changes
@@ -245,7 +255,7 @@ class MainWindow(QMainWindow):
         self.verify_panel.component_clicked.connect(self._on_component_clicked)
         self.verify_panel.search_for_component.connect(self._on_guided_search)
         self.verify_panel.manual_assign_requested.connect(self._on_manual_assign)
-        self.verify_panel.reverify_requested.connect(self._on_reverify)
+        self.verify_panel.refresh_requested.connect(self._on_refresh_bom)
 
         self.search_bar = SearchBar()
         self.search_bar.search_requested.connect(self._on_search)
@@ -791,6 +801,20 @@ class MainWindow(QMainWindow):
 
     def _on_scan(self):
         """Scan the KiCad project and verify BOM."""
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            self.log_panel.log("Scan already in progress")
+            return
+
+        if not self._orchestrator.active_sources:
+            QMessageBox.information(
+                self,
+                "No Data Source",
+                "No data source available.\n\n"
+                "Download the JLCPCB database (File > Download Database) "
+                "or configure API keys in Tools > Preferences.",
+            )
+            return
+
         # Wait for background auto-connect to finish before attempting manual connect
         if self._connect_worker is not None and self._connect_worker.isRunning():
             self.log_panel.log("Waiting for auto-connect to finish...")
@@ -818,12 +842,21 @@ class MainWindow(QMainWindow):
         self._scan_worker.error.connect(self._on_scan_error)
         self._scan_worker.start()
 
-    def _on_reverify(self):
-        """Re-run verification using fresh data from KiCad.
+    def _on_refresh_bom(self):
+        """Re-read BOM from KiCad without re-verifying MPNs.
 
-        Forces a fresh reconnect to pick up board changes after push + F8.
+        Reconnects to KiCad to pick up board changes after push + F8.
+        Preserves all cached MPN verification statuses.
         """
-        self.log_panel.section("Re-verify")
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            self.log_panel.log("Scan already in progress")
+            return
+
+        self.log_panel.section("Refresh BOM")
+        self.verify_panel.refresh_button.setEnabled(False)
+        self._act_scan.setEnabled(False)
+        self._set_action_status("Refreshing BOM...")
+
         ok, error_msg = self._bridge.connect()
         if not ok:
             QMessageBox.warning(
@@ -831,23 +864,25 @@ class MainWindow(QMainWindow):
                 f"Cannot reconnect to KiCad: {error_msg}\n\n"
                 "Make sure KiCad is running.",
             )
+            self.verify_panel.refresh_button.setEnabled(True)
+            self._act_scan.setEnabled(True)
+            self._set_action_status("")
             return
-
-        self.verify_panel.reverify_button.setEnabled(False)
-        self._act_scan.setEnabled(False)
-        self._set_action_status("Re-verifying...")
         self.log_panel.log(
-            f"Re-verifying {len(self.verify_panel.get_components())} components..."
+            f"Refreshing {len(self.verify_panel.get_components())} components..."
         )
 
-        self._scan_worker = ScanWorker(self._bridge, self._orchestrator)
+        self._scan_worker = ScanWorker(
+            self._bridge, self._orchestrator, skip_verify=True
+        )
         self._scan_worker.log.connect(self.log_panel.log)
         self._scan_worker.scan_complete.connect(self._on_scan_complete)
         self._scan_worker.error.connect(self._on_scan_error)
         self._scan_worker.start()
 
-    def _on_scan_complete(self, components, mpn_statuses, db_mtime):
+    def _on_scan_complete(self, components, mpn_statuses, db_mtime, is_refresh=False):
         """Display scan/verification results."""
+
         # Cache project directory from bridge while connection is active
         if self._project_dir is None and self._bridge.is_connected:
             bridge_dir = self._bridge.get_project_dir()
@@ -858,6 +893,19 @@ class MainWindow(QMainWindow):
         # Reset backup session so next write creates a fresh backup
         if self._backup_manager is not None:
             self._backup_manager.reset_session()
+
+        # For Refresh BOM: carry forward all cached statuses before local-assignment restore
+        if is_refresh:
+            for comp in components:
+                ref = comp.reference
+                cached = self._cached_mpn_statuses.get(ref)
+                if cached is not None:
+                    mpn_statuses[ref] = cached
+                elif not comp.has_mpn:
+                    mpn_statuses[ref] = Confidence.RED
+                else:
+                    # MPN present but never verified (new component or first refresh)
+                    mpn_statuses[ref] = Confidence.RED
 
         # Re-apply local assignments that couldn't be written to KiCad
         restored = 0
@@ -875,21 +923,35 @@ class MainWindow(QMainWindow):
                     mpn_statuses[comp.reference] = Confidence.GREEN
                     restored += 1
 
-        has_sources = bool(self._orchestrator.active_sources)
+        # Use cached has_sources for Refresh BOM to avoid incorrect downgrade.
+        # If no prior scan (sentinel None), fall back to current source availability.
+        if is_refresh and self._last_has_sources is not None:
+            has_sources = self._last_has_sources
+        else:
+            has_sources = bool(self._orchestrator.active_sources)
+            if not is_refresh:
+                self._last_has_sources = has_sources
 
         # Restore cached MPN statuses for components whose MPN hasn't changed.
         # After push + re-scan, the MPN is now in the schematic but the source
         # may not find it (e.g. JLCPCB doesn't stock it) — cached GREEN is valid
         # as long as the MPN text is identical.
         cache_restored = 0
-        for comp in components:
-            ref = comp.reference
-            cached_status = self._cached_mpn_statuses.get(ref)
-            if cached_status == Confidence.GREEN and mpn_statuses.get(ref) != Confidence.GREEN:
-                cached_mpn = self._cached_mpn_values.get(ref)
-                if comp.has_mpn and comp.mpn == cached_mpn:
-                    mpn_statuses[ref] = cached_status
-                    cache_restored += 1
+        if not is_refresh:
+            for comp in components:
+                ref = comp.reference
+                cached_status = self._cached_mpn_statuses.get(ref)
+                if cached_status == Confidence.GREEN and mpn_statuses.get(ref) != Confidence.GREEN:
+                    cached_mpn = self._cached_mpn_values.get(ref)
+                    if comp.has_mpn and comp.mpn == cached_mpn:
+                        mpn_statuses[ref] = cached_status
+                        cache_restored += 1
+
+        # Cache db_mtime from full scans; reuse on refresh
+        if is_refresh:
+            db_mtime = self._last_db_mtime
+        else:
+            self._last_db_mtime = db_mtime
 
         # Update cache with current results
         self._cached_mpn_statuses = dict(mpn_statuses)
@@ -902,10 +964,13 @@ class MainWindow(QMainWindow):
             components, mpn_statuses, has_sources, db_mtime=db_mtime,
         )
         self._act_scan.setEnabled(True)
-        self.verify_panel.reverify_button.setEnabled(True)
+        self.verify_panel.refresh_button.setEnabled(True)
         self._act_export.setEnabled(True)
         self._menu_export.setEnabled(True)
-        self._set_action_status(f"Scan complete: {len(components)} components")
+        if is_refresh:
+            self._set_action_status(f"Refresh complete: {len(components)} components")
+        else:
+            self._set_action_status(f"Scan complete: {len(components)} components")
 
         if restored > 0:
             self.log_panel.log(
@@ -934,7 +999,7 @@ class MainWindow(QMainWindow):
         """Handle scan error."""
         QMessageBox.warning(self, "Scan Error", error_msg)
         self._act_scan.setEnabled(True)
-        self.verify_panel.reverify_button.setEnabled(True)
+        self.verify_panel.refresh_button.setEnabled(True)
         self._set_action_status("Scan failed")
 
     def _on_push_to_kicad(self):

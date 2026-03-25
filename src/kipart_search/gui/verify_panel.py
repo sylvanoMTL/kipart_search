@@ -88,7 +88,7 @@ class VerifyPanel(QWidget):
     component_clicked = Signal(str)  # Emits reference when row clicked
     search_for_component = Signal(int)  # Emits row index on double-click missing MPN
     manual_assign_requested = Signal(str)  # Emits reference for manual MPN assignment
-    reverify_requested = Signal()  # Emitted when Re-verify button is clicked
+    refresh_requested = Signal()  # Emitted when Refresh BOM button is clicked
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -104,12 +104,12 @@ class VerifyPanel(QWidget):
         self.summary_label.setAccessibleName("BOM health summary")
         summary_row.addWidget(self.summary_label, 1)
 
-        self.reverify_button = QPushButton("Re-verify")
-        self.reverify_button.setAccessibleName("Re-verify components")
-        self.reverify_button.setToolTip("Re-run verification against current component state")
-        self.reverify_button.setVisible(False)
-        self.reverify_button.clicked.connect(self.reverify_requested.emit)
-        summary_row.addWidget(self.reverify_button)
+        self.refresh_button = QPushButton("Refresh BOM")
+        self.refresh_button.setAccessibleName("Refresh BOM")
+        self.refresh_button.setToolTip("Re-read components from KiCad (preserves verification status)")
+        self.refresh_button.setVisible(False)
+        self.refresh_button.clicked.connect(self.refresh_requested.emit)
+        summary_row.addWidget(self.refresh_button)
 
         layout.addLayout(summary_row)
 
@@ -305,13 +305,13 @@ class VerifyPanel(QWidget):
             self.health_bar.setFormat(f"Ready: {pct}%")
             self.health_bar.setVisible(True)
             self._update_health_bar_style(pct)
-            self.reverify_button.setVisible(True)
+            self.refresh_button.setVisible(True)
         else:
             self.summary_label.setText("No components found")
             self.summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.summary_label.setStyleSheet("color: #888;")
             self.health_bar.setVisible(False)
-            self.reverify_button.setVisible(False)
+            self.refresh_button.setVisible(False)
 
     def update_component_status(self, reference: str, new_status: Confidence) -> None:
         """Update a single component's MPN status and refresh the health bar.
@@ -540,7 +540,7 @@ class VerifyPanel(QWidget):
         self.summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.summary_label.setStyleSheet("color: #888;")
         self.health_bar.setVisible(False)
-        self.reverify_button.setVisible(False)
+        self.refresh_button.setVisible(False)
         self._detail.clear()
 
     @staticmethod
