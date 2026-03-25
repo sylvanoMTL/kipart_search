@@ -16,14 +16,33 @@ import sys
 from pathlib import Path
 
 
-def _split_license_tokens(license_str: str) -> list[str]:
-    """Split an SPDX license expression into individual tokens.
+def _is_gpl_token(token: str) -> bool:
+    """Return True if a single SPDX license token is GPL (not LGPL)."""
+    return "GPL" in token and "LGPL" not in token
 
-    Handles combinators: AND, OR, semicolons, commas.
-    E.g. "LGPL-2.1 AND GPL-2.0" -> ["LGPL-2.1", "GPL-2.0"]
+
+def _has_gpl_violation(license_str: str) -> bool:
+    """Check whether a license expression forces GPL on the user.
+
+    SPDX semantics:
+    - OR: user picks one alternative → safe if ANY alternative is non-GPL
+    - AND: all apply simultaneously → violation if ANY is GPL
+    - Semicolons/commas: treated as AND (conservative)
+
+    E.g. "LGPL-3.0-only OR GPL-2.0-only" → safe (choose LGPL)
+         "LGPL-2.1 AND GPL-2.0" → violation (GPL applies regardless)
     """
     import re
-    return [t.strip() for t in re.split(r"\bAND\b|\bOR\b|[;,]", license_str) if t.strip()]
+    # Split on OR first — each alternative is independently choosable
+    or_alternatives = [a.strip() for a in re.split(r"\bOR\b", license_str) if a.strip()]
+    for alternative in or_alternatives:
+        # Within each OR alternative, split on AND/semicolons/commas
+        and_tokens = [t.strip() for t in re.split(r"\bAND\b|[;,]", alternative) if t.strip()]
+        # This alternative is safe if NONE of its AND-joined tokens are GPL
+        if not any(_is_gpl_token(t) for t in and_tokens):
+            return False  # Found a non-GPL alternative — package is clean
+    # Every OR alternative contains a GPL AND-token — violation
+    return True
 
 
 def check_licenses() -> None:
@@ -55,14 +74,8 @@ def check_licenses() -> None:
         if name.lower() in BUILD_ONLY:
             continue
         license_str = pkg.get("License", "").upper()
-        # Split on SPDX combinators to check each license token individually.
-        # A dual-license like "LGPL-2.1 AND GPL-2.0" must flag on the GPL token
-        # even though LGPL is also present.
-        tokens = _split_license_tokens(license_str)
-        for token in tokens:
-            if "GPL" in token and "LGPL" not in token:
-                violations.append(f"  {name} ({pkg['License']})")
-                break
+        if _has_gpl_violation(license_str):
+            violations.append(f"  {name} ({pkg['License']})")
     if violations:
         print("GPL FIREWALL FAILED -- these packages have GPL licenses:")
         for v in violations:

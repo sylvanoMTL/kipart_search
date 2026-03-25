@@ -25,21 +25,36 @@ import build_nuitka  # noqa: E402
 # _split_license_tokens tests
 # ---------------------------------------------------------------------------
 
-class TestSplitLicenseTokens:
-    def test_single_license(self):
-        assert build_nuitka._split_license_tokens("MIT") == ["MIT"]
+class TestGplViolation:
+    def test_pure_mit_no_violation(self):
+        assert build_nuitka._has_gpl_violation("MIT") is False
 
-    def test_and_combinator(self):
-        tokens = build_nuitka._split_license_tokens("LGPL-2.1 AND GPL-2.0")
-        assert tokens == ["LGPL-2.1", "GPL-2.0"]
+    def test_pure_gpl_is_violation(self):
+        assert build_nuitka._has_gpl_violation("GPL-3.0-only") is True
 
-    def test_or_combinator(self):
-        tokens = build_nuitka._split_license_tokens("MIT OR APACHE-2.0")
-        assert tokens == ["MIT", "APACHE-2.0"]
+    def test_lgpl_no_violation(self):
+        assert build_nuitka._has_gpl_violation("LGPL-3.0-only") is False
 
-    def test_semicolon_separator(self):
-        tokens = build_nuitka._split_license_tokens("BSD; GPL-3.0")
-        assert tokens == ["BSD", "GPL-3.0"]
+    def test_or_with_lgpl_alternative_no_violation(self):
+        """LGPL OR GPL → user can choose LGPL → safe (PySide6 case)."""
+        assert build_nuitka._has_gpl_violation(
+            "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+        ) is False
+
+    def test_and_with_gpl_is_violation(self):
+        """LGPL AND GPL → both apply → violation."""
+        assert build_nuitka._has_gpl_violation("LGPL-2.1 AND GPL-2.0") is True
+
+    def test_semicolon_treated_as_and(self):
+        """Semicolons are conservative AND — 'BSD; GPL-3.0' is a violation."""
+        assert build_nuitka._has_gpl_violation("BSD; GPL-3.0") is True
+
+    def test_all_or_alternatives_are_gpl(self):
+        """GPL-2.0 OR GPL-3.0 → every choice is GPL → violation."""
+        assert build_nuitka._has_gpl_violation("GPL-2.0-only OR GPL-3.0-only") is True
+
+    def test_agpl_is_violation(self):
+        assert build_nuitka._has_gpl_violation("AGPL-3.0-only") is True
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +127,18 @@ class TestCheckLicenses:
         fake_output = _make_piplicenses_output([
             {"Name": "PySide6", "License": "LGPL-3.0-only"},
             {"Name": "qt6-essentials", "License": "GNU Lesser General Public License v3 (LGPLv3)"},
+        ])
+        with patch("build_nuitka.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout=fake_output)
+            build_nuitka.check_licenses()  # Should not raise
+
+    def test_pyside6_real_license_passes(self):
+        """PySide6's actual SPDX triple-OR license must pass (choose LGPL)."""
+        fake_output = _make_piplicenses_output([
+            {"Name": "PySide6", "License": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"},
+            {"Name": "PySide6_Addons", "License": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"},
+            {"Name": "PySide6_Essentials", "License": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"},
+            {"Name": "shiboken6", "License": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"},
         ])
         with patch("build_nuitka.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(stdout=fake_output)
