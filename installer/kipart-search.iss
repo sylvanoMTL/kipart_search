@@ -1,5 +1,5 @@
 ; KiPart Search - Inno Setup Installer Script
-; Compile with: iscc /DMyAppVersion=X.Y.Z installer\kipart-search.iss
+; Compile with: iscc /DMyAppVersion=X.Y.Z /DMyOutputDir=..\dist /DMySourceDir=..\dist\__main__.dist installer\kipart-search.iss
 
 #define MyAppName "KiPart Search"
 #define MyAppVersion "0.1.0"
@@ -7,18 +7,27 @@
 #define MyAppURL "https://github.com/sylvanoMTL/kipart-search"
 #define MyAppExeName "kipart-search.exe"
 
+; Overridable paths — build script passes these via /D flags
+#ifndef MyOutputDir
+  #define MyOutputDir "..\dist"
+#endif
+#ifndef MySourceDir
+  #define MySourceDir "..\dist\__main__.dist"
+#endif
+
 [Setup]
 ; NOTE: AppId must NEVER change between versions - it is how Inno Setup
 ; detects existing installs for upgrade. Double braces escape literal braces.
 AppId={{62ac5603-5867-4e62-9bdf-30df22d7bc2c}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
-OutputDir=..\dist
+OutputDir={#MyOutputDir}
 OutputBaseFilename=kipart-search-{#MyAppVersion}-setup
 Compression=lzma
 SolidCompression=yes
@@ -30,7 +39,7 @@ WizardStyle=modern
 DisableProgramGroupPage=yes
 
 [Files]
-Source: "..\dist\__main__.dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

@@ -1,6 +1,6 @@
 # Story 8.2: Inno Setup Installer Script
 
-Status: review
+Status: done
 
 ## Story
 
@@ -266,6 +266,7 @@ Claude Opus 4.6 (1M context)
 ### Change Log
 
 - 2026-03-25: Created `installer/kipart-search.iss`, extended `build_nuitka.py` with `compile_installer()` and `--installer`/`--installer-only` flags, added 20 new tests
+- 2026-03-25: Code review fixes — (H1) .iss paths now overridable via `/D` flags so `--output-dir` propagates to iscc; (M1) fixed fragile `test_fails_without_iss_file` mock; (L1) added `VersionInfoVersion` to .iss; (L2) `compile_installer()` now exits on missing output file; added `test_iss_has_version_info` test; 70 tests pass
 
 ### File List
 

@@ -450,9 +450,10 @@ class TestIssFile:
         assert "MB_DEFBUTTON2" in content  # Default is NO
 
     def test_iss_output_dir(self):
-        """Output goes to dist/ directory."""
+        """Output dir uses overridable define with dist/ as default."""
         content = self.ISS_PATH.read_text(encoding="utf-8")
-        assert "OutputDir=..\\dist" in content
+        assert "OutputDir={#MyOutputDir}" in content
+        assert '#define MyOutputDir "..\\dist"' in content
 
     def test_iss_output_filename(self):
         """Output filename includes version placeholder."""
@@ -466,9 +467,15 @@ class TestIssFile:
         assert "FileAssoc" not in content.lower()
 
     def test_iss_source_path(self):
-        """Source path points to Nuitka output relative to installer/ dir."""
+        """Source path uses overridable define with Nuitka output as default."""
         content = self.ISS_PATH.read_text(encoding="utf-8")
-        assert "..\\dist\\__main__.dist\\*" in content
+        assert "{#MySourceDir}\\*" in content
+        assert '#define MySourceDir "..\\dist\\__main__.dist"' in content
+
+    def test_iss_has_version_info(self):
+        """Installer exe embeds version metadata for Windows Explorer."""
+        content = self.ISS_PATH.read_text(encoding="utf-8")
+        assert "VersionInfoVersion={#MyAppVersion}" in content
 
     def test_iss_has_start_menu(self):
         """Start Menu shortcut is created."""
@@ -482,20 +489,16 @@ class TestIssFile:
 # ---------------------------------------------------------------------------
 
 class TestCompileInstaller:
-    def test_fails_without_iss_file(self, fake_dist, tmp_path):
+    def test_fails_without_iss_file(self, fake_dist):
         """compile_installer() exits if .iss file is missing."""
-        with patch.object(Path, "__truediv__", side_effect=Path.__truediv__):
-            # Temporarily rename the iss file check
-            with patch("build_nuitka.Path") as mock_path_cls:
-                mock_path_cls.return_value.__truediv__ = Path.__truediv__
-                # Simpler: just patch the iss path existence check
-                pass
-        # Direct approach: move iss_path to a non-existent location
-        with patch("build_nuitka.Path.__new__", wraps=Path.__new__):
-            pass
-        # Simplest: patch at function level
-        iss_path = ROOT / "installer" / "kipart-search.iss"
-        with patch.object(Path, "exists", side_effect=lambda self=None: False):
+        _real_exists = Path.exists
+
+        def fake_exists(p):
+            if p.name == "kipart-search.iss":
+                return False
+            return _real_exists(p)
+
+        with patch.object(Path, "exists", fake_exists):
             with pytest.raises(SystemExit):
                 build_nuitka.compile_installer(output_dir=str(fake_dist))
 
@@ -519,9 +522,12 @@ class TestCompileInstaller:
             with pytest.raises(SystemExit):
                 build_nuitka.compile_installer(output_dir=str(fake_dist))
 
-    def test_invokes_iscc_with_version(self, fake_dist):
-        """compile_installer() calls iscc with /DMyAppVersion={version}."""
+    def test_invokes_iscc_with_version_and_paths(self, fake_dist):
+        """compile_installer() calls iscc with /D flags for version, output, and source."""
         version = build_nuitka.read_base_version()
+        # Create the expected output file so the post-compile check passes
+        installer = fake_dist / f"kipart-search-{version}-setup.exe"
+        installer.write_bytes(b"FAKE_INSTALLER")
         with patch("build_nuitka.shutil.which", return_value="iscc"), \
              patch("build_nuitka.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
@@ -530,6 +536,8 @@ class TestCompileInstaller:
             cmd = mock_run.call_args[0][0]
             assert cmd[0] == "iscc"
             assert f"/DMyAppVersion={version}" in cmd
+            assert any(arg.startswith("/DMyOutputDir=") for arg in cmd)
+            assert any(arg.startswith("/DMySourceDir=") for arg in cmd)
             assert any("kipart-search.iss" in arg for arg in cmd)
 
 

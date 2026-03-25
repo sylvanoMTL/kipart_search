@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -233,7 +234,20 @@ def compile_installer(output_dir: str = "dist") -> None:
             print(f"Expected: {default_iscc}")
             sys.exit(1)
 
-    cmd = [iscc, f"/DMyAppVersion={version}", str(iss_path)]
+    # Compute paths relative to the .iss file's directory for iscc /D overrides
+    iss_dir = iss_path.parent.resolve()
+    output_abs = Path(output_dir).resolve()
+    source_abs = nuitka_dist.resolve()
+    output_rel = os.path.relpath(output_abs, iss_dir)
+    source_rel = os.path.relpath(source_abs, iss_dir)
+
+    cmd = [
+        iscc,
+        f"/DMyAppVersion={version}",
+        f"/DMyOutputDir={output_rel}",
+        f"/DMySourceDir={source_rel}",
+        str(iss_path),
+    ]
     print(f"Compiling installer v{version}")
     print("  " + " ".join(cmd))
     print()
@@ -248,7 +262,8 @@ def compile_installer(output_dir: str = "dist") -> None:
         print(f"Installer complete: {installer_path}")
         print(f"  Size: {size_mb:.1f} MB")
     else:
-        print(f"WARNING: Expected installer {installer_path} not found.")
+        print(f"ERROR: Expected installer {installer_path} not found.")
+        sys.exit(1)
 
 
 def build(output_dir: str = "dist") -> None:
