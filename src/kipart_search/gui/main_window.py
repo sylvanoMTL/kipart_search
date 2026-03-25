@@ -183,6 +183,25 @@ class ScanWorker(QThread):
             return components
 
 
+class _ConnectWorker(QThread):
+    """Background thread for auto-connecting to KiCad on startup.
+
+    Calls bridge.connect() on a worker thread and emits the result.
+    The main thread must perform the actual bridge.connect() call
+    based on the result, to keep bridge state single-threaded.
+    """
+
+    finished = Signal(bool, str)  # (ok, message)
+
+    def __init__(self, bridge: KiCadBridge):
+        super().__init__()
+        self._bridge = bridge
+
+    def run(self):
+        ok, msg = self._bridge.connect()
+        self.finished.emit(ok, msg)
+
+
 class MainWindow(QMainWindow):
     """KiPart Search main window."""
 
@@ -200,6 +219,7 @@ class MainWindow(QMainWindow):
         self._bridge = KiCadBridge()
         self._assign_target: BoardComponent | None = None
         self._backup_manager: BackupManager | None = None
+        self._connect_worker: _ConnectWorker | None = None
         self._local_assignments: dict[str, dict[str, str]] = {}  # ref → {field: value}
         self._local_overwrites: dict[str, set[str]] = {}  # ref → set of overwrite-approved fields
 
@@ -324,8 +344,7 @@ class MainWindow(QMainWindow):
         self._init_sources_from_config()
         self._update_status()
 
-        # ── First-run welcome dialog ──
-        self._check_welcome()
+        # Welcome dialog deferred to showEvent so splash closes first
 
         # ── Restore saved layout (must come after all docks exist) ──
         settings = QSettings("kipart-search", "kipart-search")
@@ -348,12 +367,30 @@ class MainWindow(QMainWindow):
         if self._first_show:
             self._first_show = False
             QTimer.singleShot(0, self._apply_default_dock_sizes)
+            # Deferred welcome dialog (after splash closes)
+            QTimer.singleShot(0, self._check_welcome)
+            # Auto-connect to KiCad in background
+            self._connect_worker = _ConnectWorker(self._bridge)
+            self._connect_worker.finished.connect(self._on_auto_connect_result)
+            self._connect_worker.start()
+
+    def _on_auto_connect_result(self, ok: bool, msg: str):
+        """Handle background KiCad auto-connect completion."""
+        if ok:
+            log.info("Auto-connected to KiCad")
+            self.log_panel.log("Auto-connected to KiCad IPC API")
+        else:
+            log.debug("Auto-connect to KiCad failed: %s", msg)
+        self._update_status()
 
     def closeEvent(self, event: QCloseEvent):
         """Save window geometry and dock state before closing."""
         settings = QSettings("kipart-search", "kipart-search")
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("windowState", self.saveState(1))
+        # Wait for background connect worker if still running
+        if self._connect_worker is not None and self._connect_worker.isRunning():
+            self._connect_worker.wait(3000)  # 3s timeout
         if self._cache:
             self._cache.close()
         event.accept()
@@ -509,13 +546,14 @@ class MainWindow(QMainWindow):
             self.search_bar.set_default_source(default_source)
 
     def _check_welcome(self):
-        """Show the welcome dialog on first launch."""
+        """Show the welcome dialog on first launch or after major.minor version change."""
         from kipart_search.core.source_config import SourceConfigManager
         from kipart_search.gui.welcome_dialog import WelcomeDialog
 
         mgr = SourceConfigManager()
-        if mgr.get_welcome_shown():
-            return
+        current_mm = mgr.current_major_minor()
+        if mgr.get_welcome_version() == current_mm:
+            return  # already shown for this version
 
         dialog = WelcomeDialog(parent=self)
 
@@ -532,7 +570,7 @@ class MainWindow(QMainWindow):
         dialog.source_configured.connect(_on_source_configured)
         result = dialog.exec()
 
-        mgr.set_welcome_shown(True)
+        mgr.set_welcome_version(current_mm)
 
         if result == QDialog.DialogCode.Rejected:
             # User skipped — emphasise the Preferences button
@@ -750,6 +788,11 @@ class MainWindow(QMainWindow):
 
     def _on_scan(self):
         """Scan the KiCad project and verify BOM."""
+        # Wait for background auto-connect to finish before attempting manual connect
+        if self._connect_worker is not None and self._connect_worker.isRunning():
+            self.log_panel.log("Waiting for auto-connect to finish...")
+            self._connect_worker.wait(5000)
+
         if not self._bridge.is_connected:
             ok, error_msg = self._bridge.connect()
             if not ok:
@@ -1573,13 +1616,62 @@ class MainWindow(QMainWindow):
         self.log_panel.log(f"Database loaded: {db_path}")
 
 
+def _create_splash(app: QApplication) -> "QSplashScreen":
+    """Create a splash screen with app name and version rendered programmatically."""
+    from PySide6.QtCore import Qt as _Qt
+    from PySide6.QtGui import QColor, QFont, QPixmap, QPainter
+    from PySide6.QtWidgets import QSplashScreen
+
+    logical_w, logical_h = 420, 260
+    dpr = app.primaryScreen().devicePixelRatio() if app.primaryScreen() else 1.0
+    pixmap = QPixmap(int(logical_w * dpr), int(logical_h * dpr))
+    pixmap.setDevicePixelRatio(dpr)
+    pixmap.fill(QColor("#1a1a2e"))
+
+    painter = QPainter()
+    if painter.begin(pixmap):
+        try:
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+            title_font = QFont()
+            title_font.setPointSize(28)
+            title_font.setWeight(QFont.Weight.Bold)
+            painter.setFont(title_font)
+            painter.setPen(QColor("#e0e0e0"))
+            painter.drawText(
+                0, 0, logical_w, logical_h,
+                _Qt.AlignmentFlag.AlignCenter, "KiPart Search",
+            )
+
+            ver_font = QFont()
+            ver_font.setPointSize(12)
+            painter.setFont(ver_font)
+            painter.setPen(QColor("#8888aa"))
+            painter.drawText(
+                0, 60, logical_w, logical_h,
+                _Qt.AlignmentFlag.AlignHCenter | _Qt.AlignmentFlag.AlignCenter,
+                f"v{__version__}",
+            )
+        finally:
+            painter.end()
+
+    splash = QSplashScreen(pixmap)
+    splash.setWindowFlag(_Qt.WindowType.WindowStaysOnTopHint)
+    return splash
+
+
 def run_app() -> int:
     """Launch the PySide6 application."""
     app = QApplication(sys.argv)
     app.setApplicationName("KiPart Search")
     app.setApplicationVersion(__version__)
 
+    splash = _create_splash(app)
+    splash.show()
+    app.processEvents()
+
     window = MainWindow()
     window.show()
+    splash.finish(window)
 
     return app.exec()

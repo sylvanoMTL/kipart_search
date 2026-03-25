@@ -95,29 +95,75 @@ class SourceConfigManager:
     def __init__(self, config_path: Path | None = None):
         self._config_path = config_path or _config_path()
 
-    # ── Welcome flag ──────────────────────────────────────────────
+    # ── Welcome version tracking ────────────────────────────────
 
-    def get_welcome_shown(self) -> bool:
-        """Return True if the welcome dialog has been shown previously."""
+    @staticmethod
+    def current_major_minor() -> str:
+        """Return current app version as 'major.minor' string.
+
+        Handles PEP 440 versions: '0.1.0', '0.1.0b1', '0.2a1', '1.0.0.dev3'.
+        Strips pre-release/dev suffixes from the minor segment.
+        """
+        import re
+        from kipart_search import __version__
+        parts = __version__.split(".")
+        if len(parts) < 2:
+            return __version__
+        major = parts[0]
+        # Strip any pre-release suffix (a1, b2, rc1, dev3) from minor
+        minor = re.match(r"(\d+)", parts[1])
+        return f"{major}.{minor.group(1)}" if minor else f"{major}.{parts[1]}"
+
+    def get_welcome_version(self) -> str | None:
+        """Return the version string when welcome was last shown, or None."""
         if not self._config_path.exists():
-            return False
+            return None
         try:
             raw = json.loads(self._config_path.read_text(encoding="utf-8"))
-            return bool(raw.get("welcome_shown", False))
+            return raw.get("welcome_version")
         except (json.JSONDecodeError, OSError):
-            return False
+            return None
 
-    def set_welcome_shown(self, value: bool) -> None:
-        """Persist the welcome_shown flag without overwriting other settings."""
+    def set_welcome_version(self, version: str) -> None:
+        """Persist the welcome_version string without overwriting other settings."""
         raw: dict = {}
         if self._config_path.exists():
             try:
                 raw = json.loads(self._config_path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 raw = {}
-        raw["welcome_shown"] = value
+        raw["welcome_version"] = version
+        # Remove legacy boolean flag if present
+        raw.pop("welcome_shown", None)
         self._config_path.parent.mkdir(parents=True, exist_ok=True)
         self._config_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+
+    def clear_welcome_version(self) -> None:
+        """Remove welcome_version to force re-show on next launch."""
+        raw: dict = {}
+        if self._config_path.exists():
+            try:
+                raw = json.loads(self._config_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                raw = {}
+        raw.pop("welcome_version", None)
+        raw.pop("welcome_shown", None)
+        self._config_path.parent.mkdir(parents=True, exist_ok=True)
+        self._config_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+
+    def get_welcome_shown(self) -> bool:
+        """Legacy compat: returns True only if welcome_version matches current major.minor."""
+        saved = self.get_welcome_version()
+        if saved is None:
+            return False
+        return saved == self.current_major_minor()
+
+    def set_welcome_shown(self, value: bool) -> None:
+        """Legacy compat: sets welcome_version to current major.minor if True."""
+        if value:
+            self.set_welcome_version(self.current_major_minor())
+        else:
+            self.clear_welcome_version()
 
     # ── Credentials ──────────────────────────────────────────────
 

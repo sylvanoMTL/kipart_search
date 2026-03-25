@@ -263,58 +263,108 @@ class TestRegistryLookup:
 # ── Welcome shown flag ────────────────────────────────────────────
 
 
-class TestWelcomeShown:
-    def test_default_false_when_no_config(self, tmp_path: Path):
+class TestWelcomeVersion:
+    def test_default_none_when_no_config(self, tmp_path: Path):
         mgr = SourceConfigManager(config_path=tmp_path / "config.json")
+        assert mgr.get_welcome_version() is None
         assert mgr.get_welcome_shown() is False
 
-    def test_default_false_when_flag_missing(self, tmp_path: Path):
+    def test_default_none_when_field_missing(self, tmp_path: Path):
         config_file = tmp_path / "config.json"
         config_file.write_text('{"sources": {}}', encoding="utf-8")
         mgr = SourceConfigManager(config_path=config_file)
+        assert mgr.get_welcome_version() is None
         assert mgr.get_welcome_shown() is False
 
-    def test_set_and_get_true(self, tmp_path: Path):
+    def test_set_and_get_version(self, tmp_path: Path):
+        config_file = tmp_path / "config.json"
+        mgr = SourceConfigManager(config_path=config_file)
+        mgr.set_welcome_version("0.1")
+        assert mgr.get_welcome_version() == "0.1"
+
+    def test_current_major_minor(self, tmp_path: Path):
+        mgr = SourceConfigManager(config_path=tmp_path / "config.json")
+        mm = mgr.current_major_minor()
+        # Should be "major.minor" format with only digits
+        assert "." in mm
+        parts = mm.split(".")
+        assert len(parts) == 2
+        assert parts[0].isdigit()
+        assert parts[1].isdigit()
+
+    def test_current_major_minor_parsing(self, tmp_path: Path, monkeypatch):
+        """Verify major.minor extraction for various PEP 440 version strings."""
+        import kipart_search
+        mgr = SourceConfigManager(config_path=tmp_path / "config.json")
+
+        for version, expected in [
+            ("0.1.0", "0.1"),
+            ("1.2.3", "1.2"),
+            ("0.3.0b1", "0.3"),
+            ("0.2a1", "0.2"),
+            ("1.0.0.dev3", "1.0"),
+            ("2.5.1rc2", "2.5"),
+        ]:
+            monkeypatch.setattr(kipart_search, "__version__", version)
+            assert mgr.current_major_minor() == expected, f"Failed for {version}"
+
+    def test_legacy_welcome_shown_sets_version(self, tmp_path: Path):
         config_file = tmp_path / "config.json"
         mgr = SourceConfigManager(config_path=config_file)
         mgr.set_welcome_shown(True)
+        expected_mm = mgr.current_major_minor()
+        assert mgr.get_welcome_version() == expected_mm
         assert mgr.get_welcome_shown() is True
 
-    def test_set_false_after_true(self, tmp_path: Path):
+    def test_legacy_welcome_shown_false_clears(self, tmp_path: Path):
         config_file = tmp_path / "config.json"
         mgr = SourceConfigManager(config_path=config_file)
         mgr.set_welcome_shown(True)
         mgr.set_welcome_shown(False)
         assert mgr.get_welcome_shown() is False
+        # Key should be removed, not set to empty string
+        raw = json.loads(config_file.read_text(encoding="utf-8"))
+        assert "welcome_version" not in raw
 
-    def test_set_preserves_existing_sources(self, tmp_path: Path):
+    def test_set_version_preserves_existing_sources(self, tmp_path: Path):
         config_file = tmp_path / "config.json"
         mgr = SourceConfigManager(config_path=config_file)
-        # Save some source configs first
         configs = [SourceConfig("JLCPCB", enabled=True, is_default=True)]
         mgr.save_configs(configs)
-        # Now set welcome_shown
-        mgr.set_welcome_shown(True)
-        # Verify sources are still intact
+        mgr.set_welcome_version("0.1")
         raw = json.loads(config_file.read_text(encoding="utf-8"))
-        assert raw["welcome_shown"] is True
+        assert raw["welcome_version"] == "0.1"
         assert raw["sources"]["JLCPCB"]["enabled"] is True
 
-    def test_save_configs_preserves_welcome_shown(self, tmp_path: Path):
+    def test_save_configs_preserves_welcome_version(self, tmp_path: Path):
         config_file = tmp_path / "config.json"
         mgr = SourceConfigManager(config_path=config_file)
-        # Set welcome flag first
-        mgr.set_welcome_shown(True)
-        # Save source configs
+        mgr.set_welcome_version("0.1")
         configs = [SourceConfig("JLCPCB", enabled=True)]
         mgr.save_configs(configs)
-        # Verify welcome_shown is preserved
         raw = json.loads(config_file.read_text(encoding="utf-8"))
-        assert raw["welcome_shown"] is True
+        assert raw["welcome_version"] == "0.1"
         assert "sources" in raw
+
+    def test_set_version_removes_legacy_flag(self, tmp_path: Path):
+        config_file = tmp_path / "config.json"
+        config_file.write_text('{"welcome_shown": true}', encoding="utf-8")
+        mgr = SourceConfigManager(config_path=config_file)
+        mgr.set_welcome_version("0.1")
+        raw = json.loads(config_file.read_text(encoding="utf-8"))
+        assert "welcome_shown" not in raw
+        assert raw["welcome_version"] == "0.1"
+
+    def test_legacy_boolean_only_returns_false(self, tmp_path: Path):
+        """Config with only welcome_shown:true but no welcome_version -> not shown."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text('{"welcome_shown": true}', encoding="utf-8")
+        mgr = SourceConfigManager(config_path=config_file)
+        assert mgr.get_welcome_shown() is False  # no version match
 
     def test_corrupt_config_returns_false(self, tmp_path: Path):
         config_file = tmp_path / "config.json"
         config_file.write_text("not json!", encoding="utf-8")
         mgr = SourceConfigManager(config_path=config_file)
         assert mgr.get_welcome_shown() is False
+        assert mgr.get_welcome_version() is None

@@ -2,7 +2,7 @@
 title: 'UI Polish — Welcome, Auto-connect, Splash Screen'
 slug: 'ui-polish-welcome-autoconnect-splash'
 created: '2026-03-25'
-status: 'ready-for-dev'
+status: 'completed'
 stepsCompleted: [1, 2, 3, 4]
 tech_stack: ['Python 3.10+', 'PySide6']
 files_to_modify: ['src/kipart_search/gui/main_window.py', 'src/kipart_search/gui/__main__.py', 'src/kipart_search/core/source_config.py']
@@ -77,27 +77,27 @@ Four UI polish issues reduce perceived quality and first-run experience:
 
 ### Tasks
 
-- [ ] Task 1: Create splash screen in `run_app()`
+- [x] Task 1: Create splash screen in `run_app()`
   - File: `src/kipart_search/gui/main_window.py`
   - Action: In `run_app()`, after `QApplication()` creation and before `MainWindow()`, create a `QSplashScreen`. Generate a simple pixmap programmatically: solid background color (#1a1a2e or similar dark theme), app name "KiPart Search" centered, version string below. Call `splash.show()` and `app.processEvents()`. After `MainWindow()` construction, call `splash.finish(window)` which hides splash when the window is shown.
   - Notes: `QSplashScreen.finish(window)` automatically closes the splash when the main window appears. No timer needed. `splash.showMessage()` can display progress text during init if desired.
 
-- [ ] Task 2: Replace `welcome_shown` boolean with `welcome_version` string
+- [x] Task 2: Replace `welcome_shown` boolean with `welcome_version` string
   - File: `src/kipart_search/core/source_config.py`
   - Action: Add `get_welcome_version() -> str | None` method that reads `welcome_version` from config JSON (returns None if absent or if only old `welcome_shown` exists). Add `set_welcome_version(version: str)` that writes the version string. Keep `get_welcome_shown()` / `set_welcome_shown()` for backwards compat but have `get_welcome_shown()` also return False when `welcome_version` doesn't match current version.
   - Notes: Import `__version__` from `kipart_search` to compare.
 
-- [ ] Task 3: Update `_check_welcome()` to use version-aware logic
+- [x] Task 3: Update `_check_welcome()` to use version-aware logic
   - File: `src/kipart_search/gui/main_window.py`
   - Action: In `_check_welcome()`, replace `mgr.get_welcome_shown()` check with version comparison: `mgr.get_welcome_version()` vs current app version (compare major.minor only). If different or None, show welcome. After dialog, call `mgr.set_welcome_version(__version__)` instead of `set_welcome_shown(True)`.
   - Notes: Compare only major.minor (e.g. "0.3") so patch releases don't re-trigger welcome. Use `__version__.rsplit('.', 1)[0]` for comparison.
 
-- [ ] Task 4: Add background KiCad auto-connect on first show
+- [x] Task 4: Add background KiCad auto-connect on first show
   - File: `src/kipart_search/gui/main_window.py`
   - Action: Create a small `_ConnectWorker(QThread)` inner class with a `result = Signal(bool, str)` signal. In its `run()`, call `self.bridge.connect()` and emit the result. In the existing `showEvent()` method, after `_apply_default_dock_sizes`, start a `_ConnectWorker`. Connect its `result` signal to a new `_on_auto_connect_result(ok, msg)` slot that calls `_update_connection_badge()` and logs the result (e.g. "Auto-connected to KiCad" or silent on failure).
   - Notes: In `_on_scan()`, check `self._bridge.is_connected` before calling `connect()` again — this already works (line 754 has `if not self._bridge.is_connected`). No change needed there.
 
-- [ ] Task 5: Update status bar badge after auto-connect
+- [x] Task 5: Update status bar badge after auto-connect
   - File: `src/kipart_search/gui/main_window.py`
   - Action: Ensure `_update_connection_badge()` (or equivalent method that sets the "Connected"/"Standalone" label) is callable from the auto-connect result slot. If this method doesn't exist as a standalone method, extract the badge-update logic from `_on_scan()` into a reusable `_update_connection_badge()` method.
   - Notes: The badge update must run on the main thread. Since Qt signals/slots cross thread boundaries safely, the signal connection handles this automatically.
