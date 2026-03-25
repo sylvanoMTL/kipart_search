@@ -132,7 +132,7 @@ def package(output_dir: str = "dist") -> None:
         sys.exit(1)
 
     # Step 1: Copy __main__.dist/ → kipart-search/
-    print(f"Copying {nuitka_dist} → {package_dir}")
+    print(f"Copying {nuitka_dist} -> {package_dir}")
     if package_dir.exists():
         shutil.rmtree(package_dir)
     shutil.copytree(nuitka_dist, package_dir)
