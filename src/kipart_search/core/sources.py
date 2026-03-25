@@ -262,7 +262,8 @@ class JLCPCBSource(DataSource):
     @staticmethod
     def default_db_path() -> Path:
         """Default location for the JLCPCB database file."""
-        return Path.home() / ".kipart-search" / "jlcpcb" / "parts-fts5.db"
+        from kipart_search.core.paths import jlcpcb_dir
+        return jlcpcb_dir() / "parts-fts5.db"
 
     @staticmethod
     def db_needs_download(db_path: Path | None = None) -> bool:
@@ -367,7 +368,7 @@ class JLCPCBSource(DataSource):
         up and only removed after the new one is successfully in place.
 
         Args:
-            target_dir: Directory to save the database. Defaults to ~/.kipart-search/jlcpcb/
+            target_dir: Directory to save the database. Defaults to platformdirs data dir.
             progress_callback: Called with (current_step, total_steps, message)
             cancel_check: Called between chunks; if it returns True, download
                 is aborted and partial files are cleaned up.

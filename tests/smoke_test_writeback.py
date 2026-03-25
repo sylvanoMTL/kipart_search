@@ -76,7 +76,7 @@ def build_writeback_checklist() -> SmokeTestSuite:
         "After the push, check the log for the backup path. "
         "It should be inside the KiCad project folder: "
         "{project}/.kipart-search/backups/{project-name}/{timestamp}/. "
-        "NOT in ~/.kipart-search/backups/.",
+        "NOT in %LOCALAPPDATA%\\KiPartSearch\\backups\\.",
         "AC 5: Backup stored in project directory",
     )
 
@@ -122,7 +122,7 @@ def build_writeback_checklist() -> SmokeTestSuite:
     suite.add(
         "standalone-backup-fallback",
         "If standalone push was tested above, check the backup path. "
-        "It should fall back to ~/.kipart-search/backups/ "
+        "It should fall back to %LOCALAPPDATA%\\KiPartSearch\\backups\\ "
         "when no project directory is available. "
         "SKIP if standalone push was not tested.",
         "AC 6: Backup falls back to user home in standalone mode",

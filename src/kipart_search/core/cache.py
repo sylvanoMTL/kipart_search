@@ -25,7 +25,10 @@ class QueryCache:
     """
 
     def __init__(self, db_path: Path | None = None):
-        self.db_path = db_path or Path.home() / ".kipart-search" / "cache.db"
+        if db_path is None:
+            from kipart_search.core.paths import cache_path
+            db_path = cache_path()
+        self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn: sqlite3.Connection | None = None
 

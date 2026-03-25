@@ -1399,13 +1399,14 @@ class MainWindow(QMainWindow):
         """Lazily create the BackupManager on first use.
 
         Uses project-scoped backup dir when a project directory is known,
-        falls back to ~/.kipart-search/backups/ for standalone mode.
+        falls back to platformdirs data dir backups/ for standalone mode.
         """
         if self._backup_manager is None:
             if self._project_dir is not None:
                 backup_dir = self._project_dir / ".kipart-search" / "backups"
             else:
-                backup_dir = Path.home() / ".kipart-search" / "backups"
+                from kipart_search.core.paths import backups_dir
+                backup_dir = backups_dir()
             self._backup_manager = BackupManager(backup_dir=backup_dir)
         return self._backup_manager
 

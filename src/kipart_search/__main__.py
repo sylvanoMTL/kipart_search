@@ -28,8 +28,15 @@ def _init_keyring_compiled() -> None:
         pass  # Non-Windows or keyring not available
 
 
+def _migrate_data() -> None:
+    """Run one-time data migration before any data access."""
+    from kipart_search.core.paths import migrate_legacy_data
+    migrate_legacy_data()
+
+
 def main():
     _check_version_flag()
+    _migrate_data()
     _init_keyring_compiled()
     from kipart_search.gui.main_window import run_app
     return run_app()

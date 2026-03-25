@@ -75,13 +75,13 @@ _KEYRING_SERVICE = "kipart-search"
 
 def _config_dir() -> Path:
     """Return the config directory, creating it if needed."""
-    d = Path.home() / ".kipart-search"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    from kipart_search.core.paths import data_dir
+    return data_dir()
 
 
 def _config_path() -> Path:
-    return _config_dir() / "config.json"
+    from kipart_search.core.paths import config_path
+    return config_path()
 
 
 class SourceConfigManager:

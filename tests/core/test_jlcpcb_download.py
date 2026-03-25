@@ -276,7 +276,7 @@ class TestAtomicReplacement:
     def test_cache_db_not_affected(self, tmp_path: Path):
         """Download/refresh operations never touch cache.db."""
         # Set up cache.db at the parent level
-        kipart_dir = tmp_path / ".kipart-search"
+        kipart_dir = tmp_path / "KiPartSearch"
         kipart_dir.mkdir()
         cache_db = kipart_dir / "cache.db"
         cache_db.write_text("cache data")

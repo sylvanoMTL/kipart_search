@@ -16,6 +16,7 @@ dependencies = [
     "httpx",
     "keyring",
     "openpyxl",
+    "platformdirs",
     "PySide6",
 ]
 

@@ -143,7 +143,7 @@ def build_checklist() -> SmokeTestSuite:
     )
     suite.add(
         "welcome-dialog",
-        "Welcome dialog appears on first run (delete ~/.kipart-search/config.json first)",
+        "Welcome dialog appears on first run (delete config.json from %LOCALAPPDATA%\\KiPartSearch\\ first)",
         "AC #1: First-run experience works",
     )
 
@@ -206,7 +206,7 @@ def build_checklist() -> SmokeTestSuite:
     )
     suite.add(
         "backup-created",
-        "Backup created in ~/.kipart-search/backups/ after write session",
+        "Backup created in %LOCALAPPDATA%\\KiPartSearch\\backups\\ after write session",
         "AC #4: Write-back safety intact",
     )
 
