@@ -237,7 +237,14 @@ class KiCadBridge:
     def select_component(self, reference: str) -> bool:
         """Select/highlight a component in KiCad by reference.
 
-        KiCad's internal cross-probe will highlight it in the schematic.
+        KiCad 9 IPC API limitation (2026-03-25):
+        -----------------------------------------
+        Neither ClearSelection nor AddToSelection have handlers in KiCad 9.
+        The entire selection API is defined in the protobuf schema but not
+        wired up in the PCB editor.  Selection support is expected in KiCad 10.
+
+        For now this method is a no-op that returns False.  The caller
+        (_on_component_clicked) still updates the assign target and UI state.
         """
         if not self.is_connected:
             return False
@@ -247,20 +254,11 @@ class KiCadBridge:
             log.warning("Component %s not found in cache", reference)
             return False
 
-        try:
-            # clear_selection() is not supported in KiCad 9 IPC API
-            # ("no handler available for request of type ...ClearSelection").
-            # Ignore the error — add_to_selection still works, it just
-            # won't deselect previously selected items.
-            try:
-                self._board.clear_selection()
-            except Exception:
-                pass
-            self._board.add_to_selection(fp)
-            return True
-        except Exception as e:
-            log.warning("Failed to select %s: %s", reference, e)
-            return False
+        log.debug(
+            "select_component(%s) — disabled in KiCad 9 "
+            "(selection API not implemented)", reference,
+        )
+        return False
 
     def write_field(
         self, reference: str, field_name: str, value: str,
