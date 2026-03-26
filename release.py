@@ -10,16 +10,22 @@ Orchestrates the full release pipeline:
   7. SHA256 checksums
 
 Usage:
-    python release.py                # full local build
-    python release.py --tag          # tag + push to trigger CI release
+    python release.py                        # full local build
+    python release.py --tag                  # tag + push current version to trigger CI
+    python release.py --tag --bump patch     # 0.1.0 → 0.1.1, commit, tag, push, watch CI
+    python release.py --tag --bump minor     # 0.1.0 → 0.2.0
+    python release.py --tag --bump major     # 0.1.0 → 1.0.0
     python release.py --skip-tests --skip-version-gate
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
+import json
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import httpx
@@ -34,6 +40,111 @@ from build_nuitka import (
 
 
 GITHUB_REPO = "sylvanoMTL/kipart-search"
+
+
+def compute_next_version(current: str, part: str) -> str:
+    """Compute the next semver version given a bump part (major/minor/patch)."""
+    parts = [int(p) for p in current.split(".")]
+    while len(parts) < 3:
+        parts.append(0)
+    if part == "major":
+        parts = [parts[0] + 1, 0, 0]
+    elif part == "minor":
+        parts = [parts[0], parts[1] + 1, 0]
+    elif part == "patch":
+        parts = [parts[0], parts[1], parts[2] + 1]
+    return ".".join(str(p) for p in parts)
+
+
+def bump_version(part: str) -> str:
+    """Bump the version in pyproject.toml and return the new version string.
+
+    Reads the current version, computes the next one, and writes it back.
+    """
+    import re
+
+    pyproject = Path("pyproject.toml")
+    text = pyproject.read_text(encoding="utf-8")
+
+    current = read_base_version()
+    new_version = compute_next_version(current, part)
+
+    # Replace the version line in pyproject.toml
+    updated = re.sub(
+        r'^(version\s*=\s*")[^"]*(")',
+        rf"\g<1>{new_version}\2",
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if updated == text:
+        print(f"ERROR: Could not find version field in pyproject.toml")
+        sys.exit(1)
+
+    pyproject.write_text(updated, encoding="utf-8")
+    print(f"  Bumped version: {current} -> {new_version}")
+    return new_version
+
+
+def stamp_changelog(version: str) -> bool:
+    """Move [Unreleased] content into a new version section in CHANGELOG.md.
+
+    Returns True if the changelog was modified, False if skipped.
+    """
+    from datetime import date
+
+    changelog = Path("CHANGELOG.md")
+    if not changelog.exists():
+        return False
+
+    text = changelog.read_text(encoding="utf-8")
+
+    # Check there's an [Unreleased] section with content
+    if "## [Unreleased]" not in text:
+        return False
+
+    today = date.today().isoformat()
+    # Insert the new version header after [Unreleased] + its blank line
+    new_header = f"## [{version}] - {today}"
+    updated = text.replace(
+        "## [Unreleased]\n",
+        f"## [Unreleased]\n\n{new_header}\n",
+    )
+
+    if updated == text:
+        return False
+
+    changelog.write_text(updated, encoding="utf-8")
+    print(f"  Stamped CHANGELOG.md with [{version}] - {today}")
+    return True
+
+
+def commit_and_push_bump(version: str) -> None:
+    """Commit the version bump and push to origin."""
+    # Stage the modified files
+    subprocess.run(["git", "add", "pyproject.toml", "CHANGELOG.md"], check=True)
+
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        print("  No changes to commit (version already bumped?)")
+        return
+
+    subprocess.run(
+        ["git", "commit", "-m", f"Bump version to {version}"],
+        check=True,
+    )
+    print(f"  Committed version bump")
+
+    result = subprocess.run(
+        ["git", "push"], capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(f"ERROR: Push failed: {result.stderr.strip()}")
+        sys.exit(1)
+    print(f"  Pushed to origin")
 
 
 def extract_changelog(version: str, changelog_path: str = "CHANGELOG.md") -> str | None:
@@ -127,14 +238,6 @@ def tag_and_push(version: str) -> None:
     """Create a git tag and push it to trigger the CI release pipeline."""
     tag = f"v{version}"
 
-    # Check for uncommitted changes
-    result = subprocess.run(
-        ["git", "status", "--porcelain"], capture_output=True, text=True
-    )
-    if result.stdout.strip():
-        print("ERROR: Uncommitted changes detected. Commit before tagging.")
-        sys.exit(1)
-
     # Check tag doesn't already exist
     result = subprocess.run(
         ["git", "tag", "-l", tag], capture_output=True, text=True
@@ -157,6 +260,99 @@ def tag_and_push(version: str) -> None:
         sys.exit(1)
 
     print(f"  Tag {tag} pushed -- CI will build and create the GitHub Release.")
+
+    if shutil.which("gh"):
+        watch_ci(tag)
+    else:
+        print("  Install GitHub CLI (gh) to watch CI progress here.")
+
+
+def watch_ci(tag: str) -> None:
+    """Poll GitHub Actions until the workflow run triggered by *tag* completes."""
+    print()
+    print(f"  Watching CI for {tag}...")
+
+    # Wait for the run to appear (GitHub needs a few seconds)
+    run_id = None
+    for attempt in range(12):  # up to ~60s
+        time.sleep(5)
+        result = subprocess.run(
+            ["gh", "run", "list", "--json=databaseId,headBranch,status",
+             "--limit=5"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            continue
+        for run in json.loads(result.stdout):
+            if run.get("headBranch") == tag:
+                run_id = run["databaseId"]
+                break
+        if run_id:
+            break
+    else:
+        print("  Could not find CI run. Check manually:")
+        print(f"    gh run list")
+        return
+
+    # Poll until completed
+    poll_interval = 15
+    last_status = None
+    elapsed = 0
+    while True:
+        result = subprocess.run(
+            ["gh", "run", "view", str(run_id),
+             "--json=status,conclusion,jobs"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            print(f"  Could not query run {run_id}: {result.stderr.strip()}")
+            break
+
+        data = json.loads(result.stdout)
+        status = data.get("status", "unknown")
+        conclusion = data.get("conclusion", "")
+
+        # Build a one-line summary from job statuses
+        jobs = data.get("jobs", [])
+        job_parts = []
+        for job in jobs:
+            j_name = job.get("name", "job")
+            j_status = job.get("status", "?")
+            j_conclusion = job.get("conclusion", "")
+            if j_conclusion == "success":
+                job_parts.append(f"{j_name}: done")
+            elif j_conclusion == "failure":
+                job_parts.append(f"{j_name}: FAILED")
+            else:
+                # Show step-level progress if available
+                steps = job.get("steps", [])
+                active = [s["name"] for s in steps if s.get("status") == "in_progress"]
+                if active:
+                    job_parts.append(f"{j_name}: {active[0]}")
+                else:
+                    job_parts.append(f"{j_name}: {j_status}")
+
+        mins, secs = divmod(elapsed, 60)
+        time_str = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
+        summary = ", ".join(job_parts) if job_parts else status
+        line = f"    [{time_str}] {summary}"
+
+        if line != last_status:
+            print(line)
+            last_status = line
+
+        if status == "completed":
+            print()
+            if conclusion == "success":
+                print(f"  CI passed! Release:")
+                print(f"    https://github.com/{GITHUB_REPO}/releases/tag/{tag}")
+            else:
+                print(f"  CI finished with conclusion: {conclusion}")
+                print(f"    gh run view {run_id} --log-failed")
+            break
+
+        time.sleep(poll_interval)
+        elapsed += poll_interval
 
 
 def print_checklist(version: str, output_dir: str) -> None:
@@ -204,23 +400,65 @@ def main() -> int:
         action="store_true",
         help="Create git tag and push to trigger CI release (skips local build)",
     )
+    parser.add_argument(
+        "--bump",
+        choices=["major", "minor", "patch"],
+        help="Bump version before tagging (requires --tag)",
+    )
     args = parser.parse_args()
+
+    if args.bump and not args.tag:
+        parser.error("--bump requires --tag")
 
     version = read_base_version()
 
     # --tag: just tag and push, no local build needed
     if args.tag:
-        print(f"Tagging and pushing release v{version}")
+        # Fail fast if working tree is dirty
+        result = subprocess.run(
+            ["git", "status", "--porcelain"], capture_output=True, text=True
+        )
+        if result.stdout.strip():
+            print("ERROR: Uncommitted changes detected. Commit before releasing.")
+            sys.exit(1)
+
+        if args.bump:
+            new_version = compute_next_version(version, args.bump)
+            print(f"This will bump {version} -> {new_version}, commit, tag v{new_version}, and push.")
+        else:
+            print(f"This will create tag v{version} and push to trigger CI release.")
+        answer = input("Proceed? [y/N] ").strip().lower()
+        if answer != "y":
+            print("Aborted.")
+            return 0
+        print()
+
+        total_steps = 3 if args.bump else 2
+        step = 0
+
+        # Optional: bump version first
+        if args.bump:
+            step += 1
+            print(f"Step {step}/{total_steps}: Bump version ({args.bump})")
+            version = bump_version(args.bump)
+            stamp_changelog(version)
+            commit_and_push_bump(version)
+            print()
+
+        step += 1
+        print(f"Releasing v{version}")
         print()
         if not args.skip_version_gate:
-            print("Step 1/2: Version gate")
+            print(f"Step {step}/{total_steps}: Version gate")
             check_version_gate(version)
         else:
-            print("Step 1/2: Version gate (skipped)")
+            print(f"Step {step}/{total_steps}: Version gate (skipped)")
         if extract_changelog(version) is None:
             print(f"  WARNING: No CHANGELOG.md entry found for version {version}")
         print()
-        print("Step 2/2: Tag and push")
+
+        step += 1
+        print(f"Step {step}/{total_steps}: Tag and push")
         tag_and_push(version)
         return 0
 
