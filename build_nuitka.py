@@ -234,12 +234,17 @@ def compile_installer(output_dir: str = "dist") -> None:
             print(f"Expected: {default_iscc}")
             sys.exit(1)
 
-    # Compute paths relative to the .iss file's directory for iscc /D overrides
+    # Compute paths relative to the .iss file's directory for iscc /D overrides.
+    # Fall back to absolute paths when relpath fails (e.g. cross-drive on Windows).
     iss_dir = iss_path.parent.resolve()
     output_abs = Path(output_dir).resolve()
     source_abs = nuitka_dist.resolve()
-    output_rel = os.path.relpath(output_abs, iss_dir)
-    source_rel = os.path.relpath(source_abs, iss_dir)
+    try:
+        output_rel = os.path.relpath(output_abs, iss_dir)
+        source_rel = os.path.relpath(source_abs, iss_dir)
+    except ValueError:
+        output_rel = str(output_abs)
+        source_rel = str(source_abs)
 
     cmd = [
         iscc,

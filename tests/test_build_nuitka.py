@@ -528,8 +528,11 @@ class TestCompileInstaller:
         # Create the expected output file so the post-compile check passes
         installer = fake_dist / f"kipart-search-{version}-setup.exe"
         installer.write_bytes(b"FAKE_INSTALLER")
+        # Mock os.path.relpath to avoid cross-drive ValueError on CI
+        # (repo on D:, temp on C:). Production code handles this gracefully.
         with patch("build_nuitka.shutil.which", return_value="iscc"), \
-             patch("build_nuitka.subprocess.run") as mock_run:
+             patch("build_nuitka.subprocess.run") as mock_run, \
+             patch("build_nuitka.os.path.relpath", side_effect=ValueError("cross-drive")):
             mock_run.return_value = MagicMock(returncode=0)
             build_nuitka.compile_installer(output_dir=str(fake_dist))
             mock_run.assert_called_once()
