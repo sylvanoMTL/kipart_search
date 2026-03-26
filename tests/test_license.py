@@ -259,6 +259,65 @@ class TestActivationFlow:
         lic = License.instance()
         assert lic.tier == "free"
 
+    def test_dev_jwt_rejected_in_compiled_build(self, monkeypatch):
+        """Dev-bypass JWT should not grant Pro in compiled builds."""
+        payload = {
+            "tier": "pro",
+            "validated_at": 1234567890,
+            "machine_id": _machine_id(),
+            "origin": "dev",
+        }
+        token = _sign_token(payload)
+        deleted = []
+
+        monkeypatch.setattr(
+            "kipart_search.core.license._keyring_get",
+            lambda username: token if username == "license-jwt" else None,
+        )
+        monkeypatch.setattr(
+            "kipart_search.core.license._keyring_delete",
+            lambda username: deleted.append(username),
+        )
+        # Simulate compiled build
+        import kipart_search.core.license as lic_mod
+        monkeypatch.setitem(lic_mod.__dict__, "__compiled__", True)
+
+        lic = License.instance()
+        assert lic.tier == "free"
+        assert "license-jwt" in deleted
+        assert "license-key" in deleted
+
+    def test_golden_jwt_accepted_in_compiled_build(self, monkeypatch):
+        """Golden-key JWT should grant Pro even in compiled builds."""
+        payload = {
+            "tier": "pro",
+            "validated_at": 1234567890,
+            "machine_id": _machine_id(),
+            "origin": "golden",
+        }
+        token = _sign_token(payload)
+
+        monkeypatch.setattr(
+            "kipart_search.core.license._keyring_get",
+            lambda username: token if username == "license-jwt" else None,
+        )
+        # Simulate compiled build
+        import kipart_search.core.license as lic_mod
+        monkeypatch.setitem(lic_mod.__dict__, "__compiled__", True)
+
+        lic = License.instance()
+        assert lic.tier == "pro"
+
+    def test_golden_key_activates(self, monkeypatch):
+        """Golden key should activate Pro in any build."""
+        monkeypatch.setattr("kipart_search.core.license._keyring_set", lambda *a: None)
+
+        lic = License.instance()
+        ok, msg = lic.activate(License._GOLDEN_KEY)
+        assert ok
+        assert lic.is_pro
+        assert "activated" in msg.lower()
+
 
 # ── Feature gates don't block free-tier ───────────────────────────
 

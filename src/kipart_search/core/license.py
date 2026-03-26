@@ -241,6 +241,8 @@ class License:
 
     # Dev-only bypass key — only works in non-compiled (source) builds.
     _DEV_KEY = "dev-pro-unlock"
+    # Golden key — works in ALL builds (source + compiled) for testing.
+    _GOLDEN_KEY = "kipart-golden-2026"
 
     @staticmethod
     def _validate_online(key: str) -> tuple[bool, str]:
@@ -248,7 +250,11 @@ class License:
 
         Returns ``(success, message)``.
         """
-        # Dev bypass: accept a magic key when running from source
+        # Golden key: works in all builds (source + compiled)
+        if key == License._GOLDEN_KEY:
+            return True, "License activated (golden key)"
+
+        # Dev bypass: accept a magic key when running from source only
         if key == License._DEV_KEY and "__compiled__" not in globals():
             return True, "License activated (dev bypass)"
 
@@ -292,10 +298,16 @@ class License:
 
     def _cache_jwt(self) -> None:
         """Create and store an HMAC-signed JWT for offline validation."""
+        origin = "production"
+        if self._license_key == self._DEV_KEY:
+            origin = "dev"
+        elif self._license_key == self._GOLDEN_KEY:
+            origin = "golden"
         payload = {
             "tier": "pro",
             "validated_at": time.time(),
             "machine_id": _machine_id(),
+            "origin": origin,
         }
         token = _sign_token(payload)
         _keyring_set(_KEY_JWT, token)
@@ -320,6 +332,17 @@ class License:
         if token:
             payload = _verify_token(token)
             if payload and payload.get("tier") == "pro":
+                # Reject dev-bypass tokens in compiled builds
+                origin = payload.get("origin", "production")
+                is_compiled = "__compiled__" in globals() or getattr(
+                    __import__("sys"), "frozen", False
+                )
+                if origin == "dev" and is_compiled:
+                    log.debug("Dev-bypass JWT rejected in compiled build")
+                    _keyring_delete(_KEY_JWT)
+                    _keyring_delete(_KEY_LICENSE)
+                    self._license_key = None
+                    return
                 machine = payload.get("machine_id")
                 if machine == _machine_id():
                     self._tier = "pro"
