@@ -71,10 +71,11 @@ class TestReadVersion:
             assert p.isdigit(), f"Non-numeric version part: {p}"
 
     def test_pads_short_version(self):
-        """A 3-part version like 0.1.0 becomes 0.1.0.0."""
+        """A 3-part version like X.Y.Z becomes X.Y.Z.0."""
         version = build_nuitka.read_version()
-        # Actual pyproject.toml has 0.1.0 → must produce exactly 0.1.0.0
-        assert version == "0.1.0.0"
+        base = build_nuitka.read_base_version()
+        expected = base + ".0" if base.count(".") == 2 else base
+        assert version == expected
 
     def test_rejects_non_numeric_version(self, tmp_path):
         """Pre-release tags like 1.0.0rc1 raise ValueError."""
@@ -229,9 +230,11 @@ class TestKeyringFallback:
 
 class TestReadBaseVersion:
     def test_returns_raw_version(self):
-        """Base version should be the raw string from pyproject.toml (no quad)."""
+        """Base version should be a valid semver string from pyproject.toml."""
         version = build_nuitka.read_base_version()
-        assert version == "0.1.0"
+        parts = version.split(".")
+        assert len(parts) == 3, f"Expected X.Y.Z, got {version}"
+        assert all(p.isdigit() for p in parts), f"Non-numeric parts in {version}"
 
     def test_matches_init_version(self):
         """Base version from pyproject.toml must match __init__.py __version__."""

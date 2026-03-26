@@ -57,19 +57,19 @@ def compute_next_version(current: str, part: str) -> str:
 
 
 def bump_version(part: str) -> str:
-    """Bump the version in pyproject.toml and return the new version string.
+    """Bump the version in pyproject.toml and __init__.py, return the new version.
 
-    Reads the current version, computes the next one, and writes it back.
+    Reads the current version, computes the next one, and writes it back
+    to both files so they stay in sync.
     """
     import re
-
-    pyproject = Path("pyproject.toml")
-    text = pyproject.read_text(encoding="utf-8")
 
     current = read_base_version()
     new_version = compute_next_version(current, part)
 
-    # Replace the version line under [project] in pyproject.toml.
+    # --- pyproject.toml ---
+    pyproject = Path("pyproject.toml")
+    text = pyproject.read_text(encoding="utf-8")
     # Match only the first `version = "..."` after a [project] header to avoid
     # accidentally editing version fields in other TOML tables.
     updated = re.sub(
@@ -82,8 +82,22 @@ def bump_version(part: str) -> str:
     if updated == text:
         print(f"ERROR: Could not find version field in pyproject.toml")
         sys.exit(1)
-
     pyproject.write_text(updated, encoding="utf-8")
+
+    # --- src/kipart_search/__init__.py ---
+    init_py = Path("src/kipart_search/__init__.py")
+    if init_py.exists():
+        init_text = init_py.read_text(encoding="utf-8")
+        init_updated = re.sub(
+            r'^(__version__\s*=\s*")[^"]*(")',
+            rf"\g<1>{new_version}\2",
+            init_text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if init_updated != init_text:
+            init_py.write_text(init_updated, encoding="utf-8")
+
     print(f"  Bumped version: {current} -> {new_version}")
     return new_version
 
@@ -132,10 +146,11 @@ def stamp_changelog(version: str) -> bool:
 
 def commit_and_push_bump(version: str) -> None:
     """Commit the version bump and push to origin."""
-    # Stage pyproject.toml (always modified) and CHANGELOG.md (only if it exists)
+    # Stage version files and changelog (only if they exist)
     files_to_stage = ["pyproject.toml"]
-    if Path("CHANGELOG.md").exists():
-        files_to_stage.append("CHANGELOG.md")
+    for optional in ["src/kipart_search/__init__.py", "CHANGELOG.md"]:
+        if Path(optional).exists():
+            files_to_stage.append(optional)
     subprocess.run(["git", "add", *files_to_stage], check=True)
 
     result = subprocess.run(
