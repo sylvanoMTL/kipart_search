@@ -36,6 +36,39 @@ from build_nuitka import (
 GITHUB_REPO = "sylvanoMTL/kipart-search"
 
 
+def extract_changelog(version: str, changelog_path: str = "CHANGELOG.md") -> str | None:
+    """Extract the changelog section for a given version.
+
+    Reads ``changelog_path`` (relative to CWD) and returns the content between
+    the ``## [<version>]`` header and the next ``## [`` header (or EOF).
+    Returns ``None`` if the file doesn't exist, the version isn't found,
+    or the version section is empty (e.g. ``[Unreleased]`` with no content).
+    """
+    try:
+        text = Path(changelog_path).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+
+    lines = text.splitlines()
+    collecting = False
+    section_lines: list[str] = []
+
+    for line in lines:
+        if line.startswith(f"## [{version}]"):
+            collecting = True
+            continue
+        if collecting and line.startswith("## ["):
+            break
+        if collecting:
+            section_lines.append(line)
+
+    if not section_lines:
+        return None
+
+    result = "\n".join(section_lines).strip()
+    return result if result else None
+
+
 def check_version_gate(version: str) -> None:
     """Refuse to build if version matches the latest GitHub release tag."""
     url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -184,6 +217,8 @@ def main() -> int:
             check_version_gate(version)
         else:
             print("Step 1/2: Version gate (skipped)")
+        if extract_changelog(version) is None:
+            print(f"  WARNING: No CHANGELOG.md entry found for version {version}")
         print()
         print("Step 2/2: Tag and push")
         tag_and_push(version)
@@ -198,6 +233,8 @@ def main() -> int:
         check_version_gate(version)
     else:
         print("Step 1/7: Version gate (skipped)")
+    if extract_changelog(version) is None:
+        print(f"  WARNING: No CHANGELOG.md entry found for version {version}")
     print()
 
     # Step 2: Test suite

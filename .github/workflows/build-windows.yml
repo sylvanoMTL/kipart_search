@@ -112,9 +112,30 @@ jobs:
           echo "Checksums:"
           cat "checksums-${VERSION}-sha256.txt"
 
+      - name: Extract release notes
+        id: release_notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python -c "
+          import sys
+          from pathlib import Path
+          from release import extract_changelog
+          version = sys.argv[1]
+          notes = extract_changelog(version)
+          if notes:
+              Path('dist/release-notes.md').write_text(notes, encoding='utf-8')
+              print(f'Release notes extracted for {version}')
+          else:
+              print('No CHANGELOG entry -- auto-generated notes only')
+          " "$VERSION"
+          if [ -f dist/release-notes.md ]; then
+            echo "has_notes=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: ${{ steps.release_notes.outputs.has_notes == 'true' && 'dist/release-notes.md' || '' }}
           files: |
             dist/kipart-search-*-windows.zip
             dist/kipart-search-*-setup.exe

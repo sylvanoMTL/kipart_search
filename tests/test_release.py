@@ -221,3 +221,93 @@ class TestCLIFlags:
             "version_gate", "tests", "gpl", "build",
             "package", "installer", "checksums", "checklist",
         ]
+
+
+# ---------------------------------------------------------------------------
+# extract_changelog tests
+# ---------------------------------------------------------------------------
+
+SAMPLE_CHANGELOG = """\
+# Changelog
+
+## [Unreleased]
+
+## [0.2.0] - 2026-04-01
+
+### Added
+- New feature X
+
+### Fixed
+- Bug in Y
+
+## [0.1.0] - 2026-03-26
+
+### Added
+- Initial release
+- Feature A
+"""
+
+
+class TestExtractChangelog:
+    def test_extracts_matching_version(self, tmp_path):
+        """Parses a multi-version CHANGELOG and returns the correct section."""
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text(SAMPLE_CHANGELOG, encoding="utf-8")
+        result = release.extract_changelog("0.2.0", str(changelog))
+        assert "New feature X" in result
+        assert "Bug in Y" in result
+        assert "Initial release" not in result
+
+    def test_returns_none_for_missing_version(self, tmp_path):
+        """Version not in file returns None."""
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text(SAMPLE_CHANGELOG, encoding="utf-8")
+        result = release.extract_changelog("9.9.9", str(changelog))
+        assert result is None
+
+    def test_returns_none_for_missing_file(self):
+        """File doesn't exist returns None."""
+        result = release.extract_changelog("0.1.0", "nonexistent/CHANGELOG.md")
+        assert result is None
+
+    def test_excludes_version_header(self, tmp_path):
+        """Returned text does not include the ## [X.Y.Z] line."""
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text(SAMPLE_CHANGELOG, encoding="utf-8")
+        result = release.extract_changelog("0.1.0", str(changelog))
+        assert "## [0.1.0]" not in result
+        assert "Initial release" in result
+
+    def test_handles_unreleased_section(self, tmp_path):
+        """## [Unreleased] is skipped, correct version still found."""
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text(SAMPLE_CHANGELOG, encoding="utf-8")
+        result = release.extract_changelog("0.1.0", str(changelog))
+        assert result is not None
+        assert "Initial release" in result
+
+    def test_extracts_last_version(self, tmp_path):
+        """Works when version is the last section (no next ## [ after it)."""
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text(SAMPLE_CHANGELOG, encoding="utf-8")
+        result = release.extract_changelog("0.1.0", str(changelog))
+        assert "Feature A" in result
+
+    def test_strips_whitespace(self, tmp_path):
+        """Returned content has no leading/trailing blank lines."""
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text(SAMPLE_CHANGELOG, encoding="utf-8")
+        result = release.extract_changelog("0.1.0", str(changelog))
+        assert not result.startswith("\n")
+        assert not result.endswith("\n")
+
+    def test_tag_mode_warns_on_missing_changelog(self, monkeypatch, capsys):
+        """--tag mode prints WARNING when no CHANGELOG entry exists."""
+        monkeypatch.setattr("sys.argv", ["release.py", "--tag", "--skip-version-gate"])
+        with patch("release.read_base_version", return_value="0.1.0"), \
+             patch("release.extract_changelog", return_value=None), \
+             patch("release.tag_and_push"):
+            release.main()
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.out
+        assert "0.1.0" in captured.out
