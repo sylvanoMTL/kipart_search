@@ -114,7 +114,8 @@
       "Bash(find /c/Git_Repo_Clones/kipart-search -name *.md -type f -exec grep -l \"escaped\\\\|escape\\\\|quote\" {})",
       "Bash(2)",
       "Bash(find c:/Git_Repo_Clones/kipart-search/_bmad-output/implementation-artifacts/ -type f -name *5-[56]*)",
-      "Bash(find c:/Git_Repo_Clones/kipart-search/_bmad-output/ -name *.md -o -name *.yaml)"
+      "Bash(find c:/Git_Repo_Clones/kipart-search/_bmad-output/ -name *.md -o -name *.yaml)",
+      "Bash(curl -s -L *)"
     ]
   }
 }
