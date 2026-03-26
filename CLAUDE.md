@@ -91,10 +91,20 @@ Modelled on KiCost's `QueryCache` pattern but using SQLite.
 
 ### Credentials storage
 
-- Config file: `~/.kipart-search/config.json` (or YAML)
+- Config file: `{platformdirs.user_data_dir("KiPartSearch")}/config.json`
 - API keys stored via `keyring` library for OS-native secret storage
 - Environment variable overrides supported
 - GUI settings dialog for entering/validating credentials
+
+### Data storage — two-location model
+
+Data is split between **user-scoped** and **project-scoped** locations:
+
+- **User data** (`platformdirs.user_data_dir("KiPartSearch")`): config.json, cache.db, jlcpcb/ database, templates/. All paths resolved via `core/paths.py`.
+- **Project data** (`{kicad_project_dir}/.kipart-search/`): verification-state.json (user review decisions), backups/ (write-back safety snapshots with undo log). Shareable between team members.
+- **Standalone fallback**: When no KiCad project is connected, backups go to `{data_dir}/backups/`.
+- **OS keyring**: API keys and license (never in plaintext config files).
+- **QSettings**: Window geometry and dock state (Windows Registry / .config/).
 
 ### License activation
 

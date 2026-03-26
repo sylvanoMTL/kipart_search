@@ -114,7 +114,7 @@ Write-back to KiCad is the highest-risk interaction. The following safety princi
 
 - **Add, never overwrite**: Write-back adds fields (MPN, manufacturer, supplier P/Ns, datasheet) to the symbol. It must **never** overwrite the symbol description or any existing non-empty field without explicit per-field confirmation
 - **Plain-language confirmation**: Default assign dialog is simple: "Add [field]: [value] to [reference]? [Yes] [No]". Expandable detail view for power users showing all field changes
-- **Silent timestamped backups**: Before any write-back session, the tool automatically creates a backup of the affected design files in a dedicated location (`~/.kipart-search/backups/[project]/[YYYY-MM-DD_HHMM]/`). Backups are silent — no user action required
+- **Silent timestamped backups**: Before any write-back session, the tool automatically creates a backup of the affected design files in `{project_dir}/.kipart-search/backups/{YYYY-MM-DD_HHMM}/` (alongside the KiCad project). Backups are silent — no user action required
 - **Backup browser**: A menu item or settings panel lets users view all available backups and restore from any previous backup. Restore is surfaced prominently only when the tool detects something unexpected (e.g., field changes that don't match the log)
 - **Cancel/revert**: User can cancel mid-session (no partial writes) and revert to any backup at any time
 - **Undo log**: Every write is logged (timestamp, reference, field, old value, new value) as a CSV file that survives beyond KiCad's undo stack

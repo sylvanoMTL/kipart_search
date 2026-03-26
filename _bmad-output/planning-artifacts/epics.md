@@ -83,8 +83,8 @@ NFR19: Compiled binary cold start remains under 5 seconds (consistent with NFR5)
 ### Additional Requirements
 
 - **Brownfield project**: No starter template needed. Tier 1 MVP (search, scan, verify, assign) is already built and functional. Phase 1 adds BOM export and supporting infrastructure.
-- **ADR-01 Cache DB**: Separate SQLite cache in `~/.kipart-search/cache.db` with WAL journal mode, `cache_entries` table (key, source, query_type, data JSON, created_at, ttl_seconds). Survives JLCPCB DB refreshes.
-- **ADR-02 BOM Export Engine**: Declarative dict-based BOMTemplate dataclass with BOMColumn definitions. Preset templates (PCBWay, JLCPCB, Newbury Electronics) as constants in `core/bom_export.py`. Custom templates stored as JSON in `~/.kipart-search/templates/`.
+- **ADR-01 Cache DB**: Separate SQLite cache in `{data_dir}/cache.db` (platformdirs) with WAL journal mode, `cache_entries` table (key, source, query_type, data JSON, created_at, ttl_seconds). Survives JLCPCB DB refreshes.
+- **ADR-02 BOM Export Engine**: Declarative dict-based BOMTemplate dataclass with BOMColumn definitions. Preset templates (PCBWay, JLCPCB, Newbury Electronics) as constants in `core/bom_export.py`. Custom templates stored as JSON in `{data_dir}/templates/` (platformdirs).
 - **ADR-04 DigiKey Adapter**: Own httpx implementation (avoids GPL dependency). 2-legged OAuth client credentials for Phase 1. Token refresh when < 60s remaining.
 - **ADR-05 Multi-Source Deduplication**: Merge by `(mpn.upper(), manufacturer.upper())`. Aggregate offers from all sources into single PartResult. Parametric data priority: Nexar > DigiKey > Mouser > JLCPCB.
 - **ADR-06 Rate Limiting**: Per-source token bucket. Exponential backoff with jitter on 429/503. DigiKey 2 req/sec + 1,000/day. Mouser 1 req/sec. LCSC 1 req/sec.
@@ -124,7 +124,7 @@ UX-DR13: Implement right-click context menus on table rows with actions: "Search
 UX-DR14: Implement layout persistence using QSettings: save geometry and window state on close, restore on open. Key: "kipart-search" / "kipart-search".
 UX-DR15: Ensure all status indicators use color + text label (never color-only): "Verified", "Missing MPN", "Not Found", "Needs attention", "Unverified". Accessibility: setAccessibleName() and setAccessibleDescription() on custom composite widgets.
 UX-DR16: Implement stale data indicators: components carry "last verified" timestamp. After database update, stale components show amber with "Last verified: [date] - database updated since. Re-scan recommended."
-UX-DR17: Implement write-back safety system: silent timestamped backups before any write session in `~/.kipart-search/backups/{project}/{YYYY-MM-DD_HHMM}/`, undo log as CSV (timestamp, reference, field, old value, new value), add-never-overwrite policy, cancel/revert capability.
+UX-DR17: Implement write-back safety system: silent timestamped backups before any write session in `{project_dir}/.kipart-search/backups/{YYYY-MM-DD_HHMM}/`, undo log as CSV (timestamp, reference, field, old value, new value), add-never-overwrite policy, cancel/revert capability.
 UX-DR18: Implement live dashboard updates: health bar and per-component status update immediately after each MPN assignment without requiring a full re-scan.
 
 ### FR Coverage Map
@@ -498,7 +498,7 @@ So that repeat searches are instant and I can work offline after initial queries
 
 **Given** the application is running
 **When** a search query returns results from any source
-**Then** the results are stored in `~/.kipart-search/cache.db` (separate from the JLCPCB parts database) with the cache key format `{source}:{query_type}:{sha256(normalized_query)}` (ADR-01)
+**Then** the results are stored in `{data_dir}/cache.db` (platformdirs, separate from the JLCPCB parts database) with the cache key format `{source}:{query_type}:{sha256(normalized_query)}` (ADR-01)
 **And** each cache entry stores: key, source, query_type, data (JSON string), created_at (Unix timestamp), ttl_seconds
 
 **Given** the same search query is executed again
@@ -529,7 +529,7 @@ So that I have offline search capabilities without manual file management.
 **When** the user is prompted to download
 **Then** a progress dialog shows download progress (chunked download from GitHub Pages hosting, ~500 MB) (FR7)
 **And** the download can be cancelled without corrupting local state
-**And** on completion the database is stored at `~/.kipart-search/parts-fts5.db` and the JLCPCB source becomes available
+**And** on completion the database is stored at `{data_dir}/jlcpcb/parts-fts5.db` (platformdirs) and the JLCPCB source becomes available
 
 **Given** the JLCPCB database already exists locally
 **When** the user clicks a "Refresh Database" action
@@ -666,7 +666,7 @@ So that I can always recover if something goes wrong, even beyond KiCad's undo s
 
 **Given** the designer is about to confirm the first write-back of a session (connected mode)
 **When** the write-back is initiated
-**Then** a silent timestamped backup is created at `~/.kipart-search/backups/{project}/{YYYY-MM-DD_HHMM}/` before any fields are written (UX-DR17)
+**Then** a silent timestamped backup is created at `{project_dir}/.kipart-search/backups/{YYYY-MM-DD_HHMM}/` before any fields are written (UX-DR17)
 **And** subsequent writes in the same session do not create additional backups (one backup per session)
 **And** no user action is required — backups are automatic and silent
 
@@ -735,7 +735,7 @@ So that my KiCad project carries all manufacturing references and future BOM exp
 
 **Given** the schematic files are NOT open in KiCad (or KiCad is not running)
 **When** the designer confirms the push
-**Then** all `.kicad_sch` files in the project are backed up to `~/.kipart-search/backups/{project}/{YYYY-MM-DD_HHMM}/` (extends Story 5.5)
+**Then** all `.kicad_sch` files in the project are backed up to `{project_dir}/.kipart-search/backups/{YYYY-MM-DD_HHMM}/` (extends Story 5.5)
 **And** each local assignment is written to the correct schematic file via `core/kicad_sch.py`
 **And** each write is logged to the undo CSV (timestamp, reference, field, old value, new value)
 **And** the add-never-overwrite policy is enforced (non-empty fields are not modified without explicit confirmation)
@@ -1179,7 +1179,7 @@ So that I can track my engineering decisions separately from the tool's auto-che
 **When** the context menu action executes
 **Then** the "Review" column for C12 shows a green "Verified" indicator
 **And** the health bar recalculates to include C12 as healthy (regardless of auto-check status)
-**And** the change is immediately persisted to `{data_dir}/projects/{project-hash}/verification-state.json`
+**And** the change is immediately persisted to `{project_dir}/.kipart-search/verification-state.json`
 **And** the log panel shows: "[HH:MM:SS] Marked C12 as Verified"
 
 **Given** the designer selects multiple components (Ctrl+click or Shift+click)
@@ -1213,24 +1213,22 @@ So that I can track my engineering decisions separately from the tool's auto-che
 
 1. **`core/models.py`** — Add `UserVerificationStatus` enum (NONE, VERIFIED, ATTENTION, REJECTED)
 
-2. **`core/paths.py`** — Add `projects_dir()` returning `{data_dir}/projects/`. Add `project_state_path(project_id: str)` returning `{projects_dir}/{project_id}/verification-state.json`.
-
-3. **`core/project_state.py`** (NEW) — Functions:
-   - `compute_project_id(kicad_project_path: str) -> str` — SHA256 hash of the normalized absolute path, truncated to 16 hex chars
-   - `load_user_statuses(project_id: str) -> dict[str, UserVerificationStatus]` — reads JSON, returns {reference: status}. Returns empty dict if file doesn't exist.
-   - `save_user_statuses(project_id: str, statuses: dict[str, UserVerificationStatus]) -> None` — atomic write (write to .tmp, rename)
+2. **`core/project_state.py`** (NEW) — Stores state in `{project_dir}/.kipart-search/verification-state.json` (alongside the KiCad project, shareable between team members). Functions:
+   - `project_state_path(project_dir: Path) -> Path` — returns `{project_dir}/.kipart-search/verification-state.json`, creates dir if needed
+   - `load_user_statuses(project_dir: Path) -> dict[str, UserVerificationStatus]` — reads JSON, returns {reference: status}. Returns empty dict if file doesn't exist.
+   - `save_user_statuses(project_dir: Path, statuses: dict[str, UserVerificationStatus]) -> None` — atomic write (write to .tmp, rename). Only saves non-NONE statuses (sparse storage).
    - Zero GUI dependencies. Pure dict-in, dict-out.
 
-4. **`gui/verify_panel.py`** — Changes:
+3. **`gui/verify_panel.py`** — Changes:
    - Add "Review" to `VERIFY_COLUMNS` (between "MPN Status" and "Footprint")
    - Store `_user_statuses: dict[str, UserVerificationStatus]` alongside `_mpn_statuses`
    - In `_build_context_menu()`: add separator + 4 review status actions after existing items
    - Support multi-row selection: actions apply to all selected rows
    - New method `set_user_status(references: list[str], status: UserVerificationStatus)` — updates table cells, recalculates health bar, calls `project_state.save_user_statuses()`
    - `get_health_percentage()` updated: user VERIFIED overrides auto-check for healthy count; user REJECTED/ATTENTION overrides for unhealthy count
-   - `populate()` accepts optional `user_statuses` parameter to restore persisted state
+   - `populate()` accepts optional `user_statuses` and `project_dir` parameters to restore persisted state
 
-5. **Project ID computation:** The KiCad project path is available from `kicad_bridge.py` (connected mode) or from the opened BOM file path (standalone mode). The hash ensures unique state per project without exposing file paths in the state directory name.
+4. **Project directory resolution:** The KiCad project directory is available from `kicad_bridge.py` (connected mode) or from the opened BOM file path (standalone mode). No hashing needed — state is stored directly in the project folder.
 
 **Definition of Done:**
 - Right-click context menu shows review status options

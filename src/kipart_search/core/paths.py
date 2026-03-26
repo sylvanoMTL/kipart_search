@@ -42,7 +42,12 @@ def jlcpcb_dir() -> Path:
 
 
 def backups_dir() -> Path:
-    """Standalone-mode backup directory. Creates if needed."""
+    """Standalone-mode fallback backup directory. Creates if needed.
+
+    When connected to a KiCad project, backups go to
+    ``{project_dir}/.kipart-search/backups/`` instead (see main_window.py).
+    This function is only used when no project directory is known.
+    """
     d = data_dir() / "backups"
     d.mkdir(parents=True, exist_ok=True)
     return d

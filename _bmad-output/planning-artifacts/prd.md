@@ -224,7 +224,7 @@ KiPart Search is a standalone PySide6 desktop application that runs as an indepe
 
 - **KiCad IPC API** (KiCad 9.0+): Reads board data (footprints, fields, values), writes back MPNs and metadata, selects/highlights footprints for cross-probe. Connection auto-detected via `KICAD_API_SOCKET` environment variable or default socket path.
 - **Graceful degradation**: If KiCad is not running or IPC API is unavailable, the app works fully standalone — search, database browsing, and BOM export from cached/imported data all function without KiCad.
-- **File system**: SQLite databases stored in user-local directory (`~/.kipart-search/`). No admin privileges required.
+- **File system**: User data (SQLite databases, config, cache) stored in platformdirs user data directory (e.g. `%LOCALAPPDATA%\KiPartSearch\` on Windows). Project data (verification state, backups) stored in `{kicad_project}/.kipart-search/`. No admin privileges required.
 
 ### Update Strategy
 
@@ -248,7 +248,7 @@ KiPart Search is a standalone PySide6 desktop application that runs as an indepe
 
 - **JLCPCB database**: Pre-built SQLite with FTS5 index, stored locally.
 - **Cache layer**: SQLite cache with per-source TTL (pricing: 4 hours, parametric: 7–30 days, datasheets: indefinite).
-- **Configuration**: `~/.kipart-search/config.json` for settings. API keys stored via `keyring` for OS-native secret storage.
+- **Configuration**: `{data_dir}/config.json` (platformdirs) for settings. API keys stored via `keyring` for OS-native secret storage.
 - **No cloud dependency**: All data stored locally. No accounts, no telemetry, no phone-home.
 
 ## Functional Requirements

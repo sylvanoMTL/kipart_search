@@ -153,7 +153,7 @@ Not applicable — this is a brownfield project. The codebase is functional with
 ### Data Architecture
 
 **ADR-01: Separate Cache Database**
-- **Decision:** Cache stored in `~/.kipart-search/cache.db`, separate from the JLCPCB parts database
+- **Decision:** Cache stored in `{data_dir}/cache.db` (platformdirs), separate from the JLCPCB parts database
 - **Rationale:** The JLCPCB database is a downloaded artifact replaced on refresh. The cache is user-generated data (API results, verification state) that must survive DB updates.
 - **Schema:** Single `cache_entries` table: `key TEXT PRIMARY KEY, source TEXT, query_type TEXT, data TEXT (JSON), created_at REAL, ttl_seconds INTEGER`
 - **Cache key format:** `{source}:{query_type}:{sha256(normalized_query)}`
@@ -164,7 +164,7 @@ Not applicable — this is a brownfield project. The codebase is functional with
 - **Decision:** Each CM template is a Python dataclass defining column names, column order, field mappings, grouping rules, and DNP handling. No Jinja2 or string-template dependency.
 - **Rationale:** BOM export is structured tabular data (rows and columns), not freeform text. Declarative mappings are simpler, more debuggable, and sufficient for Excel/CSV output.
 - **Preset templates:** Ship as constants in `core/bom_export.py` (PCBWay, JLCPCB, Newbury Electronics)
-- **Custom templates:** Stored as JSON in `~/.kipart-search/templates/`
+- **Custom templates:** Stored as JSON in `{data_dir}/templates/` (platformdirs)
 - **Affects:** New `core/bom_export.py` module, new `gui/export_dialog.py` panel
 
 ### Authentication & Security
@@ -296,7 +296,7 @@ class BOMColumn:
     transform: str | None               # optional transform: "package_extract", "smd_tht_detect"
 ```
 - Preset templates: module-level constants `PCBWAY_TEMPLATE`, `JLCPCB_TEMPLATE`, etc.
-- Custom templates: serialized as JSON, loaded from `~/.kipart-search/templates/*.json`
+- Custom templates: serialized as JSON, loaded from `{data_dir}/templates/*.json` (platformdirs)
 - The export engine (`core/bom_export.py`) takes a `BOMTemplate` + `list[ComponentData]` and returns bytes (Excel) or str (CSV)
 - Export engine has zero GUI dependencies — testable standalone
 
@@ -536,19 +536,46 @@ kipart-search/
 | `gui/detail_panel.py` | Selected part specs, pricing, datasheet link, assign button | `core/models.py`, PySide6 |
 | `tests/core/test_bom_export.py` | Template mapping, grouping, package extraction tests | `core/bom_export.py`, pytest |
 
-### User Data Files
+### Data Storage Model
+
+KiPart Search stores data in two locations: **user-scoped** (per machine/user) and **project-scoped** (per KiCad project, shareable between team members).
+
+#### User Data (platformdirs)
+
+Location: `platformdirs.user_data_dir("KiPartSearch")` — e.g. `%LOCALAPPDATA%\KiPartSearch\` (Windows), `~/.local/share/KiPartSearch/` (Linux), `~/Library/Application Support/KiPartSearch/` (macOS). All paths resolved via `core/paths.py`.
 
 ```
-~/.kipart-search/
-├── config.json                # App settings (window state is in QSettings, not here)
-├── parts-fts5.db             # JLCPCB database (downloaded artifact)
-├── cache.db                  # [NEW] Query cache (user-generated, survives DB refresh)
-├── templates/                # [NEW] Custom BOM templates (JSON)
-│   └── my_cm_template.json
-└── backups/                  # [FUTURE] KiCad write-back backups
-    └── {project}/
-        └── {YYYY-MM-DD_HHMM}/
+{data_dir}/
+├── config.json                # Source enable/disable, welcome version
+├── cache.db                   # SQLite query cache (per-source TTL)
+├── jlcpcb/                    # JLCPCB offline database
+│   ├── parts-fts5.db
+│   └── db_meta.json
+└── templates/                 # Custom BOM export templates (JSON)
+    └── my_cm_template.json
 ```
+
+Additionally: API keys and license stored in OS keyring (`keyring` library), window geometry/state in QSettings (Windows Registry / `.config/` on Linux).
+
+#### Project Data (KiCad project folder)
+
+Location: `{kicad_project_dir}/.kipart-search/` — alongside the `.kicad_pro` file. Shareable between team members working on the same project.
+
+```
+{kicad_project}/.kipart-search/
+├── verification-state.json    # User review decisions (Verified/Attention/Rejected)
+└── backups/                   # Write-back safety snapshots
+    └── {YYYY-MM-DD_HHMM}/
+        ├── components.json    # Component state before write
+        ├── undo_log.csv       # Per-field change log
+        └── *.kicad_sch        # Schematic file copies
+```
+
+When no KiCad project is connected (standalone mode), backups fall back to `{data_dir}/backups/`.
+
+#### Multi-User Principle
+
+Multiple designers can work on the same KiCad project. Each has their own user data (API keys, cache, database). Project data lives in the KiCad project folder and is visible to all team members. The `.kipart-search/` folder can be committed to version control (`verification-state.json` is shareable; `backups/` can be gitignored).
 
 ## Architecture Validation Results
 
