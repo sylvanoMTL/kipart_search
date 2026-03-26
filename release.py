@@ -8,12 +8,11 @@ Orchestrates the full release pipeline:
   5. ZIP packaging
   6. Inno Setup installer
   7. SHA256 checksums
-  8. Human checklist
 
 Usage:
-    python release.py
+    python release.py                # full local build
+    python release.py --tag          # tag + push to trigger CI release
     python release.py --skip-tests --skip-version-gate
-    python release.py --output-dir build
 """
 from __future__ import annotations
 
@@ -91,6 +90,42 @@ def generate_checksums(output_dir: str, version: str) -> None:
     print(f"Checksums written to {checksum_file}")
 
 
+def tag_and_push(version: str) -> None:
+    """Create a git tag and push it to trigger the CI release pipeline."""
+    tag = f"v{version}"
+
+    # Check for uncommitted changes
+    result = subprocess.run(
+        ["git", "status", "--porcelain"], capture_output=True, text=True
+    )
+    if result.stdout.strip():
+        print("ERROR: Uncommitted changes detected. Commit before tagging.")
+        sys.exit(1)
+
+    # Check tag doesn't already exist
+    result = subprocess.run(
+        ["git", "tag", "-l", tag], capture_output=True, text=True
+    )
+    if result.stdout.strip():
+        print(f"ERROR: Tag {tag} already exists. Delete it first or bump version.")
+        sys.exit(1)
+
+    print(f"  Creating tag {tag}...")
+    subprocess.run(["git", "tag", tag], check=True)
+
+    print(f"  Pushing {tag} to origin...")
+    result = subprocess.run(
+        ["git", "push", "origin", tag], capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"ERROR: Push failed: {result.stderr.strip()}")
+        # Clean up local tag
+        subprocess.run(["git", "tag", "-d", tag])
+        sys.exit(1)
+
+    print(f"  Tag {tag} pushed -- CI will build and create the GitHub Release.")
+
+
 def print_checklist(version: str, output_dir: str) -> None:
     """Print a human checklist for post-build steps."""
     print()
@@ -104,14 +139,11 @@ def print_checklist(version: str, output_dir: str) -> None:
     print(f"  {output_dir}/checksums-{version}-sha256.txt")
     print()
     print("Next steps:")
-    print(f"  1. git tag v{version}")
-    print(f"  2. git push origin v{version}")
-    print("     -> CI will build and upload to GitHub Release automatically")
-    print(
-        f"  3. Or upload manually: gh release create v{version}"
-        f" {output_dir}/kipart-search-{version}-*"
-    )
-    print("  4. Write release notes (or use --generate-release-notes on gh release)")
+    print(f"  Run: python release.py --tag")
+    print("  Or manually:")
+    print(f"    1. git tag v{version}")
+    print(f"    2. git push origin v{version}")
+    print("       -> CI will build and upload to GitHub Release automatically")
     print("=" * 60)
 
 
@@ -134,9 +166,29 @@ def main() -> int:
         default="dist",
         help="Output directory (default: dist)",
     )
+    parser.add_argument(
+        "--tag",
+        action="store_true",
+        help="Create git tag and push to trigger CI release (skips local build)",
+    )
     args = parser.parse_args()
 
     version = read_base_version()
+
+    # --tag: just tag and push, no local build needed
+    if args.tag:
+        print(f"Tagging and pushing release v{version}")
+        print()
+        if not args.skip_version_gate:
+            print("Step 1/2: Version gate")
+            check_version_gate(version)
+        else:
+            print("Step 1/2: Version gate (skipped)")
+        print()
+        print("Step 2/2: Tag and push")
+        tag_and_push(version)
+        return 0
+
     print(f"Building KiPart Search release v{version}")
     print()
 
