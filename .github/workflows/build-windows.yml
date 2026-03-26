@@ -106,8 +106,8 @@ jobs:
 
       - name: Generate SHA256 checksums
         run: |
-          cd dist
           VERSION=$(python -c "from build_nuitka import read_base_version; print(read_base_version())")
+          cd dist
           sha256sum "kipart-search-${VERSION}-windows.zip" "kipart-search-${VERSION}-setup.exe" > "checksums-${VERSION}-sha256.txt"
           echo "Checksums:"
           cat "checksums-${VERSION}-sha256.txt"

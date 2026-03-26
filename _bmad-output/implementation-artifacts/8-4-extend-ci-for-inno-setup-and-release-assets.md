@@ -1,6 +1,6 @@
 # Story 8.4: Extend CI for Inno Setup and Release Assets
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
