@@ -2,9 +2,7 @@
 ; Compile with: iscc /DMyAppVersion=X.Y.Z /DMyOutputDir=..\dist /DMySourceDir=..\dist\__main__.dist installer\kipart-search.iss
 
 #define MyAppName "KiPart Search"
-#ifndef MyAppVersion
-  #define MyAppVersion "0.1.2"
-#endif
+#define MyAppVersion "0.1.2"
 #define MyAppPublisher "MecaFrog"
 #define MyAppURL "https://github.com/sylvanoMTL/kipart-search"
 #define MyAppExeName "kipart-search.exe"

@@ -98,6 +98,19 @@ def bump_version(part: str) -> str:
         if init_updated != init_text:
             init_py.write_text(init_updated, encoding="utf-8")
 
+    # --- installer/kipart-search.iss ---
+    iss_file = Path("installer/kipart-search.iss")
+    if iss_file.exists():
+        iss_text = iss_file.read_text(encoding="utf-8")
+        iss_updated = re.sub(
+            r'(#define MyAppVersion ")[^"]*(")',
+            rf"\g<1>{new_version}\2",
+            iss_text,
+            count=1,
+        )
+        if iss_updated != iss_text:
+            iss_file.write_text(iss_updated, encoding="utf-8")
+
     print(f"  Bumped version: {current} -> {new_version}")
     return new_version
 
@@ -148,7 +161,7 @@ def commit_and_push_bump(version: str) -> None:
     """Commit the version bump and push to origin."""
     # Stage version files and changelog (only if they exist)
     files_to_stage = ["pyproject.toml"]
-    for optional in ["src/kipart_search/__init__.py", "CHANGELOG.md"]:
+    for optional in ["src/kipart_search/__init__.py", "installer/kipart-search.iss", "CHANGELOG.md"]:
         if Path(optional).exists():
             files_to_stage.append(optional)
     subprocess.run(["git", "add", *files_to_stage], check=True)
