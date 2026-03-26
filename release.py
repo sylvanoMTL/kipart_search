@@ -69,13 +69,15 @@ def bump_version(part: str) -> str:
     current = read_base_version()
     new_version = compute_next_version(current, part)
 
-    # Replace the version line in pyproject.toml
+    # Replace the version line under [project] in pyproject.toml.
+    # Match only the first `version = "..."` after a [project] header to avoid
+    # accidentally editing version fields in other TOML tables.
     updated = re.sub(
-        r'^(version\s*=\s*")[^"]*(")',
+        r'(\[project\][^\[]*?^version\s*=\s*")[^"]*(")',
         rf"\g<1>{new_version}\2",
         text,
         count=1,
-        flags=re.MULTILINE,
+        flags=re.MULTILINE | re.DOTALL,
     )
     if updated == text:
         print(f"ERROR: Could not find version field in pyproject.toml")
@@ -104,12 +106,21 @@ def stamp_changelog(version: str) -> bool:
         return False
 
     today = date.today().isoformat()
-    # Insert the new version header after [Unreleased] + its blank line
     new_header = f"## [{version}] - {today}"
-    updated = text.replace(
-        "## [Unreleased]\n",
-        f"## [Unreleased]\n\n{new_header}\n",
-    )
+
+    # Find the [Unreleased] header and insert the new version header before
+    # the first non-blank content line after it.  This keeps [Unreleased]
+    # as an empty section and moves all its prior content under the new
+    # version header.
+    import re
+
+    pattern = re.compile(r"(## \[Unreleased\][^\n]*\n(?:\s*\n)*)")
+    m = pattern.search(text)
+    if not m:
+        return False
+
+    insert_pos = m.end()
+    updated = text[:insert_pos] + new_header + "\n" + text[insert_pos:]
 
     if updated == text:
         return False
@@ -121,8 +132,11 @@ def stamp_changelog(version: str) -> bool:
 
 def commit_and_push_bump(version: str) -> None:
     """Commit the version bump and push to origin."""
-    # Stage the modified files
-    subprocess.run(["git", "add", "pyproject.toml", "CHANGELOG.md"], check=True)
+    # Stage pyproject.toml (always modified) and CHANGELOG.md (only if it exists)
+    files_to_stage = ["pyproject.toml"]
+    if Path("CHANGELOG.md").exists():
+        files_to_stage.append("CHANGELOG.md")
+    subprocess.run(["git", "add", *files_to_stage], check=True)
 
     result = subprocess.run(
         ["git", "diff", "--cached", "--quiet"],
@@ -267,10 +281,14 @@ def tag_and_push(version: str) -> None:
         print("  Install GitHub CLI (gh) to watch CI progress here.")
 
 
-def watch_ci(tag: str) -> None:
-    """Poll GitHub Actions until the workflow run triggered by *tag* completes."""
+def watch_ci(tag: str, max_minutes: int = 30) -> None:
+    """Poll GitHub Actions until the workflow run triggered by *tag* completes.
+
+    Gives up after *max_minutes* to avoid hanging indefinitely.
+    """
+    max_seconds = max_minutes * 60
     print()
-    print(f"  Watching CI for {tag}...")
+    print(f"  Watching CI for {tag} (timeout: {max_minutes}m)...")
 
     # Wait for the run to appear (GitHub needs a few seconds)
     run_id = None
@@ -283,7 +301,11 @@ def watch_ci(tag: str) -> None:
         )
         if result.returncode != 0:
             continue
-        for run in json.loads(result.stdout):
+        try:
+            runs = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            continue
+        for run in runs:
             if run.get("headBranch") == tag:
                 run_id = run["databaseId"]
                 break
@@ -294,11 +316,11 @@ def watch_ci(tag: str) -> None:
         print(f"    gh run list")
         return
 
-    # Poll until completed
+    # Poll until completed or timeout
     poll_interval = 15
     last_status = None
     elapsed = 0
-    while True:
+    while elapsed < max_seconds:
         result = subprocess.run(
             ["gh", "run", "view", str(run_id),
              "--json=status,conclusion,jobs"],
@@ -308,7 +330,14 @@ def watch_ci(tag: str) -> None:
             print(f"  Could not query run {run_id}: {result.stderr.strip()}")
             break
 
-        data = json.loads(result.stdout)
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            print(f"  WARNING: Could not parse gh output, retrying...")
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            continue
+
         status = data.get("status", "unknown")
         conclusion = data.get("conclusion", "")
 
@@ -353,6 +382,9 @@ def watch_ci(tag: str) -> None:
 
         time.sleep(poll_interval)
         elapsed += poll_interval
+    else:
+        print(f"\n  Timed out after {max_minutes} minutes. Check manually:")
+        print(f"    gh run view {run_id}")
 
 
 def print_checklist(version: str, output_dir: str) -> None:
