@@ -168,7 +168,7 @@ SYSTEM REQUIREMENTS
 KICAD INTEGRATION
 -----------------
 For KiCad integration, KiCad 9.0+ must be running with IPC API enabled.
-Install kicad-python separately: pip install kicad-python
+kicad-python is bundled — no separate install needed.
 
 DOCUMENTATION
 -------------
@@ -282,6 +282,7 @@ def build(output_dir: str = "dist") -> None:
         "--enable-plugin=pyside6",
         "--include-package=kipart_search",
         "--include-package=keyring.backends",
+        "--include-package=kipy",
         "--assume-yes-for-downloads",
         "--windows-console-mode=disable",
         "--output-filename=kipart-search",
