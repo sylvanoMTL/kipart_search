@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kipart-search"
-version = "0.1.0"
+version = "0.1.1"
 description = "Parametric electronic component search with KiCad integration"
 readme = "README.md"
 license = "MIT"
