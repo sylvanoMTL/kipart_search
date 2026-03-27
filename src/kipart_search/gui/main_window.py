@@ -218,19 +218,24 @@ class _UpdateCheckWorker(QThread):
     def run(self):
         from kipart_search.core.update_check import (
             should_check, check_for_update, save_update_cache, load_cached_update,
-            _compare_versions,
+            load_skipped_version, _compare_versions,
         )
         from kipart_search.core.paths import config_path
 
         cfg = config_path()
+        skipped = load_skipped_version(cfg)
+
         if not should_check(cfg):
             cached = load_cached_update(cfg)
             # Invalidate cache if user upgraded past the cached version
             if cached and not _compare_versions(__version__, cached.latest_version):
                 cached = None
+            # Suppress if this version was skipped
+            if cached and skipped and cached.latest_version == skipped:
+                cached = None
             self.result.emit(cached)
             return
-        info = check_for_update(__version__)
+        info = check_for_update(__version__, skipped_version=skipped)
         if info:
             save_update_cache(cfg, info)
         self.result.emit(info)
@@ -434,6 +439,7 @@ class MainWindow(QMainWindow):
         """Show status bar notification if a newer version is available."""
         if info is None:
             return
+        self._update_info = info
         self._update_release_url = info.release_url
         self._update_label.setText(f"  Update available: v{info.latest_version}  ")
         self._update_label.setVisible(True)
@@ -441,10 +447,11 @@ class MainWindow(QMainWindow):
     def eventFilter(self, obj, event):
         """Handle click on the update notification label."""
         if obj is self._update_label and event.type() == event.Type.MouseButtonPress:
-            from PySide6.QtCore import QUrl
-            from PySide6.QtGui import QDesktopServices
-            if self._update_release_url:
-                QDesktopServices.openUrl(QUrl(self._update_release_url))
+            info = getattr(self, "_update_info", None)
+            if info:
+                from kipart_search.gui.update_dialog import UpdateDialog
+                dlg = UpdateDialog(info, parent=self)
+                dlg.exec()
             return True
         return super().eventFilter(obj, event)
 
