@@ -272,8 +272,11 @@ class SourcePreferencesDialog(QDialog):
         lic = License.instance()
 
         self._tier_label = QLabel()
+        # Fix width to the longer text so toggling tiers doesn't resize
+        self._tier_label.setText("  Pro (licensed)  ")
+        self._tier_label.setFixedWidth(self._tier_label.sizeHint().width() + 24)
         self._update_tier_label(lic)
-        license_layout.addWidget(self._tier_label)
+        license_layout.addWidget(self._tier_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         # Key input + activate button (shown when free)
         self._key_input_row = QHBoxLayout()
@@ -371,17 +374,21 @@ class SourcePreferencesDialog(QDialog):
 
     def _update_tier_label(self, lic) -> None:
         """Update the tier display label."""
+        base_style = (
+            "color: white; padding: 4px 12px; "
+            "border-radius: 8px; font-weight: bold; font-size: 12px;"
+        )
         if lic.is_pro:
-            self._tier_label.setText("  Pro (licensed)  ")
+            self._tier_label.setText("Pro (licensed)")
+            self._tier_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self._tier_label.setStyleSheet(
-                "background-color: #2d7d46; color: white; padding: 4px 12px; "
-                "border-radius: 8px; font-weight: bold; font-size: 12px;"
+                f"background-color: #2d7d46; {base_style}"
             )
         else:
-            self._tier_label.setText("  Free  ")
+            self._tier_label.setText("Free")
+            self._tier_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self._tier_label.setStyleSheet(
-                "background-color: #6b7280; color: white; padding: 4px 12px; "
-                "border-radius: 8px; font-weight: bold; font-size: 12px;"
+                f"background-color: #6b7280; {base_style}"
             )
 
     def _update_license_ui(self, lic) -> None:
