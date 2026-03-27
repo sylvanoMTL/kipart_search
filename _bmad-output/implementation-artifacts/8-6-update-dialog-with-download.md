@@ -405,13 +405,20 @@ None — clean implementation with no blockers.
 - **Task 3**: Wired dialog into `main_window.py` — status bar click now opens `UpdateDialog` instead of browser. Stored `_update_info` from check result. Integrated `load_skipped_version()` in `_UpdateCheckWorker` to suppress skipped versions from both cached and fresh checks.
 - **Task 4**: Added 13 new tests covering skip version round-trip, skip version with corrupted/missing config, `check_for_update` with skipped version, asset URL resolution (Windows setup.exe selection, no matching asset, no assets array), and backward compatibility (cached data from 8.5 without new fields).
 
+### Code Review Fixes (2026-03-27)
+
+- **M1:** Moved `_fallback_btn` from dynamic `hasattr` creation in `_on_download_error()` to `__init__` (hidden by default) — consistent with all other post-download buttons, eliminates fragile dynamic attribute pattern
+- **M2:** Added `closeEvent` override to wait for `_DownloadWorker` thread (5s timeout) before dialog destruction — prevents signals emitting to a destroyed dialog
+- **M3:** Size mismatch on download no longer deletes the file — keeps it for user inspection with a warning message including the file path
+
 ### Change Log
 
+- 2026-03-27: Code review fixes — M1 (fallback button in __init__), M2 (worker cleanup on close), M3 (keep file on size mismatch)
 - 2026-03-27: Implemented Story 8.6 — Update dialog with download progress, skip version, asset resolution
 
 ### File List
 
 - `src/kipart_search/core/update_check.py` — modified (asset fields, skip version functions, asset resolution)
-- `src/kipart_search/gui/update_dialog.py` — new (UpdateDialog + _DownloadWorker)
+- `src/kipart_search/gui/update_dialog.py` — new (UpdateDialog + _DownloadWorker) [review: M1 fallback btn, M2 closeEvent, M3 size mismatch]
 - `src/kipart_search/gui/main_window.py` — modified (dialog wiring, skip version in worker)
 - `tests/core/test_update_check.py` — modified (13 new tests)

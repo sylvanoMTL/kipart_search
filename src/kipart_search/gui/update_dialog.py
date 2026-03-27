@@ -63,15 +63,12 @@ class _DownloadWorker(QThread):
             if self.dest.exists():
                 self.dest.unlink()
             partial.rename(self.dest)
-            # Verify size
+            # Verify size — keep the file so the user can inspect or retry
             actual = self.dest.stat().st_size
             if self.expected_size > 0 and actual != self.expected_size:
-                try:
-                    self.dest.unlink()
-                except OSError:
-                    pass
                 self.error.emit(
-                    f"Size mismatch: expected {self.expected_size}, got {actual}"
+                    f"Size mismatch: expected {self.expected_size}, got {actual}. "
+                    f"File kept at {self.dest}"
                 )
                 return
             # AV quarantine heuristic: file may vanish shortly after write
@@ -161,6 +158,11 @@ class UpdateDialog(QDialog):
         self._open_folder_btn.clicked.connect(self._on_open_folder)
         self._post_row.addWidget(self._open_folder_btn)
 
+        self._fallback_btn = QPushButton("Open Release Page")
+        self._fallback_btn.setVisible(False)
+        self._fallback_btn.clicked.connect(self._on_open_release_page)
+        self._post_row.addWidget(self._fallback_btn)
+
         self._close_btn = QPushButton("Close")
         self._close_btn.setVisible(False)
         self._close_btn.clicked.connect(self.accept)
@@ -177,6 +179,12 @@ class UpdateDialog(QDialog):
                 "Visit the release page to download manually."
             )
             self._status_label.setVisible(True)
+
+    def closeEvent(self, event):
+        """Wait for download worker to finish before destroying the dialog."""
+        if self._worker is not None and self._worker.isRunning():
+            self._worker.wait(5000)
+        super().closeEvent(event)
 
     def _on_skip(self):
         """Persist the skipped version and close."""
@@ -264,11 +272,6 @@ class UpdateDialog(QDialog):
         self._remind_btn.setVisible(False)
         self._skip_btn.setVisible(False)
 
-        # Show fallback button to open release page (guard against re-entry)
-        if not hasattr(self, "_fallback_btn"):
-            self._fallback_btn = QPushButton("Open Release Page")
-            self._fallback_btn.clicked.connect(self._on_open_release_page)
-            self._post_row.insertWidget(0, self._fallback_btn)
         self._fallback_btn.setVisible(True)
         self._close_btn.setVisible(True)
 
