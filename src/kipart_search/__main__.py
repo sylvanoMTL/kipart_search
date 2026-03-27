@@ -34,10 +34,20 @@ def _migrate_data() -> None:
     migrate_legacy_data()
 
 
+def _cleanup_partial_downloads() -> None:
+    """Remove stale update .partial files from temp dir. Non-blocking."""
+    try:
+        from kipart_search.core.update_shim import cleanup_stale_partial_downloads
+        cleanup_stale_partial_downloads()
+    except Exception:
+        pass  # Never block startup
+
+
 def main():
     _check_version_flag()
     _migrate_data()
     _init_keyring_compiled()
+    _cleanup_partial_downloads()
     update_failed = "--update-failed" in sys.argv
     from kipart_search.gui.main_window import run_app
     return run_app(update_failed=update_failed)

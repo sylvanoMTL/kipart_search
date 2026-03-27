@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-27  # Story 8.7 code review done
+last_updated: 2026-03-27  # Story 8.8 code review passed
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -94,13 +94,13 @@ development_status:
   epic-6-retrospective: done
 
   # Epic 7: Build Pipeline & Distribution (Windows)
-  epic-7: in-progress
+  epic-7: done
   7-1-minimal-nuitka-build: done
   7-2-compiled-binary-full-functionality-verification: done
   7-3-license-module-and-feature-gating: done
   7-4-windows-zip-distribution-package: done
   7-5-ci-build-pipeline: done
-  epic-7-retrospective: optional
+  epic-7-retrospective: done
 
   # Epic 8: Installer, Auto-Update & Release Pipeline
   epic-8: in-progress
@@ -111,7 +111,7 @@ development_status:
   8-5-in-app-version-check: done
   8-6-update-dialog-with-download: done
   8-7-update-shim-and-auto-install: done
-  8-8-update-failure-resilience: ready-for-dev
+  8-8-update-failure-resilience: done
   epic-8-retrospective: optional
 
   # Epic 9: User Verification & Per-Project State

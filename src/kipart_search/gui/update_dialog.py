@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
@@ -73,14 +74,14 @@ class _DownloadWorker(QThread):
                     f"Size mismatch: expected {self.expected_size}, got {actual}"
                 )
                 return
+            # AV quarantine heuristic: file may vanish shortly after write
+            time.sleep(1)
+            if not self.dest.exists():
+                self.error.emit("quarantine")
+                return
             self.finished.emit(str(self.dest))
         except Exception as e:
-            # Clean up partial file
-            if partial.exists():
-                try:
-                    partial.unlink()
-                except OSError:
-                    pass
+            # Leave .partial file in temp — startup cleanup (AC #7) handles it
             self.error.emit(str(e))
 
 
@@ -242,10 +243,21 @@ class UpdateDialog(QDialog):
 
     def _on_download_error(self, error_msg: str):
         self._progress_bar.setVisible(False)
-        self._status_label.setText(
-            f"Download failed: {error_msg}\n\n"
-            "Download may have been blocked. Download manually from GitHub."
-        )
+        if error_msg == "quarantine":
+            release_url = self._info.release_url or (
+                "https://github.com/sylvanoMTL/kipart-search/releases/latest"
+            )
+            self._status_label.setText(
+                "Your antivirus may have blocked the update.\n"
+                "Download manually from GitHub.\n\n"
+                f"URL copied to clipboard: {release_url}"
+            )
+            QApplication.clipboard().setText(release_url)
+        else:
+            self._status_label.setText(
+                f"Download failed: {error_msg}\n\n"
+                "Download may have been blocked. Download manually from GitHub."
+            )
 
         # Re-enable buttons and add fallback link
         self._update_btn.setVisible(False)
@@ -276,21 +288,18 @@ class UpdateDialog(QDialog):
         try:
             shim = write_update_shim(installer, app_exe)
             ok = launch_shim_and_exit(shim)
-        except Exception as exc:
-            QMessageBox.warning(
-                self,
-                "Install Failed",
-                f"Could not start the installer:\n{exc}\n\n"
-                "Use 'Open Folder' to run the installer manually.",
-            )
-            return
+        except Exception:
+            ok = False
 
         if not ok:
+            QApplication.clipboard().setText(self._downloaded_path)
             QMessageBox.warning(
                 self,
                 "Install Failed",
-                "Could not launch the update process.\n\n"
-                "Use 'Open Folder' to run the installer manually.",
+                f"Automatic update couldn't start. Installer saved to:\n"
+                f"{self._downloaded_path}\n\n"
+                "Path copied to clipboard. "
+                "Please close KiPart Search and run it manually.",
             )
             return
 

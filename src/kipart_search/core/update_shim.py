@@ -6,6 +6,7 @@ import logging
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -46,6 +47,31 @@ goto :cleanup
 :: Self-delete
 del "%~f0"
 """
+
+
+_PARTIAL_GLOB = "kipart-search-update-*.partial"
+_STALE_SECONDS = 86400  # 24 hours
+
+
+def cleanup_stale_partial_downloads(temp_dir: Path | None = None) -> None:
+    """Delete stale .partial download files from the temp directory.
+
+    Scans for files matching ``kipart-search-update-*.partial`` that are
+    older than 24 hours and removes them silently.
+    """
+    if temp_dir is None:
+        temp_dir = Path(tempfile.gettempdir())
+    try:
+        for p in temp_dir.glob(_PARTIAL_GLOB):
+            try:
+                age = time.time() - p.stat().st_mtime
+                if age > _STALE_SECONDS:
+                    p.unlink()
+                    log.info("Deleted stale partial download: %s", p)
+            except OSError:
+                log.debug("Could not remove partial file: %s", p, exc_info=True)
+    except OSError:
+        log.debug("Could not scan temp dir for partial files", exc_info=True)
 
 
 def is_compiled_build() -> bool:

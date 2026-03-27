@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from kipart_search.core.update_shim import (
+    cleanup_stale_partial_downloads,
     get_app_exe_path,
     launch_shim_and_exit,
     write_update_shim,
@@ -163,3 +164,63 @@ class TestUpdateFailedFlag:
             from kipart_search.__main__ import main
             main()
             mock_run.assert_called_once_with(update_failed=False)
+
+
+class TestCleanupStalePartialDownloads:
+    """Test cleanup_stale_partial_downloads() removes old .partial files."""
+
+    def test_deletes_stale_partial_file(self, tmp_path):
+        """A .partial file older than 24h should be deleted."""
+        import time
+
+        stale = tmp_path / "kipart-search-update-v1.0.0.exe.partial"
+        stale.write_bytes(b"data")
+        # Backdate mtime to 25 hours ago
+        old_time = time.time() - 25 * 3600
+        import os
+        os.utime(stale, (old_time, old_time))
+
+        cleanup_stale_partial_downloads(tmp_path)
+
+        assert not stale.exists()
+
+    def test_keeps_fresh_partial_file(self, tmp_path):
+        """A .partial file less than 24h old should be left alone."""
+        fresh = tmp_path / "kipart-search-update-v2.0.0.exe.partial"
+        fresh.write_bytes(b"data")
+
+        cleanup_stale_partial_downloads(tmp_path)
+
+        assert fresh.exists()
+
+    def test_ignores_non_matching_files(self, tmp_path):
+        """Files not matching the pattern should be left alone."""
+        import time
+
+        unrelated = tmp_path / "other-file.partial"
+        unrelated.write_bytes(b"data")
+        old_time = time.time() - 25 * 3600
+        import os
+        os.utime(unrelated, (old_time, old_time))
+
+        cleanup_stale_partial_downloads(tmp_path)
+
+        assert unrelated.exists()
+
+    def test_no_crash_on_permission_error(self, tmp_path):
+        """Should not raise even if deletion fails."""
+        import time
+
+        stale = tmp_path / "kipart-search-update-v1.0.0.exe.partial"
+        stale.write_bytes(b"data")
+        old_time = time.time() - 25 * 3600
+        import os
+        os.utime(stale, (old_time, old_time))
+
+        with patch("pathlib.Path.unlink", side_effect=PermissionError("locked")):
+            # Should not raise
+            cleanup_stale_partial_downloads(tmp_path)
+
+    def test_no_crash_on_empty_dir(self, tmp_path):
+        """Empty temp dir should work fine."""
+        cleanup_stale_partial_downloads(tmp_path)

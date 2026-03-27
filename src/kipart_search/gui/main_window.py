@@ -461,8 +461,9 @@ class MainWindow(QMainWindow):
         msg.setIcon(QMessageBox.Icon.Warning)
         msg.setWindowTitle("Update Failed")
         msg.setText(
-            "Update could not be completed.\n"
-            "The installer may need administrator permission."
+            "Update could not be completed.\n\n"
+            "This usually means the installer was blocked by\n"
+            "Windows permissions or antivirus software."
         )
         try_again = msg.addButton("Try Again", QMessageBox.ButtonRole.AcceptRole)
         download_btn = msg.addButton("Download Manually", QMessageBox.ButtonRole.HelpRole)
@@ -489,11 +490,21 @@ class MainWindow(QMainWindow):
                 from PySide6.QtCore import QUrl
                 from PySide6.QtGui import QDesktopServices
                 release_url = getattr(self, "_update_release_url", None)
+                if not release_url:
+                    # Try cached update info
+                    try:
+                        from kipart_search.core.update_check import load_cached_update
+                        from kipart_search.core.paths import config_path
+                        cached = load_cached_update(config_path())
+                        if cached:
+                            release_url = cached.release_url
+                    except Exception:
+                        pass
                 if release_url:
                     QDesktopServices.openUrl(QUrl(release_url))
                 else:
                     QDesktopServices.openUrl(
-                        QUrl("https://github.com/MecaFrog/kipart-search/releases/latest")
+                        QUrl("https://github.com/sylvanoMTL/kipart-search/releases/latest")
                     )
 
         msg.buttonClicked.connect(_on_clicked)
