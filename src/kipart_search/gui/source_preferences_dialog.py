@@ -275,23 +275,39 @@ class SourcePreferencesDialog(QDialog):
         self._update_tier_label(lic)
         license_layout.addWidget(self._tier_label)
 
-        # Key input + activate button
-        key_row = QHBoxLayout()
+        # Key input + activate button (shown when free)
+        self._key_input_row = QHBoxLayout()
         self._license_input = QLineEdit()
         self._license_input.setEchoMode(QLineEdit.EchoMode.Password)
         self._license_input.setPlaceholderText("Enter license key")
-        key_row.addWidget(self._license_input)
+        self._key_input_row.addWidget(self._license_input)
 
         self._activate_btn = QPushButton("Activate")
         self._activate_btn.clicked.connect(self._on_activate_license)
-        key_row.addWidget(self._activate_btn)
+        self._key_input_row.addWidget(self._activate_btn)
+
+        # Container widget so we can show/hide the whole row
+        self._key_input_widget = QWidget()
+        self._key_input_widget.setLayout(self._key_input_row)
+        license_layout.addWidget(self._key_input_widget)
+
+        # Masked key display + deactivate button (shown when pro)
+        self._key_display_row = QHBoxLayout()
+        self._masked_label = QLabel()
+        self._masked_label.setStyleSheet("font-family: monospace; font-size: 12px;")
+        self._key_display_row.addWidget(self._masked_label)
+        self._key_display_row.addStretch()
 
         self._deactivate_btn = QPushButton("Deactivate")
         self._deactivate_btn.clicked.connect(self._on_deactivate_license)
-        self._deactivate_btn.setVisible(lic.is_pro)
-        key_row.addWidget(self._deactivate_btn)
+        self._key_display_row.addWidget(self._deactivate_btn)
 
-        license_layout.addLayout(key_row)
+        self._key_display_widget = QWidget()
+        self._key_display_widget.setLayout(self._key_display_row)
+        license_layout.addWidget(self._key_display_widget)
+
+        # Set initial visibility
+        self._update_license_ui(lic)
 
         # Validation status label
         self._license_status = QLabel()
@@ -361,6 +377,18 @@ class SourcePreferencesDialog(QDialog):
                 "border-radius: 8px; font-weight: bold; font-size: 12px;"
             )
 
+    def _update_license_ui(self, lic) -> None:
+        """Show/hide license UI elements based on current tier."""
+        self._update_tier_label(lic)
+        if lic.is_pro:
+            self._key_input_widget.setVisible(False)
+            self._key_display_widget.setVisible(True)
+            self._masked_label.setText(lic.masked_key)
+        else:
+            self._key_input_widget.setVisible(True)
+            self._key_display_widget.setVisible(False)
+            self._license_input.clear()
+
     def _on_activate_license(self) -> None:
         """Validate the entered license key in a background thread."""
         key = self._license_input.text().strip()
@@ -394,8 +422,7 @@ class SourcePreferencesDialog(QDialog):
             lic.activate(key, _skip_validation=True)
             self._license_status.setText(f"\u2714 {message}")
             self._license_status.setStyleSheet("color: green;")
-            self._deactivate_btn.setVisible(True)
-            self._update_tier_label(lic)
+            self._update_license_ui(lic)
             self.license_changed.emit()
         else:
             self._license_status.setText(f"\u2718 {message}")
@@ -406,8 +433,7 @@ class SourcePreferencesDialog(QDialog):
         from kipart_search.core.license import License
         lic = License.instance()
         lic.deactivate()
-        self._deactivate_btn.setVisible(False)
-        self._update_tier_label(lic)
+        self._update_license_ui(lic)
         self._license_status.setText("License deactivated")
         self._license_status.setStyleSheet("color: #6b7280;")
         self.license_changed.emit()

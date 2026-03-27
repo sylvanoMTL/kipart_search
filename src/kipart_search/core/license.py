@@ -172,6 +172,14 @@ class License:
     def is_pro(self) -> bool:
         return self._tier == "pro"
 
+    @property
+    def masked_key(self) -> str:
+        """Return the stored key with all but the last 4 characters masked."""
+        key = self._license_key
+        if not key or len(key) <= 4:
+            return key or ""
+        return "\u2022" * (len(key) - 4) + key[-4:]
+
     def has(self, feature: str) -> bool:
         """Return True if *feature* is available in the current tier."""
         if feature in FREE_FEATURES:
