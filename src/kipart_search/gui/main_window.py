@@ -455,6 +455,53 @@ class MainWindow(QMainWindow):
             return True
         return super().eventFilter(obj, event)
 
+    def _show_update_failed_dialog(self):
+        """Show a non-modal dialog when the app was relaunched after a failed update."""
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setWindowTitle("Update Failed")
+        msg.setText(
+            "Update could not be completed.\n"
+            "The installer may need administrator permission."
+        )
+        try_again = msg.addButton("Try Again", QMessageBox.ButtonRole.AcceptRole)
+        download_btn = msg.addButton("Download Manually", QMessageBox.ButtonRole.HelpRole)
+        msg.addButton(QMessageBox.StandardButton.Close)
+
+        def _on_clicked(button):
+            if button == try_again:
+                info = getattr(self, "_update_info", None)
+                if info is None:
+                    from kipart_search.core.update_check import load_cached_update
+                    from kipart_search.core.paths import config_path
+                    info = load_cached_update(config_path())
+                if info:
+                    from kipart_search.gui.update_dialog import UpdateDialog
+                    dlg = UpdateDialog(info, parent=self)
+                    dlg.exec()
+                else:
+                    QMessageBox.information(
+                        self, "No Update Info",
+                        "Could not find update information.\n"
+                        "The app will check for updates again automatically.",
+                    )
+            elif button == download_btn:
+                from PySide6.QtCore import QUrl
+                from PySide6.QtGui import QDesktopServices
+                release_url = getattr(self, "_update_release_url", None)
+                if release_url:
+                    QDesktopServices.openUrl(QUrl(release_url))
+                else:
+                    QDesktopServices.openUrl(
+                        QUrl("https://github.com/MecaFrog/kipart-search/releases/latest")
+                    )
+
+        msg.buttonClicked.connect(_on_clicked)
+        msg.setModal(False)
+        msg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        msg.show()
+        self._update_failed_msg = msg  # prevent GC
+
     def _on_auto_connect_result(self, ok: bool, msg: str):
         """Handle background KiCad auto-connect completion."""
         if ok:
@@ -1878,7 +1925,7 @@ def _create_splash(app: QApplication) -> "QSplashScreen":
     return splash
 
 
-def run_app() -> int:
+def run_app(update_failed: bool = False) -> int:
     """Launch the PySide6 application."""
     app = QApplication(sys.argv)
     app.setApplicationName("KiPart Search")
@@ -1891,5 +1938,8 @@ def run_app() -> int:
     window = MainWindow()
     window.show()
     splash.finish(window)
+
+    if update_failed:
+        window._show_update_failed_dialog()
 
     return app.exec()

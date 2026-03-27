@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-27  # Story 8.6 done
+last_updated: 2026-03-27  # Story 8.7 code review done
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -110,8 +110,8 @@ development_status:
   8-4-extend-ci-for-inno-setup-and-release-assets: done
   8-5-in-app-version-check: done
   8-6-update-dialog-with-download: done
-  8-7-update-shim-and-auto-install: backlog
-  8-8-update-failure-resilience: backlog
+  8-7-update-shim-and-auto-install: done
+  8-8-update-failure-resilience: ready-for-dev
   epic-8-retrospective: optional
 
   # Epic 9: User Verification & Per-Project State

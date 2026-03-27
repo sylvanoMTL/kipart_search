@@ -8,9 +8,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QTextEdit,
@@ -19,6 +21,12 @@ from PySide6.QtWidgets import (
 
 from kipart_search import __version__
 from kipart_search.core.update_check import UpdateInfo
+from kipart_search.core.update_shim import (
+    get_app_exe_path,
+    is_compiled_build,
+    launch_shim_and_exit,
+    write_update_shim,
+)
 
 
 class _DownloadWorker(QThread):
@@ -141,6 +149,12 @@ class UpdateDialog(QDialog):
 
         # Post-download buttons (hidden by default)
         self._post_row = QHBoxLayout()
+
+        self._install_now_btn = QPushButton("Install Now")
+        self._install_now_btn.setVisible(False)
+        self._install_now_btn.clicked.connect(self._on_install_now)
+        self._post_row.addWidget(self._install_now_btn)
+
         self._open_folder_btn = QPushButton("Open Folder")
         self._open_folder_btn.setVisible(False)
         self._open_folder_btn.clicked.connect(self._on_open_folder)
@@ -218,6 +232,11 @@ class UpdateDialog(QDialog):
         self._update_btn.setVisible(False)
         self._remind_btn.setVisible(False)
         self._skip_btn.setVisible(False)
+
+        # Show "Install Now" only for compiled builds (Inno Setup installs)
+        if is_compiled_build():
+            self._install_now_btn.setVisible(True)
+
         self._open_folder_btn.setVisible(True)
         self._close_btn.setVisible(True)
 
@@ -240,6 +259,43 @@ class UpdateDialog(QDialog):
             self._post_row.insertWidget(0, self._fallback_btn)
         self._fallback_btn.setVisible(True)
         self._close_btn.setVisible(True)
+
+    def _on_install_now(self):
+        """Confirm UAC warning, write the update shim, launch it, and quit."""
+        reply = QMessageBox.information(
+            self,
+            "Install Update",
+            "Windows will ask for permission to install.\nClick Yes to continue.",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+        )
+        if reply != QMessageBox.StandardButton.Ok:
+            return
+
+        installer = Path(self._downloaded_path)
+        app_exe = get_app_exe_path()
+        try:
+            shim = write_update_shim(installer, app_exe)
+            ok = launch_shim_and_exit(shim)
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Install Failed",
+                f"Could not start the installer:\n{exc}\n\n"
+                "Use 'Open Folder' to run the installer manually.",
+            )
+            return
+
+        if not ok:
+            QMessageBox.warning(
+                self,
+                "Install Failed",
+                "Could not launch the update process.\n\n"
+                "Use 'Open Folder' to run the installer manually.",
+            )
+            return
+
+        # Shim launched — quit the app so the installer can proceed
+        QApplication.quit()
 
     def _on_open_folder(self):
         """Open the folder containing the downloaded installer."""
