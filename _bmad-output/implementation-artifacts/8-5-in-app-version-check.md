@@ -1,6 +1,6 @@
 # Story 8.5: In-App Version Check
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -28,35 +28,35 @@ so that I know when to update without manually checking GitHub.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `core/update_check.py` module (AC: #1, #4, #5, #6, #7)
-  - [ ] 1.1 Create `UpdateInfo` dataclass: `latest_version: str`, `release_url: str`, `release_notes: str`, `check_time: float`
-  - [ ] 1.2 Implement `check_for_update(current_version: str) -> UpdateInfo | None` — calls GitHub API, compares versions, returns `UpdateInfo` if newer, `None` if current or error
-  - [ ] 1.3 Implement `_compare_versions(current: str, latest: str) -> bool` — returns True if latest is newer, using `packaging.version` or simple tuple comparison
-  - [ ] 1.4 Implement `load_cached_update(config_path: Path) -> UpdateInfo | None` — reads from config.json `update_check` key
-  - [ ] 1.5 Implement `save_update_cache(config_path: Path, info: UpdateInfo) -> None` — writes to config.json `update_check` key without overwriting other settings
-  - [ ] 1.6 Implement `should_check(config_path: Path, ttl_hours: int = 24) -> bool` — returns True if no cache or cache is expired
+- [x] Task 1: Create `core/update_check.py` module (AC: #1, #4, #5, #6, #7)
+  - [x] 1.1 Create `UpdateInfo` dataclass: `latest_version: str`, `release_url: str`, `release_notes: str`, `check_time: float`
+  - [x] 1.2 Implement `check_for_update(current_version: str) -> UpdateInfo | None` — calls GitHub API, compares versions, returns `UpdateInfo` if newer, `None` if current or error
+  - [x] 1.3 Implement `_compare_versions(current: str, latest: str) -> bool` — returns True if latest is newer, using `packaging.version` or simple tuple comparison
+  - [x] 1.4 Implement `load_cached_update(config_path: Path) -> UpdateInfo | None` — reads from config.json `update_check` key
+  - [x] 1.5 Implement `save_update_cache(config_path: Path, info: UpdateInfo) -> None` — writes to config.json `update_check` key without overwriting other settings
+  - [x] 1.6 Implement `should_check(config_path: Path, ttl_hours: int = 24) -> bool` — returns True if no cache or cache is expired
 
-- [ ] Task 2: Create `UpdateCheckWorker` QThread in `main_window.py` (AC: #1, #2)
-  - [ ] 2.1 Add `UpdateCheckWorker(QThread)` with `result = Signal(object)` — emits `UpdateInfo | None`
-  - [ ] 2.2 Worker calls `should_check()`, exits early if cache is fresh, otherwise calls `check_for_update()` and `save_update_cache()`
-  - [ ] 2.3 Worker has 5-second timeout on the httpx request
+- [x] Task 2: Create `UpdateCheckWorker` QThread in `main_window.py` (AC: #1, #2)
+  - [x] 2.1 Add `UpdateCheckWorker(QThread)` with `result = Signal(object)` — emits `UpdateInfo | None`
+  - [x] 2.2 Worker calls `should_check()`, exits early if cache is fresh, otherwise calls `check_for_update()` and `save_update_cache()`
+  - [x] 2.3 Worker has 5-second timeout on the httpx request
 
-- [ ] Task 3: Integrate into startup sequence (AC: #1, #2, #3)
-  - [ ] 3.1 In `showEvent()`, after the KiCad auto-connect worker starts, create and start `UpdateCheckWorker`
-  - [ ] 3.2 Connect worker `result` signal to `_on_update_check_result(info)` slot
-  - [ ] 3.3 In `_on_update_check_result()`: if `info` is not None, show a clickable label in the status bar
+- [x] Task 3: Integrate into startup sequence (AC: #1, #2, #3)
+  - [x] 3.1 In `showEvent()`, after the KiCad auto-connect worker starts, create and start `UpdateCheckWorker`
+  - [x] 3.2 Connect worker `result` signal to `_on_update_check_result(info)` slot
+  - [x] 3.3 In `_on_update_check_result()`: if `info` is not None, show a clickable label in the status bar
 
-- [ ] Task 4: Status bar notification (AC: #3)
-  - [ ] 4.1 Add an `_update_available_label` to the status bar (permanent widget, right-aligned, between license badge and action label)
-  - [ ] 4.2 Style: amber/highlight text "Update available: v{version}" — clickable (opens GitHub release URL in browser)
-  - [ ] 4.3 Hidden by default, shown only when update is available
-  - [ ] 4.4 Use `QDesktopServices.openUrl()` for the click action
+- [x] Task 4: Status bar notification (AC: #3)
+  - [x] 4.1 Add an `_update_available_label` to the status bar (permanent widget, right-aligned, between license badge and action label)
+  - [x] 4.2 Style: amber/highlight text "Update available: v{version}" — clickable (opens GitHub release URL in browser)
+  - [x] 4.3 Hidden by default, shown only when update is available
+  - [x] 4.4 Use `QDesktopServices.openUrl()` for the click action
 
-- [ ] Task 5: Tests (AC: #1-#7)
-  - [ ] 5.1 Unit tests for `_compare_versions()` — same version, older, newer, pre-release
-  - [ ] 5.2 Unit tests for `should_check()` — no cache, fresh cache, expired cache
-  - [ ] 5.3 Unit tests for `load_cached_update()` / `save_update_cache()` — round-trip, missing file, corrupted JSON
-  - [ ] 5.4 Unit test for `check_for_update()` — mock httpx response for success, 404 (no releases), timeout, 403
+- [x] Task 5: Tests (AC: #1-#7)
+  - [x] 5.1 Unit tests for `_compare_versions()` — same version, older, newer, pre-release
+  - [x] 5.2 Unit tests for `should_check()` — no cache, fresh cache, expired cache
+  - [x] 5.3 Unit tests for `load_cached_update()` / `save_update_cache()` — round-trip, missing file, corrupted JSON
+  - [x] 5.4 Unit test for `check_for_update()` — mock httpx response for success, 404 (no releases), timeout, 403
 
 ## Dev Notes
 
@@ -235,10 +235,26 @@ Catch `httpx.HTTPError` and `httpx.TimeoutException` — return None on any fail
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (1M context)
 
 ### Debug Log References
 
 ### Completion Notes List
 
+- ✅ Task 1: Created `core/update_check.py` with `UpdateInfo` dataclass, `check_for_update()`, `_compare_versions()`, `load_cached_update()`, `save_update_cache()`, `should_check()` — all zero GUI deps, uses httpx with 5s timeout
+- ✅ Task 2: Created `_UpdateCheckWorker(QThread)` in main_window.py — checks cache freshness, calls GitHub API only if expired, emits `UpdateInfo | None`
+- ✅ Task 3: Integrated into `showEvent()` startup sequence — worker starts after KiCad auto-connect, non-blocking
+- ✅ Task 4: Added amber clickable `_update_label` in status bar between license badge and action label — hidden by default, opens release URL via `QDesktopServices.openUrl()`
+- ✅ Task 5: 21 unit tests covering version comparison, cache round-trip, TTL expiry, corrupted JSON, httpx mocked success/timeout/403/404 — all pass
+- ℹ️ Pre-existing crash in `test_context_menus.py::TestAccessibilityLabels::test_status_bar_accessible_names` (access violation in VerifyPanel init) — confirmed present on clean main branch before any changes
+
+### Change Log
+
+- 2026-03-27: Implemented Story 8.5 — in-app version check with GitHub API, 24h cache, status bar notification
+- 2026-03-27: Code review — fixed 3 issues (H1: cache staleness on upgrade, M1: monkey-patched mousePressEvent → eventFilter, M2: worker cleanup on close)
+
 ### File List
+
+- `src/kipart_search/core/update_check.py` (new)
+- `src/kipart_search/gui/main_window.py` (modified)
+- `tests/core/test_update_check.py` (new)

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-26  # Story 8.5 context created
+last_updated: 2026-03-27  # Story 8.5 done
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -108,7 +108,7 @@ development_status:
   8-2-inno-setup-installer-script: done
   8-3-automated-release-build-script: done
   8-4-extend-ci-for-inno-setup-and-release-assets: done
-  8-5-in-app-version-check: ready-for-dev
+  8-5-in-app-version-check: done
   8-6-update-dialog-with-download: backlog
   8-7-update-shim-and-auto-install: backlog
   8-8-update-failure-resilience: backlog

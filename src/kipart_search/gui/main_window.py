@@ -210,6 +210,32 @@ class _ConnectWorker(QThread):
         self.finished.emit(ok, msg)
 
 
+class _UpdateCheckWorker(QThread):
+    """Background thread for checking GitHub for app updates."""
+
+    result = Signal(object)  # UpdateInfo | None
+
+    def run(self):
+        from kipart_search.core.update_check import (
+            should_check, check_for_update, save_update_cache, load_cached_update,
+            _compare_versions,
+        )
+        from kipart_search.core.paths import config_path
+
+        cfg = config_path()
+        if not should_check(cfg):
+            cached = load_cached_update(cfg)
+            # Invalidate cache if user upgraded past the cached version
+            if cached and not _compare_versions(__version__, cached.latest_version):
+                cached = None
+            self.result.emit(cached)
+            return
+        info = check_for_update(__version__)
+        if info:
+            save_update_cache(cfg, info)
+        self.result.emit(info)
+
+
 class MainWindow(QMainWindow):
     """KiPart Search main window."""
 
@@ -348,9 +374,21 @@ class MainWindow(QMainWindow):
         self._action_label.setAccessibleName("Current action")
         self._license_badge = QLabel()
         self._license_badge.setAccessibleName("License tier")
+        self._update_label = QLabel()
+        self._update_label.setVisible(False)
+        self._update_label.setCursor(Qt.PointingHandCursor)
+        self._update_label.setStyleSheet(
+            "QLabel { color: #b8860b; padding: 0 6px; }"
+            "QLabel:hover { text-decoration: underline; }"
+        )
+        self._update_label.setAccessibleName("Update notification")
+        self._update_release_url = ""
+        self._update_label.installEventFilter(self)
+
         self.status_bar.addWidget(self._mode_label)
         self.status_bar.addWidget(self._sources_label, 1)
         self.status_bar.addPermanentWidget(self._license_badge)
+        self.status_bar.addPermanentWidget(self._update_label)
         self.status_bar.addPermanentWidget(self._action_label)
         self.setStatusBar(self.status_bar)
 
@@ -387,6 +425,28 @@ class MainWindow(QMainWindow):
             self._connect_worker = _ConnectWorker(self._bridge)
             self._connect_worker.finished.connect(self._on_auto_connect_result)
             self._connect_worker.start()
+            # Auto-check for app updates (non-blocking, cached 24h)
+            self._update_check_worker = _UpdateCheckWorker()
+            self._update_check_worker.result.connect(self._on_update_check_result)
+            self._update_check_worker.start()
+
+    def _on_update_check_result(self, info):
+        """Show status bar notification if a newer version is available."""
+        if info is None:
+            return
+        self._update_release_url = info.release_url
+        self._update_label.setText(f"  Update available: v{info.latest_version}  ")
+        self._update_label.setVisible(True)
+
+    def eventFilter(self, obj, event):
+        """Handle click on the update notification label."""
+        if obj is self._update_label and event.type() == event.Type.MouseButtonPress:
+            from PySide6.QtCore import QUrl
+            from PySide6.QtGui import QDesktopServices
+            if self._update_release_url:
+                QDesktopServices.openUrl(QUrl(self._update_release_url))
+            return True
+        return super().eventFilter(obj, event)
 
     def _on_auto_connect_result(self, ok: bool, msg: str):
         """Handle background KiCad auto-connect completion."""
@@ -402,9 +462,11 @@ class MainWindow(QMainWindow):
         settings = QSettings("kipart-search", "kipart-search")
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("windowState", self.saveState(1))
-        # Wait for background connect worker if still running
+        # Wait for background workers if still running
         if self._connect_worker is not None and self._connect_worker.isRunning():
             self._connect_worker.wait(3000)  # 3s timeout
+        if hasattr(self, "_update_check_worker") and self._update_check_worker.isRunning():
+            self._update_check_worker.wait(2000)
         if self._cache:
             self._cache.close()
         event.accept()
