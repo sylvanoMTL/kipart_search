@@ -284,10 +284,18 @@ class SourcePreferencesDialog(QDialog):
         from kipart_search.core.license import License
         lic = License.instance()
 
-        # Tier badge — fixed width so it doesn't jump on toggle
-        self._tier_label = QLabel()
-        self._tier_label.setText("Pro (licensed)")
-        self._tier_label.setFixedWidth(self._tier_label.sizeHint().width() + 24)
+        # Tier badge — fixed size based on the longer text so it doesn't
+        # resize when toggling between Free and Pro
+        self._tier_label = QLabel("Pro (licensed)")
+        self._tier_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Measure with styling applied, then lock the size
+        base_style = (
+            "color: white; padding: 4px 12px; "
+            "border-radius: 8px; font-weight: bold; font-size: 12px;"
+        )
+        self._tier_label.setStyleSheet(f"background-color: #2d7d46; {base_style}")
+        self._tier_label.adjustSize()
+        self._tier_label.setFixedSize(self._tier_label.size())
         license_layout.addWidget(self._tier_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         # Single key row: [QLineEdit] [eye] [Activate | Deactivate]
