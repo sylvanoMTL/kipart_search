@@ -112,16 +112,30 @@ class _SourceRow(QWidget):
 
         if registry_entry["needs_key"]:
             for kf in registry_entry["key_fields"]:
+                row = QHBoxLayout()
                 line_edit = QLineEdit()
                 line_edit.setEchoMode(QLineEdit.EchoMode.Password)
                 line_edit.setPlaceholderText(f"Enter {kf.replace('_', ' ')}")
-                # Pre-fill from keyring (not env vars — those are runtime)
                 existing = config_manager.get_credential(config.source_name, kf)
                 if existing:
                     line_edit.setText(existing)
                 self._key_inputs[kf] = line_edit
+                row.addWidget(line_edit)
+
+                eye_btn = QPushButton("\U0001F441")
+                eye_btn.setFixedWidth(32)
+                eye_btn.setToolTip("Show / hide")
+                eye_btn.setCheckable(True)
+                eye_btn.toggled.connect(
+                    lambda checked, le=line_edit: le.setEchoMode(
+                        QLineEdit.EchoMode.Normal if checked
+                        else QLineEdit.EchoMode.Password
+                    )
+                )
+                row.addWidget(eye_btn)
+
                 label = kf.replace("_", " ").title()
-                config_layout.addRow(f"{label}:", line_edit)
+                config_layout.addRow(f"{label}:", row)
 
             # Test Connection button + status
             test_row = QHBoxLayout()
@@ -267,61 +281,45 @@ class SourcePreferencesDialog(QDialog):
         license_group = QGroupBox("License")
         license_layout = QVBoxLayout(license_group)
 
-        # Tier display
         from kipart_search.core.license import License
         lic = License.instance()
 
+        # Tier badge — fixed width so it doesn't jump on toggle
         self._tier_label = QLabel()
-        # Fix width to the longer text so toggling tiers doesn't resize
-        self._tier_label.setText("  Pro (licensed)  ")
+        self._tier_label.setText("Pro (licensed)")
         self._tier_label.setFixedWidth(self._tier_label.sizeHint().width() + 24)
-        self._update_tier_label(lic)
         license_layout.addWidget(self._tier_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
-        # Key input + activate button (shown when free)
-        self._key_input_row = QHBoxLayout()
+        # Single key row: [QLineEdit] [eye] [Activate | Deactivate]
+        key_row = QHBoxLayout()
+
         self._license_input = QLineEdit()
         self._license_input.setEchoMode(QLineEdit.EchoMode.Password)
         self._license_input.setPlaceholderText("Enter license key")
-        self._key_input_row.addWidget(self._license_input)
+        key_row.addWidget(self._license_input)
 
-        self._activate_btn = QPushButton("Activate")
-        self._activate_btn.clicked.connect(self._on_activate_license)
-        self._key_input_row.addWidget(self._activate_btn)
-
-        # Container widget so we can show/hide the whole row
-        self._key_input_widget = QWidget()
-        self._key_input_widget.setLayout(self._key_input_row)
-        license_layout.addWidget(self._key_input_widget)
-
-        # Key display + eye toggle + deactivate (shown when pro)
-        self._key_display_row = QHBoxLayout()
-        self._key_display_field = QLineEdit()
-        self._key_display_field.setReadOnly(True)
-        self._key_display_field.setEchoMode(QLineEdit.EchoMode.Password)
-        self._key_display_row.addWidget(self._key_display_field)
-
-        self._eye_btn = QPushButton("\U0001F441")  # eye icon
+        self._eye_btn = QPushButton("\U0001F441")
         self._eye_btn.setFixedWidth(32)
         self._eye_btn.setToolTip("Show / hide license key")
         self._eye_btn.setCheckable(True)
         self._eye_btn.toggled.connect(self._on_toggle_key_visibility)
-        self._key_display_row.addWidget(self._eye_btn)
+        key_row.addWidget(self._eye_btn)
+
+        self._activate_btn = QPushButton("Activate")
+        self._activate_btn.clicked.connect(self._on_activate_license)
+        key_row.addWidget(self._activate_btn)
 
         self._deactivate_btn = QPushButton("Deactivate")
         self._deactivate_btn.clicked.connect(self._on_deactivate_license)
-        self._key_display_row.addWidget(self._deactivate_btn)
+        key_row.addWidget(self._deactivate_btn)
 
-        self._key_display_widget = QWidget()
-        self._key_display_widget.setLayout(self._key_display_row)
-        license_layout.addWidget(self._key_display_widget)
-
-        # Set initial visibility
-        self._update_license_ui(lic)
+        license_layout.addLayout(key_row)
 
         # Validation status label
         self._license_status = QLabel()
         license_layout.addWidget(self._license_status)
+
+        self._update_license_ui(lic)
 
         layout.addWidget(license_group)
 
@@ -372,45 +370,45 @@ class SourcePreferencesDialog(QDialog):
 
     # ── License methods ───────────────────────────────────────────
 
-    def _update_tier_label(self, lic) -> None:
-        """Update the tier display label."""
+    def _update_license_ui(self, lic) -> None:
+        """Update all license UI elements for the current tier."""
+        # Tier badge — same label, different text and colour
         base_style = (
             "color: white; padding: 4px 12px; "
             "border-radius: 8px; font-weight: bold; font-size: 12px;"
         )
         if lic.is_pro:
             self._tier_label.setText("Pro (licensed)")
-            self._tier_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._tier_label.setStyleSheet(
-                f"background-color: #2d7d46; {base_style}"
-            )
+            self._tier_label.setStyleSheet(f"background-color: #2d7d46; {base_style}")
         else:
             self._tier_label.setText("Free")
-            self._tier_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._tier_label.setStyleSheet(
-                f"background-color: #6b7280; {base_style}"
-            )
+            self._tier_label.setStyleSheet(f"background-color: #6b7280; {base_style}")
+        self._tier_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-    def _update_license_ui(self, lic) -> None:
-        """Show/hide license UI elements based on current tier."""
-        self._update_tier_label(lic)
+        # Key row: swap between editable input and read-only display
         if lic.is_pro:
-            self._key_input_widget.setVisible(False)
-            self._key_display_widget.setVisible(True)
-            self._key_display_field.setText(lic._license_key or "")
-            self._key_display_field.setEchoMode(QLineEdit.EchoMode.Password)
-            self._eye_btn.setChecked(False)
+            self._license_input.setText(lic._license_key or "")
+            self._license_input.setReadOnly(True)
+            self._activate_btn.setVisible(False)
+            self._deactivate_btn.setVisible(True)
         else:
-            self._key_input_widget.setVisible(True)
-            self._key_display_widget.setVisible(False)
             self._license_input.clear()
+            self._license_input.setReadOnly(False)
+            self._license_input.setPlaceholderText("Enter license key")
+            self._activate_btn.setVisible(True)
+            self._activate_btn.setEnabled(True)
+            self._deactivate_btn.setVisible(False)
+
+        # Reset eye toggle
+        self._eye_btn.setChecked(False)
+        self._license_input.setEchoMode(QLineEdit.EchoMode.Password)
 
     def _on_toggle_key_visibility(self, checked: bool) -> None:
         """Toggle between hidden and visible license key."""
         if checked:
-            self._key_display_field.setEchoMode(QLineEdit.EchoMode.Normal)
+            self._license_input.setEchoMode(QLineEdit.EchoMode.Normal)
         else:
-            self._key_display_field.setEchoMode(QLineEdit.EchoMode.Password)
+            self._license_input.setEchoMode(QLineEdit.EchoMode.Password)
 
     def _on_activate_license(self) -> None:
         """Validate the entered license key in a background thread."""
@@ -429,18 +427,11 @@ class SourcePreferencesDialog(QDialog):
         self._license_worker.start()
 
     def _on_license_result(self, success: bool, message: str) -> None:
-        """Handle license validation result — runs on main thread.
-
-        The worker only validated online; we do the actual activation
-        (tier change, keyring, callbacks) here on the GUI thread.
-        """
-        self._activate_btn.setEnabled(True)
+        """Handle license validation result on the main thread."""
         from kipart_search.core.license import License
         lic = License.instance()
 
         if success:
-            # Complete activation on main thread (safe for GUI callbacks);
-            # skip re-validation — the worker already confirmed the key.
             key = self._license_input.text().strip()
             lic.activate(key, _skip_validation=True)
             self._license_status.setText(f"\u2714 {message}")
@@ -448,6 +439,7 @@ class SourcePreferencesDialog(QDialog):
             self._update_license_ui(lic)
             self.license_changed.emit()
         else:
+            self._activate_btn.setEnabled(True)
             self._license_status.setText(f"\u2718 {message}")
             self._license_status.setStyleSheet("color: red;")
 
