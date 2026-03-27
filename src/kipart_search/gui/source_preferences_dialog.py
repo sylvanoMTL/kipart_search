@@ -291,12 +291,19 @@ class SourcePreferencesDialog(QDialog):
         self._key_input_widget.setLayout(self._key_input_row)
         license_layout.addWidget(self._key_input_widget)
 
-        # Masked key display + deactivate button (shown when pro)
+        # Key display + eye toggle + deactivate (shown when pro)
         self._key_display_row = QHBoxLayout()
-        self._masked_label = QLabel()
-        self._masked_label.setStyleSheet("font-family: monospace; font-size: 12px;")
-        self._key_display_row.addWidget(self._masked_label)
-        self._key_display_row.addStretch()
+        self._key_display_field = QLineEdit()
+        self._key_display_field.setReadOnly(True)
+        self._key_display_field.setEchoMode(QLineEdit.EchoMode.Password)
+        self._key_display_row.addWidget(self._key_display_field)
+
+        self._eye_btn = QPushButton("\U0001F441")  # eye icon
+        self._eye_btn.setFixedWidth(32)
+        self._eye_btn.setToolTip("Show / hide license key")
+        self._eye_btn.setCheckable(True)
+        self._eye_btn.toggled.connect(self._on_toggle_key_visibility)
+        self._key_display_row.addWidget(self._eye_btn)
 
         self._deactivate_btn = QPushButton("Deactivate")
         self._deactivate_btn.clicked.connect(self._on_deactivate_license)
@@ -383,11 +390,20 @@ class SourcePreferencesDialog(QDialog):
         if lic.is_pro:
             self._key_input_widget.setVisible(False)
             self._key_display_widget.setVisible(True)
-            self._masked_label.setText(lic.masked_key)
+            self._key_display_field.setText(lic._license_key or "")
+            self._key_display_field.setEchoMode(QLineEdit.EchoMode.Password)
+            self._eye_btn.setChecked(False)
         else:
             self._key_input_widget.setVisible(True)
             self._key_display_widget.setVisible(False)
             self._license_input.clear()
+
+    def _on_toggle_key_visibility(self, checked: bool) -> None:
+        """Toggle between hidden and visible license key."""
+        if checked:
+            self._key_display_field.setEchoMode(QLineEdit.EchoMode.Normal)
+        else:
+            self._key_display_field.setEchoMode(QLineEdit.EchoMode.Password)
 
     def _on_activate_license(self) -> None:
         """Validate the entered license key in a background thread."""
