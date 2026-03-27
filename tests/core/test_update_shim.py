@@ -82,6 +82,21 @@ class TestWriteUpdateShim:
         content = shim.read_text(encoding="utf-8")
         assert "--update-failed" in content
 
+    def test_shim_escapes_percent_in_paths(self, tmp_path):
+        installer = tmp_path / "setup.exe"
+        installer.touch()
+        # Simulate a path containing '%' (e.g. unusual user profile dir)
+        app_exe = Path(r"C:\Users\100%dev\KiPart Search\kipart-search.exe")
+
+        with patch("kipart_search.core.update_shim.tempfile") as mock_temp:
+            mock_temp.gettempdir.return_value = str(tmp_path)
+            shim = write_update_shim(installer, app_exe)
+
+        content = shim.read_text(encoding="utf-8")
+        # '%' should be escaped to '%%' so cmd.exe doesn't interpret it
+        assert "100%%dev" in content
+        assert "100%dev" not in content.replace("100%%dev", "")
+
 
 class TestGetAppExePath:
     """Test get_app_exe_path() returns a Path."""

@@ -28,6 +28,7 @@ for /L %%i in (1,1,30) do (
     if ERRORLEVEL 1 goto :install
     timeout /t 1 /nobreak >NUL
 )
+:: Timed out waiting — try installing anyway (installer will fail if exe is locked)
 
 :install
 :: Run installer silently
@@ -96,10 +97,14 @@ def write_update_shim(installer_path: Path, app_exe: Path) -> Path:
     failure, (4) deletes itself.
     """
     install_dir = app_exe.parent
+    # Escape '%' in paths so cmd.exe doesn't interpret them as variables
+    def _bat_escape(p: str) -> str:
+        return p.replace("%", "%%")
+
     content = _SHIM_TEMPLATE.format(
-        installer_path=str(installer_path),
-        install_dir=str(install_dir),
-        old_exe_path=str(app_exe),
+        installer_path=_bat_escape(str(installer_path)),
+        install_dir=_bat_escape(str(install_dir)),
+        old_exe_path=_bat_escape(str(app_exe)),
     )
     shim_path = Path(tempfile.gettempdir()) / "kipart-search-update.bat"
     shim_path.write_text(content, encoding="utf-8")

@@ -286,6 +286,7 @@ None — clean implementation, no issues encountered.
 ### Change Log
 
 - 2026-03-27: Implemented Story 8.7 — update shim and auto-install (all 5 tasks, 12 tests)
+- 2026-03-27: Code review fixes — (1) Added explicit timeout comment in .bat shim so silent fallthrough after 30s is documented, (2) Escape `%` in paths before formatting to prevent cmd.exe variable interpolation, (3) Added test for path escaping
 
 ### File List
 
