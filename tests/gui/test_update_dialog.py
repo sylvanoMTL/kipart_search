@@ -63,20 +63,26 @@ class TestDownloadWorkerQuarantine:
             patch("time.sleep"),  # don't actually sleep
         ):
             # After rename, make the file disappear (simulating AV quarantine)
+            original_rename = Path.rename
             original_exists = Path.exists
+            renamed = False
 
-            call_count = 0
+            def fake_rename(self, target):
+                nonlocal renamed
+                result = original_rename(self, target)
+                renamed = True
+                return result
+
             def fake_exists(self):
-                nonlocal call_count
-                if self == dest:
-                    call_count += 1
-                    # First call is the pre-rename check, second is the AV check
-                    if call_count <= 1:
-                        return original_exists(self)
-                    return False  # quarantined!
+                # After rename completes, report dest as missing (quarantined)
+                if self == dest and renamed:
+                    return False
                 return original_exists(self)
 
-            with patch.object(Path, "exists", fake_exists):
+            with (
+                patch.object(Path, "rename", fake_rename),
+                patch.object(Path, "exists", fake_exists),
+            ):
                 worker.run()
 
         assert errors == ["quarantine"]

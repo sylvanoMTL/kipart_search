@@ -151,6 +151,7 @@ Claude Opus 4.6 (1M context)
 
 - 2026-03-27: Implemented Story 8.8 — Update Failure Resilience (all 5 tasks, all 7 ACs)
 - 2026-03-27: Code review fixes — (1) Removed partial file cleanup on download error to match AC #3 (leave for startup cleanup), (2) Deduplicated `_on_install_now()` error handling (exception sets `ok = False`, single failure block), (3) Moved `import time` to top of `update_dialog.py`
+- 2026-03-28: Code review — replaced fragile call-counter mock in quarantine test with rename-flag approach for robustness
 
 ### File List
 
