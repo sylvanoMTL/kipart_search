@@ -1,10 +1,12 @@
 """Interactive smoke test runner for Epic 8 — Installer, Auto-Update & Release Pipeline.
 
-Walks through each test step-by-step, collects PASS/FAIL/SKIP and notes,
-then writes a timestamped results file to dist/.
+Displays clear step-by-step instructions.  You execute each step manually
+(commands, GUI actions, Windows checks).  After each test, record the result
+as Pass / Fail / Skip with optional notes.  A timestamped report is saved
+to dist/ on exit — even on Ctrl+C or early quit.
 
 Usage:
-    python smoke_test_epic8.py
+    .env\\Scripts\\python.exe smoke_test_epic8.py
 """
 
 from __future__ import annotations
@@ -14,386 +16,461 @@ from datetime import datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
+# Configuration — adjust these before running
+# ---------------------------------------------------------------------------
+
+# Release A: built by step 1.1 (--bump minor from current version)
+# Release B: built by step 2.1 (--bump patch from Release A)
+# Example: if current version is 0.2.0, Release A = 0.3.0, Release B = 0.3.1
+VER_A = "0.3.0"
+VER_B = "0.3.1"
+REPO = "sylvanoMTL/kipart_search"
+
+
+# ---------------------------------------------------------------------------
 # Test definitions
 # ---------------------------------------------------------------------------
 
-TESTS: list[dict] = [
-    # Phase 1 — Build & Install Release A
-    {
-        "id": "1.1",
-        "phase": "Phase 1 — Build & Install Release A",
-        "name": "Version Bump + Local Build (0.2.0)",
-        "story": "8.3",
-        "steps": [
-            "     (--bump requires --tag, so we bump+tag+build in one command)",
-            "PS> python release.py --tag --bump minor --skip-tests",
-            "PS> Select-String 'version' pyproject.toml                        → expect: version = \"0.2.0\"",
-            "PS> Select-String '__version__' src/kipart_search/__init__.py      → expect: \"0.2.0\"",
-            "PS> Select-String 'MyAppVersion' installer/kipart-search.iss       → expect: \"0.2.0\"",
-            "PS> gh run watch                                                  (wait for CI green checkmark)",
-            "PS> gh release view v0.2.0                                        → shows .exe, .zip, and checksums assets",
-        ],
-    },
-    {
-        "id": "1.2",
-        "phase": "Phase 1 — Build & Install Release A",
-        "name": "Install Release A via Inno Setup",
-        "story": "8.2",
-        "steps": [
-            "     (use CI-built installer from step 1.6, or local from step 1.1)",
-            "PS> Start-Process dist/kipart-search-0.2.0-setup.exe              (Inno Setup wizard opens)",
-            "GUI> Proceed through wizard with defaults → installs to C:\\Program Files\\KiPart Search\\",
-            "GUI> Verify 'Create desktop shortcut' checkbox exists (unchecked by default)",
-            "GUI> Complete installation — wizard closes without error",
-            "WIN> Open Start Menu → verify 'KiPart Search' shortcut exists",
-            "WIN> Settings > Apps > Installed Apps → verify 'KiPart Search' listed, version 0.2.0",
-            "PS> Test-Path 'C:/Program Files/KiPart Search/kipart-search.exe'  → True",
-        ],
-    },
-    {
-        "id": "1.3",
-        "phase": "Phase 1 — Build & Install Release A",
-        "name": "Launch Release A — Version Verification",
-        "story": "8.1, 8.2, 8.3",
-        "steps": [
-            "WIN> Start Menu > click 'KiPart Search'   (no console window should appear)",
-            "GUI> Observe splash screen → expect 'v0.2.0' in grey text",
-            "GUI> Check window title bar → expect 'KiPart Search v0.2.0'",
-            "GUI> Menu: Help > About → expect dialog showing 'v0.2.0'",
-            "GUI> Check status bar at bottom → expect NO 'Update available' message",
-        ],
-    },
-    {
-        "id": "1.4",
-        "phase": "Phase 1 — Build & Install Release A",
-        "name": "platformdirs Data Paths",
-        "story": "8.1",
-        "steps": [
-            "PS> Test-Path \"$env:LOCALAPPDATA/KiPartSearch\"                    → True",
-            "PS> Test-Path \"$env:LOCALAPPDATA/KiPartSearch/config.json\"        → True",
-            "PS> Test-Path \"$env:USERPROFILE/.kipart-search\"                   → should NOT have new files (legacy path)",
-        ],
-    },
-    {
-        "id": "1.5",
-        "phase": "Phase 1 — Build & Install Release A",
-        "name": "Basic Functionality Sanity Check",
-        "story": "all",
-        "steps": [
-            "GUI> Type 'capacitor 100nF' in search bar, press Enter → results appear in table",
-            "GUI> Click any result row → Detail panel (right side) shows part info",
-            "GUI> Check Log panel (bottom) → timestamped search messages visible",
-            "GUI> Menu: Edit > Preferences → dialog opens without errors, close it",
-            "GUI> Close app (X button), relaunch from Start Menu → window layout restored",
-        ],
-    },
-    {
-        "id": "1.6",
-        "phase": "Phase 1 — Build & Install Release A",
-        "name": "Download Release A Installer from GitHub",
-        "story": "8.4",
-        "steps": [
-            "     (CI built the installer in step 1.1 — download it now)",
-            "PS> gh release download v0.2.0 --dir dist/ --pattern '*setup.exe'",
-            "PS> ls dist/kipart-search-0.2.0-setup.exe                         → file exists",
-        ],
-    },
-    # Phase 2 — Build Release B & Update Detection
-    {
-        "id": "2.1",
-        "phase": "Phase 2 — Build Release B & Update Detection",
-        "name": "Build Release B (0.2.1)",
-        "story": "8.3, 8.4",
-        "steps": [
-            "PS> python release.py --tag --bump patch",
-            "PS> gh run watch                  (wait for CI green checkmark)",
-            "PS> gh release view v0.2.1        → has kipart-search-0.2.1-setup.exe asset",
-        ],
-    },
-    {
-        "id": "2.2",
-        "phase": "Phase 2 — Build Release B & Update Detection",
-        "name": "Update Check on Startup",
-        "story": "8.5",
-        "steps": [
-            "PS> python -c \"import json,pathlib,os; p=pathlib.Path(os.environ['LOCALAPPDATA'])/'KiPartSearch'/'config.json'; d=json.loads(p.read_text()); d.pop('update_check',None); p.write_text(json.dumps(d,indent=2))\"",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "GUI> Wait 5-10 seconds → status bar shows 'Update available: v0.2.1'",
-            "PS> Get-Content \"$env:LOCALAPPDATA/KiPartSearch/config.json\"      → update_check section present with latest_version, asset_url, check_time",
-        ],
-    },
-    {
-        "id": "2.3",
-        "phase": "Phase 2 — Build Release B & Update Detection",
-        "name": "Full Download & Install (Happy Path)",
-        "story": "8.6, 8.7",
-        "steps": [
-            "GUI> Click 'Update available: v0.2.1' text in status bar → UpdateDialog opens",
-            "GUI> Verify header: 'Version 0.2.1 is available (you have 0.2.0)'",
-            "GUI> Verify release notes are shown in text area",
-            "GUI> Verify 3 buttons: [Update Now] [Remind Me Later] [Skip This Version]",
-            "GUI> Click 'Update Now' → progress bar appears, 'Downloading... X.X / Y.Y MB'",
-            "GUI> Wait for download to finish → status shows path in $env:TEMP, buttons become [Install Now] [Open Folder] [Close]",
-            "GUI> Click 'Install Now' → dialog: 'Windows will ask for permission...' → click OK",
-            "GUI> App window closes → Windows UAC prompt appears → click Yes",
-            "     (silent install runs, wait 10-30 seconds...)",
-            "GUI> App relaunches automatically → splash shows 'v0.2.1'",
-            "GUI> Window title: 'KiPart Search v0.2.1'",
-            "GUI> Help > About: shows 'v0.2.1'",
-            "WIN> Settings > Apps: 'KiPart Search' version 0.2.1",
-        ],
-    },
-    {
-        "id": "2.4",
-        "phase": "Phase 2 — Build Release B & Update Detection",
-        "name": "Post-Update Functionality",
-        "story": "8.7",
-        "steps": [
-            "GUI> Search 'capacitor 100nF' → results returned normally",
-            "GUI> Verify window layout is same as before update (docks, sizes)",
-            "PS> Get-Content \"$env:LOCALAPPDATA/KiPartSearch/config.json\"      → file exists, not reset",
-            "PS> Test-Path \"$env:LOCALAPPDATA/KiPartSearch/cache.db\"           → True (preserved)",
-            "GUI> Edit > Preferences → API keys still accessible",
-            "GUI> Status bar → NO 'Update available' (already on latest)",
-        ],
-    },
-    # Phase 3 — Alternative Update Flows
-    {
-        "id": "3.1",
-        "phase": "Phase 3 — Alternative Update Flows",
-        "name": "Remind Me Later",
-        "story": "8.6",
-        "steps": [
-            "SETUP> Reinstall Release A:",
-            "PS> Start-Process dist/kipart-search-0.2.0-setup.exe",
-            "SETUP> Clear update cache:",
-            "PS> python -c \"import json,pathlib,os; p=pathlib.Path(os.environ['LOCALAPPDATA'])/'KiPartSearch'/'config.json'; d=json.loads(p.read_text()); d.pop('update_check',None); p.write_text(json.dumps(d,indent=2))\"",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "GUI> Wait for 'Update available: v0.2.1' → click it → UpdateDialog opens",
-            "GUI> Click 'Remind Me Later' → dialog closes, app continues",
-            "GUI> Close app",
-            "PS> python -c \"import json,pathlib,os; p=pathlib.Path(os.environ['LOCALAPPDATA'])/'KiPartSearch'/'config.json'; d=json.loads(p.read_text()); d['update_check']['check_time']=0; p.write_text(json.dumps(d,indent=2))\"",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "GUI> Wait → 'Update available: v0.2.1' appears again (cache expired)",
-        ],
-    },
-    {
-        "id": "3.2",
-        "phase": "Phase 3 — Alternative Update Flows",
-        "name": "Skip This Version",
-        "story": "8.6",
-        "steps": [
-            "GUI> Click 'Update available: v0.2.1' → UpdateDialog opens",
-            "GUI> Click 'Skip This Version' → dialog closes",
-            "PS> Get-Content \"$env:LOCALAPPDATA/KiPartSearch/config.json\"      → contains \"skipped_version\": \"0.2.1\"",
-            "GUI> Close app",
-            "PS> python -c \"import json,pathlib,os; p=pathlib.Path(os.environ['LOCALAPPDATA'])/'KiPartSearch'/'config.json'; d=json.loads(p.read_text()); d['update_check']['check_time']=0; p.write_text(json.dumps(d,indent=2))\"",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "GUI> Wait 10s → NO 'Update available' notification (v0.2.1 is skipped)",
-            "GUI> Close app",
-            "PS> python -c \"import json,pathlib,os; p=pathlib.Path(os.environ['LOCALAPPDATA'])/'KiPartSearch'/'config.json'; d=json.loads(p.read_text()); d['update_check']['skipped_version']='0.2.0'; d['update_check']['check_time']=0; p.write_text(json.dumps(d,indent=2))\"",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "GUI> Wait → 'Update available: v0.2.1' appears (different version than skipped)",
-        ],
-    },
-    # Phase 4 — Failure & Resilience
-    {
-        "id": "4.1",
-        "phase": "Phase 4 — Failure & Resilience",
-        "name": "UAC Denial Recovery",
-        "story": "8.8",
-        "steps": [
-            "SETUP> Reinstall Release A:",
-            "PS> Start-Process dist/kipart-search-0.2.0-setup.exe",
-            "SETUP> Clear update cache:",
-            "PS> python -c \"import json,pathlib,os; p=pathlib.Path(os.environ['LOCALAPPDATA'])/'KiPartSearch'/'config.json'; d=json.loads(p.read_text()); d.pop('update_check',None); p.write_text(json.dumps(d,indent=2))\"",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "GUI> Wait for 'Update available: v0.2.1' → click it",
-            "GUI> Click 'Update Now' → wait for download to complete",
-            "GUI> Click 'Install Now' → click OK on UAC warning dialog",
-            "GUI> App closes → Windows UAC prompt appears → click 'No' (DENY)",
-            "     (wait 10-30s for shim to detect failure...)",
-            "GUI> App relaunches → 'Update Failed' dialog appears",
-            "GUI> Verify text: 'Update could not be completed...' with 3 buttons",
-            "GUI> Click 'Try Again' → UpdateDialog opens again with v0.2.1",
-            "GUI> Close all dialogs → app runs normally on v0.2.0",
-        ],
-    },
-    {
-        "id": "4.2",
-        "phase": "Phase 4 — Failure & Resilience",
-        "name": "Download Manually Fallback",
-        "story": "8.8",
-        "steps": [
-            "GUI> From the 'Update Failed' dialog (rerun 4.1 if needed), click 'Download Manually'",
-            "WIN> Default browser opens → URL is https://github.com/sylvanoMTL/kipart_search/releases/tag/v0.2.1",
-        ],
-    },
-    {
-        "id": "4.3",
-        "phase": "Phase 4 — Failure & Resilience",
-        "name": "Offline Graceful Degradation",
-        "story": "8.5",
-        "steps": [
-            "WIN> Disable Wi-Fi / unplug Ethernet (no internet)",
-            "PS> python -c \"import json,pathlib,os; p=pathlib.Path(os.environ['LOCALAPPDATA'])/'KiPartSearch'/'config.json'; d=json.loads(p.read_text()); d.pop('update_check',None); p.write_text(json.dumps(d,indent=2))\"",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "GUI> App starts normally — splash, main window renders",
-            "GUI> Wait 10s → NO 'Update available', NO error dialog, NO error in Log panel",
-            "WIN> Re-enable internet connection",
-        ],
-    },
-    {
-        "id": "4.4",
-        "phase": "Phase 4 — Failure & Resilience",
-        "name": "Partial Download Cleanup",
-        "story": "8.8",
-        "steps": [
-            "PS> New-Item \"$env:TEMP/kipart-search-update-v0.0.1.partial\" -Force",
-            "PS> (Get-Item \"$env:TEMP/kipart-search-update-v0.0.1.partial\").LastWriteTime = (Get-Date).AddDays(-2)",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "PS> Test-Path \"$env:TEMP/kipart-search-update-v0.0.1.partial\"    → False (deleted by app)",
-            "GUI> Close app",
-            "PS> New-Item \"$env:TEMP/kipart-search-update-v0.0.2.partial\" -Force",
-            "     (this one has current timestamp — should NOT be cleaned)",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "PS> Test-Path \"$env:TEMP/kipart-search-update-v0.0.2.partial\"    → True (still exists)",
-            "PS> Remove-Item \"$env:TEMP/kipart-search-update-v0.0.2.partial\"  (cleanup)",
-        ],
-    },
-    {
-        "id": "4.5",
-        "phase": "Phase 4 — Failure & Resilience",
-        "name": "Download Interrupted Mid-Stream",
-        "story": "8.8",
-        "steps": [
-            "GUI> Click update notification → click 'Update Now' → download starts",
-            "GUI> While progress bar is moving: disconnect internet OR close app via Task Manager",
-            "PS> ls \"$env:TEMP/kipart-search-update-v0.2.1*\"                   → .partial file exists (NOT final .exe)",
-            "WIN> Reconnect internet",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "GUI> App starts normally, .partial remains in $env:TEMP",
-            "GUI> Click update notification → 'Update Now' → download retries and completes",
-        ],
-    },
-    # Phase 5 — Edge Cases
-    {
-        "id": "5.1",
-        "phase": "Phase 5 — Edge Cases",
-        "name": "Inno Setup Upgrade Detection",
-        "story": "8.2",
-        "steps": [
-            "     (Release A must be installed for this test)",
-            "PS> Start-Process dist/kipart-search-0.2.1-setup.exe              (or from CI download)",
-            "GUI> Wizard detects existing install → upgrades in-place",
-            "PS> Test-Path 'C:/Program Files/KiPart Search/kipart-search.exe'  → True",
-            "WIN> Settings > Apps → single 'KiPart Search' entry, version 0.2.1",
-        ],
-    },
-    {
-        "id": "5.2",
-        "phase": "Phase 5 — Edge Cases",
-        "name": "Uninstall Preserves User Data",
-        "story": "8.2",
-        "steps": [
-            "PS> ls \"$env:LOCALAPPDATA/KiPartSearch\"                           → note existing files",
-            "WIN> Settings > Apps > KiPart Search > Uninstall → run uninstaller",
-            "PS> Test-Path 'C:/Program Files/KiPart Search'                    → False (removed)",
-            "PS> Test-Path \"$env:LOCALAPPDATA/KiPartSearch/config.json\"        → True (still exists!)",
-            "WIN> Start Menu → 'KiPart Search' shortcut removed",
-        ],
-    },
-    {
-        "id": "5.3",
-        "phase": "Phase 5 — Edge Cases",
-        "name": "Fresh Install After Uninstall",
-        "story": "8.2",
-        "steps": [
-            "PS> Start-Process dist/kipart-search-0.2.1-setup.exe",
-            "GUI> Complete install → launch from Start Menu",
-            "GUI> Splash shows 'v0.2.1'",
-            "GUI> Edit > Preferences → API keys still accessible (keyring survives uninstall)",
-            "GUI> Search works → cache.db still valid",
-        ],
-    },
-    {
-        "id": "5.4",
-        "phase": "Phase 5 — Edge Cases",
-        "name": "Dev Bypass License Activation",
-        "story": "N/A",
-        "steps": [
-            "PS> .env/Scripts/python.exe -m kipart_search",
-            "GUI> Edit > Preferences > License tab > enter 'dev-pro-unlock' > click Activate",
-            "GUI> Expect: Pro activated (if license UI implemented)",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "GUI> Same 'dev-pro-unlock' key → expect: REJECTED in compiled build",
-        ],
-    },
-    {
-        "id": "5.5",
-        "phase": "Phase 5 — Edge Cases",
-        "name": "--update-failed Flag (Manual)",
-        "story": "8.8",
-        "steps": [
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe' --update-failed",
-            "GUI> Main window loads → 'Update Failed' dialog appears immediately",
-            "GUI> Verify 3 buttons: [Try Again] [Download Manually] [Close]",
-            "GUI> Click 'Close' → dialog dismissed, app works normally",
-        ],
-    },
-    {
-        "id": "5.6",
-        "phase": "Phase 5 — Edge Cases",
-        "name": "24-Hour Cache TTL",
-        "story": "8.5",
-        "steps": [
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'          (fresh check happens)",
-            "GUI> Wait for notification or no-notification, then close",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'          (relaunch immediately)",
-            "GUI> Uses cached result — no new GitHub API call (check Log panel)",
-            "GUI> Close app",
-            "PS> python -c \"import json,pathlib,os; p=pathlib.Path(os.environ['LOCALAPPDATA'])/'KiPartSearch'/'config.json'; d=json.loads(p.read_text()); d['update_check']['check_time']=0; p.write_text(json.dumps(d,indent=2))\"",
-            "PS> & 'C:/Program Files/KiPart Search/kipart-search.exe'",
-            "GUI> Fresh API call made → notification shown (if newer version exists)",
-        ],
-    },
-    {
-        "id": "5.7",
-        "phase": "Phase 5 — Edge Cases",
-        "name": "Open Folder Button",
-        "story": "8.6",
-        "steps": [
-            "GUI> Start update download ('Update Now') → wait for completion",
-            "GUI> Click 'Open Folder'",
-            "WIN> Windows Explorer opens $env:TEMP folder with downloaded .exe file selected",
-        ],
-    },
-    # Phase 6 — Release Script
-    {
-        "id": "6.1",
-        "phase": "Phase 6 — Release Script Validation",
-        "name": "Version Gate",
-        "story": "8.3",
-        "steps": [
-            "PS> python release.py                             (no --bump, version matches latest GitHub release)",
-            "     → expect: script exits with error about version already released",
-            "PS> python release.py --skip-version-gate --skip-tests",
-            "     → expect: build proceeds past version check",
-        ],
-    },
-    {
-        "id": "6.2",
-        "phase": "Phase 6 — Release Script Validation",
-        "name": "SHA256 Checksums",
-        "story": "8.3",
-        "steps": [
-            "PS> ls dist/*checksums*                           → checksums file exists",
-            "PS> Get-Content dist/*checksums*                  → note the SHA256 for the -setup.exe",
-            "PS> certutil -hashfile dist/kipart-search-0.2.1-setup.exe SHA256",
-            "     → hash matches the value in the checksums file",
-        ],
-    },
-]
+def _build_tests() -> list[dict]:
+    A = VER_A
+    B = VER_B
+    R = REPO
+
+    return [
+        # ── Phase 1 — Build & Install Release A ──
+        {
+            "id": "1.1",
+            "phase": f"Phase 1 — Build & Install Release A (v{A})",
+            "name": "Tag & Push to Trigger CI Build",
+            "story": "8.3, 8.4",
+            "steps": [
+                "Run in PowerShell:",
+                "  PS> .env\\Scripts\\python.exe release.py --tag --bump minor --skip-tests",
+                f"       → version bumps to {A}, tags v{A}, and pushes to GitHub",
+                "",
+                "Wait for CI build to complete:",
+                f"  PS> gh run watch --repo {R}",
+                "       → wait for green checkmark",
+                "",
+                "Verify release assets on GitHub:",
+                f"  PS> gh release view v{A} --repo {R}",
+                "       → shows .exe, .zip, and checksums assets",
+            ],
+        },
+        {
+            "id": "1.2",
+            "phase": f"Phase 1 — Build & Install Release A (v{A})",
+            "name": "Download & Install Release A",
+            "story": "8.2, 8.4",
+            "steps": [
+                "Download the installer:",
+                f"  PS> gh release download v{A} --repo {R} --dir dist/ --pattern '*setup.exe' --clobber",
+                f"  PS> ls dist\\*{A}*setup.exe",
+                "       → file exists",
+                "",
+                "Run the installer:",
+                f"  PS> Start-Process dist\\kipart-search-{A}-setup.exe",
+                "",
+                "In the Inno Setup wizard:",
+                "  GUI> Proceed with defaults → installs to C:\\Program Files\\KiPart Search\\",
+                "  GUI> Verify 'Create desktop shortcut' checkbox exists",
+                "  GUI> Complete installation — wizard closes without error",
+                "",
+                "Verify installation:",
+                "  WIN> Start Menu → 'KiPart Search' shortcut exists",
+                f"  WIN> Settings > Apps > Installed Apps → 'KiPart Search' listed, version {A}",
+                "  PS> Test-Path 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                "       → True",
+            ],
+        },
+        {
+            "id": "1.3",
+            "phase": f"Phase 1 — Build & Install Release A (v{A})",
+            "name": "Launch Release A — Version & Update Dialog",
+            "story": "8.1, 8.2, 8.5",
+            "steps": [
+                "Launch from Start Menu or:",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                "",
+                "Check version display:",
+                f"  GUI> Splash screen → expect 'v{A}' in grey text",
+                f"  GUI> Startup popup dialog → 'You are running the latest version (v{A})'",
+                f"  GUI> Window title → 'KiPart Search v{A}'",
+                f"  GUI> Help > About → dialog showing 'v{A}'",
+                f"  GUI> Status bar (bottom-right) → 'v{A}' displayed permanently",
+            ],
+        },
+        {
+            "id": "1.4",
+            "phase": f"Phase 1 — Build & Install Release A (v{A})",
+            "name": "platformdirs Data Paths",
+            "story": "8.1",
+            "steps": [
+                "  PS> Test-Path \"$env:LOCALAPPDATA\\KiPartSearch\"",
+                "       → True",
+                "  PS> Test-Path \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"",
+                "       → True",
+                "  PS> Test-Path \"$env:USERPROFILE\\.kipart-search\\config.json\"",
+                "       → should NOT exist (legacy path not used)",
+            ],
+        },
+        {
+            "id": "1.5",
+            "phase": f"Phase 1 — Build & Install Release A (v{A})",
+            "name": "Basic Functionality",
+            "story": "all",
+            "steps": [
+                "If 'No datasource available' → click 'Download Database' first (fresh install).",
+                "  GUI> Type 'capacitor 100nF' in search bar, press Enter → results appear",
+                "  GUI> Click any result row → Detail panel shows part info",
+                "  GUI> Check Log panel (bottom) → timestamped messages",
+                "  GUI> Help > Check for Updates... → info dialog appears",
+                "  GUI> Close app (X button), relaunch → window layout restored",
+            ],
+        },
+
+        # ── Phase 2 — Build Release B & Update Detection ──
+        {
+            "id": "2.1",
+            "phase": "Phase 2 — Build Release B & Update Detection",
+            "name": f"Build Release B (v{B})",
+            "story": "8.3, 8.4",
+            "steps": [
+                "Close KiPart Search if running.",
+                "",
+                "  PS> .env\\Scripts\\python.exe release.py --tag --bump patch --skip-tests",
+                "",
+                "Wait for CI:",
+                f"  PS> gh run watch --repo {R}",
+                "",
+                "Verify:",
+                f"  PS> gh release view v{B} --repo {R}",
+                f"       → has kipart-search-{B}-setup.exe asset",
+            ],
+        },
+        {
+            "id": "2.2",
+            "phase": "Phase 2 — Build Release B & Update Detection",
+            "name": "Update Check Detects Release B on Startup",
+            "story": "8.5, 8.6",
+            "steps": [
+                "Clear the update cache so the app does a fresh GitHub check:",
+                "  PS> $p = \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"",
+                "  PS> $d = Get-Content $p | ConvertFrom-Json",
+                "  PS> $d.PSObject.Properties.Remove('update_check')",
+                "  PS> $d | ConvertTo-Json -Depth 10 | Set-Content $p",
+                "",
+                f"Launch Release A (v{A} is still installed):",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                "",
+                "Expected on startup:",
+                f"  GUI> UpdateDialog popup appears: 'Version {B} is available (you have {A})'",
+                "  GUI> 3 buttons visible: [Update Now] [Remind Me Later] [Skip This Version]",
+                "  GUI> Release notes shown in text area",
+                f"  GUI> Status bar shows 'Update available: v{B}' in amber",
+                "",
+                "DO NOT click any button yet — proceed to test 2.3.",
+            ],
+        },
+        {
+            "id": "2.3",
+            "phase": "Phase 2 — Build Release B & Update Detection",
+            "name": "Full Download & Install (Happy Path)",
+            "story": "8.6, 8.7",
+            "steps": [
+                "(Continuing from test 2.2 — UpdateDialog is open)",
+                "",
+                "  GUI> Click 'Update Now'",
+                "  GUI> Progress bar appears: 'Downloading... X.X / Y.Y MB'",
+                "  GUI> Wait for download to complete",
+                "  GUI> Buttons change to: [Install Now] [Open Folder] [Close]",
+                "  GUI> Click 'Install Now'",
+                "  GUI> Warning dialog: 'Windows will ask for permission...' → click OK",
+                "  GUI> App window closes",
+                "  WIN> UAC prompt appears → click Yes",
+                "       (silent install runs ~10-30 seconds...)",
+                "",
+                "After auto-relaunch, verify:",
+                f"  GUI> Splash screen shows 'v{B}'",
+                f"  GUI> Startup popup: 'You are running the latest version (v{B})'",
+                f"  GUI> Window title: 'KiPart Search v{B}'",
+                f"  GUI> Help > About → 'v{B}'",
+                f"  GUI> Status bar → 'v{B}'",
+                f"  WIN> Settings > Apps → 'KiPart Search' version {B}",
+            ],
+        },
+        {
+            "id": "2.4",
+            "phase": "Phase 2 — Build Release B & Update Detection",
+            "name": "Post-Update Functionality",
+            "story": "8.7",
+            "steps": [
+                "  GUI> Search 'capacitor 100nF' → results returned normally",
+                "  GUI> Window layout preserved (docks, sizes same as before)",
+                "  PS> Test-Path \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"   → True",
+                f"  GUI> Status bar → 'v{B}' (no update notification)",
+                "  GUI> Close app",
+            ],
+        },
+
+        # ── Phase 3 — Alternative Update Flows ──
+        {
+            "id": "3.1",
+            "phase": "Phase 3 — Alternative Update Flows",
+            "name": "Remind Me Later",
+            "story": "8.6",
+            "steps": [
+                f"Reinstall Release A (v{A}):",
+                f"  PS> Start-Process dist\\kipart-search-{A}-setup.exe",
+                "  (complete wizard)",
+                "",
+                "Clear update cache:",
+                "  PS> $p = \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"",
+                "  PS> $d = Get-Content $p | ConvertFrom-Json",
+                "  PS> $d.PSObject.Properties.Remove('update_check')",
+                "  PS> $d | ConvertTo-Json -Depth 10 | Set-Content $p",
+                "",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                f"  GUI> UpdateDialog appears with v{B}",
+                "  GUI> Click 'Remind Me Later' → dialog closes, app continues",
+                "  GUI> Close app",
+                "",
+                "Expire cache and relaunch:",
+                "  PS> $d = Get-Content $p | ConvertFrom-Json",
+                "  PS> $d.update_check.check_time = 0",
+                "  PS> $d | ConvertTo-Json -Depth 10 | Set-Content $p",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                "  GUI> UpdateDialog appears again (cache expired → fresh check)",
+                "  GUI> Close app",
+            ],
+        },
+        {
+            "id": "3.2",
+            "phase": "Phase 3 — Alternative Update Flows",
+            "name": "Skip This Version",
+            "story": "8.6",
+            "steps": [
+                "Clear update cache (same as 3.1 setup).",
+                "",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                "  GUI> UpdateDialog appears → click 'Skip This Version'",
+                "  GUI> Dialog closes",
+                "  GUI> Close app",
+                "",
+                "Verify skip was saved:",
+                "  PS> Get-Content \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"",
+                f"       → contains \"skipped_version\": \"{B}\"",
+                "",
+                "Expire cache and relaunch:",
+                "  PS> $p = \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"",
+                "  PS> $d = Get-Content $p | ConvertFrom-Json",
+                "  PS> $d.update_check.check_time = 0",
+                "  PS> $d | ConvertTo-Json -Depth 10 | Set-Content $p",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                f"  GUI> Startup popup: 'latest version' (v{B} is skipped)",
+                "  GUI> NO UpdateDialog appears",
+                "  GUI> Close app",
+            ],
+        },
+
+        # ── Phase 4 — Failure & Resilience ──
+        {
+            "id": "4.1",
+            "phase": "Phase 4 — Failure & Resilience",
+            "name": "UAC Denial Recovery",
+            "story": "8.8",
+            "steps": [
+                f"Reinstall Release A (if not already on v{A}).",
+                "Clear update cache (same as before).",
+                "",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                "  GUI> UpdateDialog appears → click 'Update Now'",
+                "  GUI> Wait for download to complete",
+                "  GUI> Click 'Install Now' → click OK on warning",
+                "  GUI> App closes → UAC prompt appears",
+                "  WIN> Click 'No' (DENY the UAC prompt)",
+                "       (wait 10-30s for shim to detect failure...)",
+                "  GUI> App relaunches → 'Update Failed' dialog appears",
+                "  GUI> Verify: 3 buttons [Try Again] [Download Manually] [Close]",
+                f"  GUI> Click 'Close' → app runs normally on v{A}",
+            ],
+        },
+        {
+            "id": "4.2",
+            "phase": "Phase 4 — Failure & Resilience",
+            "name": "Download Manually Fallback",
+            "story": "8.8",
+            "steps": [
+                "Launch with --update-failed flag:",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe' --update-failed",
+                "",
+                "  GUI> 'Update Failed' dialog appears",
+                "  GUI> Click 'Download Manually'",
+                f"  WIN> Browser opens → https://github.com/{R}/releases",
+            ],
+        },
+        {
+            "id": "4.3",
+            "phase": "Phase 4 — Failure & Resilience",
+            "name": "Offline Graceful Degradation",
+            "story": "8.5",
+            "steps": [
+                "  WIN> Disable Wi-Fi / unplug Ethernet",
+                "",
+                "Clear update cache, then launch:",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                "",
+                "  GUI> App starts normally — no crash, no error dialog",
+                "  GUI> Startup popup → graceful message (no error)",
+                "  GUI> Log panel → no scary error messages",
+                "",
+                "  WIN> Re-enable internet",
+                "  GUI> Close app",
+            ],
+        },
+        {
+            "id": "4.4",
+            "phase": "Phase 4 — Failure & Resilience",
+            "name": "Partial Download Cleanup",
+            "story": "8.8",
+            "steps": [
+                "Create a fake old .partial file:",
+                "  PS> New-Item \"$env:TEMP\\kipart-search-update-v0.0.1.partial\" -Force",
+                "  PS> (Get-Item \"$env:TEMP\\kipart-search-update-v0.0.1.partial\").LastWriteTime = (Get-Date).AddDays(-2)",
+                "",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                "  (wait for app to load, then close)",
+                "",
+                "  PS> Test-Path \"$env:TEMP\\kipart-search-update-v0.0.1.partial\"",
+                "       → False (deleted by app)",
+            ],
+        },
+        {
+            "id": "4.5",
+            "phase": "Phase 4 — Failure & Resilience",
+            "name": "--update-failed Flag",
+            "story": "8.8",
+            "steps": [
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe' --update-failed",
+                "",
+                "  GUI> Main window loads → 'Update Failed' dialog appears immediately",
+                "  GUI> Verify 3 buttons: [Try Again] [Download Manually] [Close]",
+                "  GUI> Click 'Close' → dialog dismissed, app works normally",
+            ],
+        },
+
+        # ── Phase 5 — Edge Cases ──
+        {
+            "id": "5.1",
+            "phase": "Phase 5 — Edge Cases",
+            "name": "Inno Setup Upgrade Detection",
+            "story": "8.2",
+            "steps": [
+                "Download Release B installer:",
+                f"  PS> gh release download v{B} --repo {R} --dir dist/ --pattern '*setup.exe' --clobber",
+                "",
+                "Run it over the existing install:",
+                f"  PS> Start-Process dist\\kipart-search-{B}-setup.exe",
+                "",
+                "  GUI> Wizard detects existing install → upgrades in-place",
+                "  PS> Test-Path 'C:\\Program Files\\KiPart Search\\kipart-search.exe'  → True",
+                f"  WIN> Settings > Apps → single 'KiPart Search' entry, version {B}",
+            ],
+        },
+        {
+            "id": "5.2",
+            "phase": "Phase 5 — Edge Cases",
+            "name": "Uninstall Preserves User Data",
+            "story": "8.2",
+            "steps": [
+                "  WIN> Settings > Apps > KiPart Search > Uninstall",
+                "",
+                "  PS> Test-Path 'C:\\Program Files\\KiPart Search'",
+                "       → False (removed)",
+                "  PS> Test-Path \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"",
+                "       → True (user data preserved!)",
+                "  WIN> Start Menu → 'KiPart Search' shortcut removed",
+            ],
+        },
+        {
+            "id": "5.3",
+            "phase": "Phase 5 — Edge Cases",
+            "name": "Fresh Install After Uninstall",
+            "story": "8.2",
+            "steps": [
+                f"  PS> Start-Process dist\\kipart-search-{B}-setup.exe",
+                "  GUI> Complete install → launch from Start Menu",
+                f"  GUI> Splash shows 'v{B}'",
+                "  GUI> Search works, previous settings preserved",
+            ],
+        },
+        {
+            "id": "5.4",
+            "phase": "Phase 5 — Edge Cases",
+            "name": "24-Hour Cache TTL",
+            "story": "8.5",
+            "steps": [
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                "  GUI> Startup dialog appears (fresh check), then close app",
+                "",
+                "Relaunch immediately:",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                "  GUI> Uses cached result — no new GitHub API call (verify in Log panel)",
+                "  GUI> Close app",
+                "",
+                "Expire cache and relaunch:",
+                "  PS> $p = \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"",
+                "  PS> $d = Get-Content $p | ConvertFrom-Json",
+                "  PS> $d.update_check.check_time = 0",
+                "  PS> $d | ConvertTo-Json -Depth 10 | Set-Content $p",
+                "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
+                "  GUI> Fresh API call → startup dialog reflects current state",
+            ],
+        },
+        {
+            "id": "5.5",
+            "phase": "Phase 5 — Edge Cases",
+            "name": "Help > Check for Updates (Manual Trigger)",
+            "story": "8.5, 8.6",
+            "steps": [
+                "  GUI> With app running: Help > Check for Updates...",
+                "  GUI> Dialog appears (either 'up to date' or UpdateDialog)",
+                "  GUI> Close dialog, app continues normally",
+            ],
+        },
+
+        # ── Phase 6 — Release Script Validation ──
+        {
+            "id": "6.1",
+            "phase": "Phase 6 — Release Script Validation",
+            "name": "Version Gate",
+            "story": "8.3",
+            "steps": [
+                "Run without --bump (version matches latest release):",
+                "  PS> .env\\Scripts\\python.exe release.py --skip-tests",
+                "       → expect: exits with error about version already released",
+                "",
+                "Run with --skip-version-gate:",
+                "  PS> .env\\Scripts\\python.exe release.py --skip-version-gate --skip-tests",
+                "       → expect: build proceeds past version check",
+            ],
+        },
+        {
+            "id": "6.2",
+            "phase": "Phase 6 — Release Script Validation",
+            "name": "SHA256 Checksums",
+            "story": "8.3",
+            "steps": [
+                "  PS> ls dist\\*checksums*",
+                "       → checksums file exists",
+                "  PS> Get-Content dist\\*checksums*",
+                "       → note the SHA256 for the setup.exe",
+                f"  PS> certutil -hashfile dist\\kipart-search-{B}-setup.exe SHA256",
+                "       → hash matches the value in the checksums file",
+            ],
+        },
+    ]
+
 
 # ---------------------------------------------------------------------------
 # Runner
@@ -408,30 +485,19 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 DIM = "\033[2m"
 
-# Step prefix legend (shown once per run)
-_PREFIX_LEGEND = f"""
-  {BOLD}Step prefix legend:{RESET}
-    {CYAN}PS>{RESET}    = Run in VS Code PowerShell terminal
-    {GREEN}GUI>{RESET}   = Action inside KiPart Search window
-    {YELLOW}WIN>{RESET}   = Action in Windows (Start Menu, Settings, Explorer)
-    {DIM}SETUP>{RESET} = Prerequisite — must be done before the test
-"""
+
+class _Abort(Exception):
+    pass
 
 
 def _input(prompt: str) -> str:
-    """Read input, handle Ctrl+C / Ctrl+D by raising _Abort."""
     try:
         return input(prompt).strip()
     except (EOFError, KeyboardInterrupt):
         raise _Abort
 
 
-class _Abort(Exception):
-    """Raised when the user presses Ctrl+C or Ctrl+D."""
-
-
-def _print_progress(results: list[dict]) -> None:
-    """Print a one-line running tally."""
+def _print_progress(results: list[dict], total: int) -> None:
     passed = sum(1 for r in results if r["verdict"] == "PASS")
     failed = sum(1 for r in results if r["verdict"] == "FAIL")
     skipped = sum(1 for r in results if r["verdict"] == "SKIP")
@@ -440,22 +506,16 @@ def _print_progress(results: list[dict]) -> None:
         f"{GREEN}{passed} passed{RESET}{DIM}, "
         f"{RED}{failed} failed{RESET}{DIM}, "
         f"{YELLOW}{skipped} skipped{RESET}{DIM} "
-        f"/ {len(TESTS)} total{RESET}"
+        f"/ {total} total{RESET}"
     )
 
 
 def run_tests(results: list[dict]) -> None:
-    """Walk through each test interactively, appending to *results*.
-
-    After a FAIL the user is asked whether to continue or stop.
-    On Ctrl+C (_Abort), partial results are already in the list
-    so the caller can still generate a report.
-    """
+    tests = _build_tests()
     current_phase = ""
+    total = len(tests)
 
-    total = len(TESTS)
-    for i, test in enumerate(TESTS, 1):
-        # Phase header
+    for i, test in enumerate(tests, 1):
         if test["phase"] != current_phase:
             current_phase = test["phase"]
             print(f"\n{'=' * 70}")
@@ -466,18 +526,18 @@ def run_tests(results: list[dict]) -> None:
         print(f"{DIM}Stories: {test['story']}{RESET}")
         print()
 
-        for j, step in enumerate(test["steps"], 1):
-            # Colorize known prefixes for readability
+        for step in test["steps"]:
+            # Colorize known prefixes
             colored = step
-            if step.startswith("PS>"):
-                colored = f"{CYAN}PS>{RESET}{step[3:]}"
-            elif step.startswith("GUI>"):
-                colored = f"{GREEN}GUI>{RESET}{step[4:]}"
-            elif step.startswith("WIN>"):
-                colored = f"{YELLOW}WIN>{RESET}{step[4:]}"
-            elif step.startswith("SETUP>"):
-                colored = f"{DIM}SETUP>{step[6:]}{RESET}"
-            print(f"  {j:2d}. {colored}")
+            if step.strip().startswith("PS>"):
+                colored = step.replace("PS>", f"{CYAN}PS>{RESET}", 1)
+            elif step.strip().startswith("GUI>"):
+                colored = step.replace("GUI>", f"{GREEN}GUI>{RESET}", 1)
+            elif step.strip().startswith("WIN>"):
+                colored = step.replace("WIN>", f"{YELLOW}WIN>{RESET}", 1)
+            elif step.strip().startswith("→"):
+                colored = f"{DIM}{step}{RESET}"
+            print(f"  {colored}")
         print()
 
         # Collect result
@@ -487,14 +547,11 @@ def run_tests(results: list[dict]) -> None:
                 f"{YELLOW}[S]kip{RESET} / {DIM}[Q]uit{RESET}: "
             ).upper()
             if verdict in ("P", "PASS"):
-                verdict = "PASS"
-                break
+                verdict = "PASS"; break
             elif verdict in ("F", "FAIL"):
-                verdict = "FAIL"
-                break
+                verdict = "FAIL"; break
             elif verdict in ("S", "SKIP"):
-                verdict = "SKIP"
-                break
+                verdict = "SKIP"; break
             elif verdict in ("Q", "QUIT"):
                 print("\nSmoke test ended early by user.")
                 return
@@ -519,9 +576,8 @@ def run_tests(results: list[dict]) -> None:
         }[verdict]
         print(f"  {BOLD}→ {tag} {test['id']} {test['name']}{RESET}")
 
-        # After a failure: ask whether to continue or stop
         if verdict == "FAIL":
-            _print_progress(results)
+            _print_progress(results, total)
             while True:
                 choice = _input(
                     f"\n  {RED}Test failed.{RESET} "
@@ -535,30 +591,31 @@ def run_tests(results: list[dict]) -> None:
                 else:
                     print("  Enter C or Q.")
 
-    return
-
 
 def write_report(results: list[dict]) -> Path:
-    """Write results to a timestamped file in dist/."""
+    tests = _build_tests()
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d-%H%M")
 
     passed = sum(1 for r in results if r["verdict"] == "PASS")
     failed = sum(1 for r in results if r["verdict"] == "FAIL")
     skipped = sum(1 for r in results if r["verdict"] == "SKIP")
-    total = len(results)
+    remaining = len(tests) - len(results)
 
     lines: list[str] = []
     lines.append("=" * 60)
     lines.append("EPIC 8 SMOKE TEST RESULTS")
     lines.append("Installer, Auto-Update & Release Pipeline")
     lines.append("=" * 60)
-    lines.append(f"Start: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"Date: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"Release A: v{VER_A}  |  Release B: v{VER_B}")
     lines.append("")
-    lines.append(f"Total:   {total}")
+    lines.append(f"Total:   {len(results)}")
     lines.append(f"Passed:  {passed}")
     lines.append(f"Failed:  {failed}")
     lines.append(f"Skipped: {skipped}")
+    if remaining > 0:
+        lines.append(f"Not run: {remaining}")
     lines.append("")
     lines.append("DETAILED RESULTS:")
 
@@ -567,7 +624,6 @@ def write_report(results: list[dict]) -> Path:
         if r["phase"] != current_phase:
             current_phase = r["phase"]
             lines.append(f"\n  --- {current_phase} ---")
-
         tag = f"[{r['verdict']}]"
         lines.append(f"  {tag:6s} {r['id']}. {r['name']}")
         lines.append(f"         Stories: {r['story']}")
@@ -590,17 +646,17 @@ def write_report(results: list[dict]) -> Path:
 
 
 def _finish(results: list[dict], aborted: bool = False) -> None:
-    """Print summary and write report. Called on normal exit, quit, or Ctrl+C."""
     if not results:
         print("\nNo results recorded.")
         return
 
     out = write_report(results)
+    tests = _build_tests()
 
     passed = sum(1 for r in results if r["verdict"] == "PASS")
     failed = sum(1 for r in results if r["verdict"] == "FAIL")
     skipped = sum(1 for r in results if r["verdict"] == "SKIP")
-    remaining = len(TESTS) - len(results)
+    remaining = len(tests) - len(results)
 
     print(f"\n{'=' * 60}")
     if aborted:
@@ -617,18 +673,22 @@ def _finish(results: list[dict], aborted: bool = False) -> None:
 
 
 def main():
+    tests = _build_tests()
     print(f"\n{BOLD}{'=' * 60}{RESET}")
     print(f"{BOLD}  KiPart Search — Epic 8 Smoke Test{RESET}")
-    print(f"{BOLD}  26 tests across 6 phases{RESET}")
+    print(f"{BOLD}  {len(tests)} tests across 6 phases{RESET}")
+    print(f"{BOLD}  Release A: v{VER_A}  |  Release B: v{VER_B}{RESET}")
     print(f"{BOLD}{'=' * 60}{RESET}")
+    print()
+    print(f"  {CYAN}PS>{RESET}   = Run in VS Code PowerShell terminal")
+    print(f"  {GREEN}GUI>{RESET}  = Action inside KiPart Search window")
+    print(f"  {YELLOW}WIN>{RESET}  = Action in Windows (Start Menu, Settings, Explorer)")
     print()
     print("For each test: follow the steps, then enter the result.")
     print("P = Pass, F = Fail, S = Skip, Q = Quit early")
     print("On failure: choose to Continue or Quit (report saved either way)")
-    print(f"Full test plan: {DIM}_bmad-output/implementation-artifacts/tests/epic-8-smoke-test-plan.md{RESET}")
-    print(_PREFIX_LEGEND)
+    print()
 
-    # Shared list — populated in-place so partial results survive Ctrl+C
     results: list[dict] = []
     try:
         run_tests(results)

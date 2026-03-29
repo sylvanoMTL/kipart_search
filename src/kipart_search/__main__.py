@@ -29,9 +29,10 @@ def _init_keyring_compiled() -> None:
 
 
 def _migrate_data() -> None:
-    """Run one-time data migration before any data access."""
-    from kipart_search.core.paths import migrate_legacy_data
+    """Run one-time data migration and ensure config.json exists."""
+    from kipart_search.core.paths import migrate_legacy_data, ensure_config
     migrate_legacy_data()
+    ensure_config()
 
 
 def _cleanup_partial_downloads() -> None:

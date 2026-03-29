@@ -6,6 +6,7 @@ this module.  No module should ever construct ~/.kipart-search/ directly.
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 from pathlib import Path
@@ -27,6 +28,19 @@ def data_dir() -> Path:
 def config_path() -> Path:
     """Path to config.json."""
     return data_dir() / "config.json"
+
+
+def ensure_config() -> Path:
+    """Ensure config.json exists with at least an empty JSON object.
+
+    Called once at app startup so that other code can always assume the
+    file is present.  Returns the config path.
+    """
+    p = config_path()
+    if not p.exists():
+        p.write_text(json.dumps({}, indent=2), encoding="utf-8")
+        log.info("Created default config.json at %s", p)
+    return p
 
 
 def cache_path() -> Path:
