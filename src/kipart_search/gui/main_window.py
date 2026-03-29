@@ -433,6 +433,7 @@ class MainWindow(QMainWindow):
         self._connect_worker.finished.connect(self._on_auto_connect_result)
         self._connect_worker.start()
         # Auto-check for app updates (non-blocking, cached 24h)
+        self._auto_show_update_dialog = True
         self._update_label.setText("  Checking for updates...  ")
         self._update_label.setStyleSheet(
             "QLabel { color: #888888; padding: 0 6px; }"
@@ -445,12 +446,19 @@ class MainWindow(QMainWindow):
     def _on_update_check_result(self, info):
         """Show status bar notification if a newer version is available."""
         if info is None:
-            # Briefly show "Up to date", then hide after 5 seconds
-            self._update_label.setText(f"  v{__version__} — up to date  ")
+            # Show version permanently in status bar
+            self._update_label.setText(f"  v{__version__}  ")
             self._update_label.setStyleSheet(
                 "QLabel { color: #888888; padding: 0 6px; }"
             )
-            QTimer.singleShot(5000, lambda: self._update_label.setVisible(False))
+            self._update_label.setCursor(Qt.ArrowCursor)
+            self._update_label.setVisible(True)
+            # Auto-show "up to date" dialog on startup
+            if getattr(self, "_auto_show_update_dialog", False):
+                self._auto_show_update_dialog = False
+                QTimer.singleShot(500, lambda: QMessageBox.information(
+                    self, "Check for Updates",
+                    f"You are running the latest version (v{__version__})."))
             return
         self._update_info = info
         self._update_release_url = info.release_url
@@ -460,15 +468,23 @@ class MainWindow(QMainWindow):
             "QLabel:hover { text-decoration: underline; }"
         )
         self._update_label.setVisible(True)
+        # Auto-open the update dialog on startup
+        if getattr(self, "_auto_show_update_dialog", False):
+            self._auto_show_update_dialog = False
+            QTimer.singleShot(500, self._show_update_dialog)
+
+    def _show_update_dialog(self):
+        """Open the UpdateDialog for the pending update info."""
+        info = getattr(self, "_update_info", None)
+        if info:
+            from kipart_search.gui.update_dialog import UpdateDialog
+            dlg = UpdateDialog(info, parent=self)
+            dlg.exec()
 
     def eventFilter(self, obj, event):
         """Handle click on the update notification label."""
         if obj is self._update_label and event.type() == event.Type.MouseButtonPress:
-            info = getattr(self, "_update_info", None)
-            if info:
-                from kipart_search.gui.update_dialog import UpdateDialog
-                dlg = UpdateDialog(info, parent=self)
-                dlg.exec()
+            self._show_update_dialog()
             return True
         return super().eventFilter(obj, event)
 
