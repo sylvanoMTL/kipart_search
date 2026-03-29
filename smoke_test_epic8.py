@@ -226,7 +226,7 @@ TESTS: list[dict] = [
         "story": "8.8",
         "steps": [
             "GUI> From the 'Update Failed' dialog (rerun 4.1 if needed), click 'Download Manually'",
-            "WIN> Default browser opens → URL is https://github.com/sylvanoMTL/kipart-search/releases/tag/v0.2.1",
+            "WIN> Default browser opens → URL is https://github.com/sylvanoMTL/kipart_search/releases/tag/v0.2.1",
         ],
     },
     {
@@ -419,17 +419,38 @@ _PREFIX_LEGEND = f"""
 
 
 def _input(prompt: str) -> str:
-    """Read input, handle Ctrl+C / Ctrl+D gracefully."""
+    """Read input, handle Ctrl+C / Ctrl+D by raising _Abort."""
     try:
         return input(prompt).strip()
     except (EOFError, KeyboardInterrupt):
-        print("\n\nSmoke test aborted by user.")
-        sys.exit(1)
+        raise _Abort
 
 
-def run_tests() -> list[dict]:
-    """Walk through each test interactively, return results."""
-    results: list[dict] = []
+class _Abort(Exception):
+    """Raised when the user presses Ctrl+C or Ctrl+D."""
+
+
+def _print_progress(results: list[dict]) -> None:
+    """Print a one-line running tally."""
+    passed = sum(1 for r in results if r["verdict"] == "PASS")
+    failed = sum(1 for r in results if r["verdict"] == "FAIL")
+    skipped = sum(1 for r in results if r["verdict"] == "SKIP")
+    print(
+        f"\n  {DIM}Progress: "
+        f"{GREEN}{passed} passed{RESET}{DIM}, "
+        f"{RED}{failed} failed{RESET}{DIM}, "
+        f"{YELLOW}{skipped} skipped{RESET}{DIM} "
+        f"/ {len(TESTS)} total{RESET}"
+    )
+
+
+def run_tests(results: list[dict]) -> None:
+    """Walk through each test interactively, appending to *results*.
+
+    After a FAIL the user is asked whether to continue or stop.
+    On Ctrl+C (_Abort), partial results are already in the list
+    so the caller can still generate a report.
+    """
     current_phase = ""
 
     total = len(TESTS)
@@ -476,7 +497,7 @@ def run_tests() -> list[dict]:
                 break
             elif verdict in ("Q", "QUIT"):
                 print("\nSmoke test ended early by user.")
-                return results
+                return
             else:
                 print("  Enter P, F, S, or Q.")
 
@@ -496,9 +517,25 @@ def run_tests() -> list[dict]:
             "FAIL": f"{RED}[FAIL]{RESET}",
             "SKIP": f"{YELLOW}[SKIP]{RESET}",
         }[verdict]
-        print(f"  → {tag} {test['id']} {test['name']}")
+        print(f"  {BOLD}→ {tag} {test['id']} {test['name']}{RESET}")
 
-    return results
+        # After a failure: ask whether to continue or stop
+        if verdict == "FAIL":
+            _print_progress(results)
+            while True:
+                choice = _input(
+                    f"\n  {RED}Test failed.{RESET} "
+                    f"[{GREEN}C{RESET}]ontinue / [{RED}Q{RESET}]uit and save report? "
+                ).upper()
+                if choice in ("C", "CONTINUE"):
+                    break
+                elif choice in ("Q", "QUIT"):
+                    print("\n  Stopping after failure. Report will be saved.")
+                    return
+                else:
+                    print("  Enter C or Q.")
+
+    return
 
 
 def write_report(results: list[dict]) -> Path:
@@ -552,19 +589,8 @@ def write_report(results: list[dict]) -> Path:
     return out
 
 
-def main():
-    print(f"\n{BOLD}{'=' * 60}{RESET}")
-    print(f"{BOLD}  KiPart Search — Epic 8 Smoke Test{RESET}")
-    print(f"{BOLD}  26 tests across 6 phases{RESET}")
-    print(f"{BOLD}{'=' * 60}{RESET}")
-    print()
-    print("For each test: follow the steps, then enter the result.")
-    print("P = Pass, F = Fail, S = Skip, Q = Quit early")
-    print(f"Full test plan: {DIM}_bmad-output/implementation-artifacts/tests/epic-8-smoke-test-plan.md{RESET}")
-    print(_PREFIX_LEGEND)
-
-    results = run_tests()
-
+def _finish(results: list[dict], aborted: bool = False) -> None:
+    """Print summary and write report. Called on normal exit, quit, or Ctrl+C."""
     if not results:
         print("\nNo results recorded.")
         return
@@ -574,15 +600,42 @@ def main():
     passed = sum(1 for r in results if r["verdict"] == "PASS")
     failed = sum(1 for r in results if r["verdict"] == "FAIL")
     skipped = sum(1 for r in results if r["verdict"] == "SKIP")
+    remaining = len(TESTS) - len(results)
 
     print(f"\n{'=' * 60}")
+    if aborted:
+        print(f"  {BOLD}{YELLOW}ABORTED{RESET} (Ctrl+C)")
     print(f"  {BOLD}SUMMARY{RESET}")
     print(f"  {GREEN}Passed: {passed}{RESET}  "
           f"{RED}Failed: {failed}{RESET}  "
           f"{YELLOW}Skipped: {skipped}{RESET}  "
           f"Total: {len(results)}")
+    if remaining > 0:
+        print(f"  {DIM}Not run: {remaining}{RESET}")
     print(f"\n  Results saved to: {out}")
     print(f"{'=' * 60}\n")
+
+
+def main():
+    print(f"\n{BOLD}{'=' * 60}{RESET}")
+    print(f"{BOLD}  KiPart Search — Epic 8 Smoke Test{RESET}")
+    print(f"{BOLD}  26 tests across 6 phases{RESET}")
+    print(f"{BOLD}{'=' * 60}{RESET}")
+    print()
+    print("For each test: follow the steps, then enter the result.")
+    print("P = Pass, F = Fail, S = Skip, Q = Quit early")
+    print("On failure: choose to Continue or Quit (report saved either way)")
+    print(f"Full test plan: {DIM}_bmad-output/implementation-artifacts/tests/epic-8-smoke-test-plan.md{RESET}")
+    print(_PREFIX_LEGEND)
+
+    # Shared list — populated in-place so partial results survive Ctrl+C
+    results: list[dict] = []
+    try:
+        run_tests(results)
+        _finish(results)
+    except _Abort:
+        print("\n\n  Smoke test interrupted by user.")
+        _finish(results, aborted=True)
 
 
 if __name__ == "__main__":

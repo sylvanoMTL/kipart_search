@@ -382,10 +382,6 @@ class MainWindow(QMainWindow):
         self._update_label = QLabel()
         self._update_label.setVisible(False)
         self._update_label.setCursor(Qt.PointingHandCursor)
-        self._update_label.setStyleSheet(
-            "QLabel { color: #b8860b; padding: 0 6px; }"
-            "QLabel:hover { text-decoration: underline; }"
-        )
         self._update_label.setAccessibleName("Update notification")
         self._update_release_url = ""
         self._update_label.installEventFilter(self)
@@ -426,22 +422,43 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self._apply_default_dock_sizes)
             # Deferred welcome dialog (after splash closes)
             QTimer.singleShot(0, self._check_welcome)
-            # Auto-connect to KiCad in background
-            self._connect_worker = _ConnectWorker(self._bridge)
-            self._connect_worker.finished.connect(self._on_auto_connect_result)
-            self._connect_worker.start()
-            # Auto-check for app updates (non-blocking, cached 24h)
-            self._update_check_worker = _UpdateCheckWorker()
-            self._update_check_worker.result.connect(self._on_update_check_result)
-            self._update_check_worker.start()
+    def start_background_tasks(self):
+        """Kick off background startup tasks (KiCad connect + update check).
+
+        Called from run_app() after the window is shown and the splash is closed,
+        so the event loop is guaranteed to be running.
+        """
+        # Auto-connect to KiCad in background
+        self._connect_worker = _ConnectWorker(self._bridge)
+        self._connect_worker.finished.connect(self._on_auto_connect_result)
+        self._connect_worker.start()
+        # Auto-check for app updates (non-blocking, cached 24h)
+        self._update_label.setText("  Checking for updates...  ")
+        self._update_label.setStyleSheet(
+            "QLabel { color: #888888; padding: 0 6px; }"
+        )
+        self._update_label.setVisible(True)
+        self._update_check_worker = _UpdateCheckWorker()
+        self._update_check_worker.result.connect(self._on_update_check_result)
+        self._update_check_worker.start()
 
     def _on_update_check_result(self, info):
         """Show status bar notification if a newer version is available."""
         if info is None:
+            # Briefly show "Up to date", then hide after 5 seconds
+            self._update_label.setText(f"  v{__version__} — up to date  ")
+            self._update_label.setStyleSheet(
+                "QLabel { color: #888888; padding: 0 6px; }"
+            )
+            QTimer.singleShot(5000, lambda: self._update_label.setVisible(False))
             return
         self._update_info = info
         self._update_release_url = info.release_url
         self._update_label.setText(f"  Update available: v{info.latest_version}  ")
+        self._update_label.setStyleSheet(
+            "QLabel { color: #b8860b; padding: 0 6px; }"
+            "QLabel:hover { text-decoration: underline; }"
+        )
         self._update_label.setVisible(True)
 
     def eventFilter(self, obj, event):
@@ -504,7 +521,7 @@ class MainWindow(QMainWindow):
                     QDesktopServices.openUrl(QUrl(release_url))
                 else:
                     QDesktopServices.openUrl(
-                        QUrl("https://github.com/sylvanoMTL/kipart-search/releases/latest")
+                        QUrl("https://github.com/sylvanoMTL/kipart_search/releases/latest")
                     )
 
         msg.buttonClicked.connect(_on_clicked)
@@ -587,6 +604,12 @@ class MainWindow(QMainWindow):
         # Help menu (last)
         help_menu = menubar.addMenu("Help")
 
+        check_update_action = QAction("Check for Updates...", self)
+        check_update_action.triggered.connect(self._on_check_update)
+        help_menu.addAction(check_update_action)
+
+        help_menu.addSeparator()
+
         about_action = QAction("About", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
@@ -599,9 +622,36 @@ class MainWindow(QMainWindow):
             "<p>Parametric electronic component search with KiCad integration.</p>"
             "<p><b>Author:</b> Sylvain Boyer (MecaFrog)</p>"
             "<p><b>License:</b> MIT</p>"
-            '<p><a href="https://github.com/sylvanoMTL/kipart-search">'
-            "github.com/sylvanoMTL/kipart-search</a></p>",
+            '<p><a href="https://github.com/sylvanoMTL/kipart_search">'
+            "github.com/sylvanoMTL/kipart_search</a></p>",
         )
+
+    def _on_check_update(self):
+        """Manually trigger an update check and show the result in a dialog."""
+        from kipart_search.core.update_check import check_for_update
+
+        self.log_panel.log("Checking for updates...")
+        # Force a fresh check (ignore cache)
+        info = check_for_update(__version__)
+        if info:
+            self._update_info = info
+            self._update_release_url = info.release_url
+            self._update_label.setText(f"  Update available: v{info.latest_version}  ")
+            self._update_label.setStyleSheet(
+                "QLabel { color: #b8860b; padding: 0 6px; }"
+                "QLabel:hover { text-decoration: underline; }"
+            )
+            self._update_label.setVisible(True)
+            from kipart_search.gui.update_dialog import UpdateDialog
+            dlg = UpdateDialog(info, parent=self)
+            dlg.exec()
+        else:
+            QMessageBox.information(
+                self,
+                "Check for Updates",
+                f"You are running the latest version (v{__version__}).",
+            )
+            self.log_panel.log(f"Already up to date (v{__version__})")
 
     # --- Dock helpers ---
 
@@ -1949,6 +1999,9 @@ def run_app(update_failed: bool = False) -> int:
     window = MainWindow()
     window.show()
     splash.finish(window)
+
+    # Start background tasks after splash closes and event loop is running
+    window.start_background_tasks()
 
     if update_failed:
         window._show_update_failed_dialog()

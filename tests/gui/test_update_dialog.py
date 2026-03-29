@@ -14,7 +14,7 @@ from kipart_search.core.update_check import UpdateInfo
 def _make_info(**overrides) -> UpdateInfo:
     defaults = dict(
         latest_version="2.0.0",
-        release_url="https://github.com/sylvanoMTL/kipart-search/releases/latest",
+        release_url="https://github.com/sylvanoMTL/kipart_search/releases/latest",
         release_notes="notes",
         check_time=time.time(),
         asset_url="https://example.com/setup.exe",

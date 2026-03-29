@@ -4,7 +4,7 @@
 #define MyAppName "KiPart Search"
 #define MyAppVersion "0.2.1"
 #define MyAppPublisher "MecaFrog"
-#define MyAppURL "https://github.com/sylvanoMTL/kipart-search"
+#define MyAppURL "https://github.com/sylvanoMTL/kipart_search"
 #define MyAppExeName "kipart-search.exe"
 
 ; Overridable paths — build script passes these via /D flags

@@ -298,7 +298,7 @@ class TestPackage:
         content = readme.read_text(encoding="utf-8")
         assert "Double-click kipart-search.exe" in content
         assert "Windows 10" in content
-        assert "github.com/sylvanoMTL/kipart-search" in content
+        assert "github.com/sylvanoMTL/kipart_search" in content
 
     def test_readme_contains_version(self, fake_dist):
         """README.txt header includes the version."""

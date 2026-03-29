@@ -39,7 +39,7 @@ from build_nuitka import (
 )
 
 
-GITHUB_REPO = "sylvanoMTL/kipart-search"
+GITHUB_REPO = "sylvanoMTL/kipart_search"
 
 
 def compute_next_version(current: str, part: str) -> str:

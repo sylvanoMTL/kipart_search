@@ -50,7 +50,7 @@
 
 ```bash
 # Clone, install, and run
-git clone https://github.com/sylvanoMTL/kipart-search.git
+git clone https://github.com/sylvanoMTL/kipart_search.git
 cd kipart-search
 python -m venv .env
 .env\Scripts\activate          # Windows

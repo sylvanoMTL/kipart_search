@@ -253,7 +253,7 @@ class UpdateDialog(QDialog):
         self._progress_bar.setVisible(False)
         if error_msg == "quarantine":
             release_url = self._info.release_url or (
-                "https://github.com/sylvanoMTL/kipart-search/releases/latest"
+                "https://github.com/sylvanoMTL/kipart_search/releases/latest"
             )
             self._status_label.setText(
                 "Your antivirus may have blocked the update.\n"

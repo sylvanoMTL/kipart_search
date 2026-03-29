@@ -172,7 +172,7 @@ kicad-python is bundled — no separate install needed.
 
 DOCUMENTATION
 -------------
-https://github.com/sylvanoMTL/kipart-search
+https://github.com/sylvanoMTL/kipart_search
 
 LICENSE
 -------

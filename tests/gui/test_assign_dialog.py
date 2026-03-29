@@ -247,6 +247,8 @@ class TestStandaloneAssignment:
         window._assign_target = comp
         window._local_assignments = {}
         window._local_overwrites = {}
+        window._cached_mpn_statuses = {}
+        window._cached_mpn_values = {}
         window._backup_manager = MagicMock()
         window._act_push = MagicMock()
         window.verify_panel = MagicMock()
@@ -276,6 +278,8 @@ class TestStandaloneAssignment:
         window._assign_target = comp
         window._local_assignments = {}
         window._local_overwrites = {}
+        window._cached_mpn_statuses = {}
+        window._cached_mpn_values = {}
         window._backup_manager = MagicMock()
         window._act_push = MagicMock()
         window.verify_panel = MagicMock()
@@ -311,6 +315,8 @@ class TestConnectedAssignment:
         window._assign_target = comp
         window._local_assignments = {}
         window._local_overwrites = {}
+        window._cached_mpn_statuses = {}
+        window._cached_mpn_values = {}
         window._backup_manager = MagicMock()
         window._act_push = MagicMock()
         window.verify_panel = MagicMock()
@@ -346,6 +352,8 @@ class TestConnectedAssignment:
         window._assign_target = comp
         window._local_assignments = {}
         window._local_overwrites = {}
+        window._cached_mpn_statuses = {}
+        window._cached_mpn_values = {}
         window._backup_manager = MagicMock()
         window._act_push = MagicMock()
         window.verify_panel = MagicMock()
@@ -371,6 +379,8 @@ class TestConnectedAssignment:
         window._assign_target = comp
         window._local_assignments = {}
         window._local_overwrites = {}
+        window._cached_mpn_statuses = {}
+        window._cached_mpn_values = {}
         window._backup_manager = MagicMock()
         window._act_push = MagicMock()
         window.verify_panel = MagicMock()
@@ -743,6 +753,8 @@ class TestApplyAssignmentErrorHandling:
         window._assign_target = comp
         window._local_assignments = {}
         window._local_overwrites = {}
+        window._cached_mpn_statuses = {}
+        window._cached_mpn_values = {}
         window._backup_manager = MagicMock()
         window._act_push = MagicMock()
         window.verify_panel = MagicMock()

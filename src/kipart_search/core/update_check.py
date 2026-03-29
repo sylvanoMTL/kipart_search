@@ -18,7 +18,7 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-GITHUB_REPO = "sylvanoMTL/kipart-search"
+GITHUB_REPO = "sylvanoMTL/kipart_search"
 
 
 @dataclass
