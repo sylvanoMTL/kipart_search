@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 # Windows process creation flags for detached subprocess
 _CREATE_NEW_PROCESS_GROUP = 0x00000200
 _DETACHED_PROCESS = 0x00000008
+_CREATE_NO_WINDOW = 0x08000000
 
 _SHIM_TEMPLATE = r"""@echo off
 setlocal
@@ -21,30 +22,52 @@ setlocal
 set "INSTALLER={installer_path}"
 set "APP_EXE={install_dir}\kipart-search.exe"
 set "OLD_EXE={old_exe_path}"
+set "LOG=%TEMP%\kipart-search-update.log"
+
+echo [%date% %time%] Update shim started > "%LOG%"
+echo Installer: %INSTALLER% >> "%LOG%"
+echo App exe:   %APP_EXE% >> "%LOG%"
+echo Old exe:   %OLD_EXE% >> "%LOG%"
 
 :: Wait for the app to exit (max 30 seconds)
+echo Waiting for app to exit... >> "%LOG%"
 for /L %%i in (1,1,30) do (
     tasklist /FI "IMAGENAME eq kipart-search.exe" 2>NUL | find /I "kipart-search.exe" >NUL
     if ERRORLEVEL 1 goto :install
     timeout /t 1 /nobreak >NUL
 )
-:: Timed out waiting — try installing anyway (installer will fail if exe is locked)
+echo Timed out waiting for app to exit >> "%LOG%"
 
 :install
+echo Running installer... >> "%LOG%"
+:: Check installer exists
+if not exist "%INSTALLER%" (
+    echo ERROR: Installer not found: %INSTALLER% >> "%LOG%"
+    goto :failed
+)
+
 :: Run installer silently (/SP- suppresses "Setup is preparing" dialog)
 "%INSTALLER%" /VERYSILENT /SUPPRESSMSGBOXES /SP-
 set INSTALL_RESULT=%ERRORLEVEL%
+echo Installer exit code: %INSTALL_RESULT% >> "%LOG%"
 
 :: Check if installer actually ran (exe may have been blocked by SmartScreen/AV)
-if %INSTALL_RESULT% NEQ 0 goto :failed
-if not exist "%APP_EXE%" goto :failed
+if %INSTALL_RESULT% NEQ 0 (
+    echo ERROR: Installer failed with code %INSTALL_RESULT% >> "%LOG%"
+    goto :failed
+)
+if not exist "%APP_EXE%" (
+    echo ERROR: App exe not found after install >> "%LOG%"
+    goto :failed
+)
 
 :: Success - relaunch
+echo Update successful, relaunching... >> "%LOG%"
 start "" "%APP_EXE%"
 goto :cleanup
 
 :failed
-:: Failure - relaunch old exe with error flag
+echo Update failed, relaunching with --update-failed >> "%LOG%"
 if exist "%OLD_EXE%" (
     start "" "%OLD_EXE%" --update-failed
 ) else (
@@ -132,7 +155,7 @@ def launch_shim_and_exit(shim_path: Path) -> bool:
     try:
         subprocess.Popen(
             ["cmd.exe", "/c", str(shim_path)],
-            creationflags=_CREATE_NEW_PROCESS_GROUP | _DETACHED_PROCESS,
+            creationflags=_CREATE_NEW_PROCESS_GROUP | _CREATE_NO_WINDOW,
             close_fds=True,
         )
         log.info("Update shim launched: %s", shim_path)
