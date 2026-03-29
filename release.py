@@ -309,8 +309,20 @@ def tag_and_push(version: str) -> None:
         print("  Install GitHub CLI (gh) to watch CI progress here.")
 
 
+def _is_internal_step(name: str) -> bool:
+    """Return True for GitHub-managed steps that aren't interesting to track."""
+    return (
+        name in ("Set up job", "Complete job")
+        or name.startswith("Post ")
+    )
+
+
 def watch_ci(tag: str, max_minutes: int = 30) -> None:
     """Poll GitHub Actions until the workflow run triggered by *tag* completes.
+
+    Shows each workflow step as it completes (checkmark / cross), plus the
+    currently running step with a progress counter.  Mirrors the output of
+    ``gh run watch`` but non-interactively.
 
     Gives up after *max_minutes* to avoid hanging indefinitely.
     """
@@ -323,8 +335,8 @@ def watch_ci(tag: str, max_minutes: int = 30) -> None:
     for attempt in range(12):  # up to ~60s
         time.sleep(5)
         result = subprocess.run(
-            ["gh", "run", "list", "--json=databaseId,headBranch,status",
-             "--limit=5"],
+            ["gh", "run", "list", f"--repo={GITHUB_REPO}",
+             "--json=databaseId,headBranch,status", "--limit=5"],
             capture_output=True, text=True,
         )
         if result.returncode != 0:
@@ -346,11 +358,12 @@ def watch_ci(tag: str, max_minutes: int = 30) -> None:
 
     # Poll until completed or timeout
     poll_interval = 15
-    last_status = None
+    printed_steps: set[str] = set()   # steps already printed as done/failed
+    last_active_line = ""
     elapsed = 0
     while elapsed < max_seconds:
         result = subprocess.run(
-            ["gh", "run", "view", str(run_id),
+            ["gh", "run", "view", str(run_id), f"--repo={GITHUB_REPO}",
              "--json=status,conclusion,jobs"],
             capture_output=True, text=True,
         )
@@ -369,42 +382,45 @@ def watch_ci(tag: str, max_minutes: int = 30) -> None:
         status = data.get("status", "unknown")
         conclusion = data.get("conclusion", "")
 
-        # Build a one-line summary from job statuses
-        jobs = data.get("jobs", [])
-        job_parts = []
-        for job in jobs:
-            j_name = job.get("name", "job")
-            j_status = job.get("status", "?")
-            j_conclusion = job.get("conclusion", "")
-            if j_conclusion == "success":
-                job_parts.append(f"{j_name}: done")
-            elif j_conclusion == "failure":
-                job_parts.append(f"{j_name}: FAILED")
-            else:
-                # Show step-level progress if available
-                steps = job.get("steps", [])
-                active = [s["name"] for s in steps if s.get("status") == "in_progress"]
-                if active:
-                    job_parts.append(f"{j_name}: {active[0]}")
-                else:
-                    job_parts.append(f"{j_name}: {j_status}")
+        # Process each job's steps
+        for job in data.get("jobs", []):
+            steps = job.get("steps", [])
+            user_steps = [s for s in steps if not _is_internal_step(s.get("name", ""))]
+            total = len(user_steps)
 
-        mins, secs = divmod(elapsed, 60)
-        time_str = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
-        summary = ", ".join(job_parts) if job_parts else status
-        line = f"    [{time_str}] {summary}"
+            # Print newly completed steps
+            for step in user_steps:
+                name = step.get("name", "")
+                step_conclusion = step.get("conclusion", "")
+                if name in printed_steps:
+                    continue
+                if step_conclusion == "success":
+                    printed_steps.add(name)
+                    print(f"    \u2713 {name}")
+                elif step_conclusion == "failure":
+                    printed_steps.add(name)
+                    print(f"    \u2717 {name}")
+                elif step_conclusion == "skipped":
+                    printed_steps.add(name)
+                    print(f"    - {name} (skipped)")
 
-        if line != last_status:
-            print(line)
-            last_status = line
+            # Show currently running step with progress count
+            active = [s["name"] for s in user_steps if s.get("status") == "in_progress"]
+            done_count = sum(1 for s in user_steps if s.get("status") == "completed")
+            if active:
+                mins, secs = divmod(elapsed, 60)
+                active_line = f"    [{mins}m{secs:02d}s] \u25b8 {active[0]} ({done_count}/{total})"
+                if active_line != last_active_line:
+                    print(active_line)
+                    last_active_line = active_line
 
         if status == "completed":
             print()
             if conclusion == "success":
-                print(f"  CI passed! Release:")
+                print(f"  \u2713 CI passed! Release:")
                 print(f"    https://github.com/{GITHUB_REPO}/releases/tag/{tag}")
             else:
-                print(f"  CI finished with conclusion: {conclusion}")
+                print(f"  \u2717 CI finished with conclusion: {conclusion}")
                 print(f"    gh run view {run_id} --log-failed")
             break
 
