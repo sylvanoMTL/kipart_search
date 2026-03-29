@@ -31,9 +31,13 @@ for /L %%i in (1,1,30) do (
 :: Timed out waiting — try installing anyway (installer will fail if exe is locked)
 
 :install
-:: Run installer silently
-"%INSTALLER%" /VERYSILENT /SUPPRESSMSGBOXES
-if %ERRORLEVEL% NEQ 0 goto :failed
+:: Run installer silently (/SP- suppresses "Setup is preparing" dialog)
+"%INSTALLER%" /VERYSILENT /SUPPRESSMSGBOXES /SP-
+set INSTALL_RESULT=%ERRORLEVEL%
+
+:: Check if installer actually ran (exe may have been blocked by SmartScreen/AV)
+if %INSTALL_RESULT% NEQ 0 goto :failed
+if not exist "%APP_EXE%" goto :failed
 
 :: Success - relaunch
 start "" "%APP_EXE%"
@@ -41,7 +45,11 @@ goto :cleanup
 
 :failed
 :: Failure - relaunch old exe with error flag
-start "" "%OLD_EXE%" --update-failed
+if exist "%OLD_EXE%" (
+    start "" "%OLD_EXE%" --update-failed
+) else (
+    start "" "%APP_EXE%" --update-failed
+)
 goto :cleanup
 
 :cleanup

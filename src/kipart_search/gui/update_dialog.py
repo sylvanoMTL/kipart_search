@@ -63,6 +63,16 @@ class _DownloadWorker(QThread):
             if self.dest.exists():
                 self.dest.unlink()
             partial.rename(self.dest)
+            # Remove Zone.Identifier ADS so Windows SmartScreen won't block
+            # the installer during silent (/VERYSILENT) execution.
+            try:
+                subprocess.run(
+                    ["cmd", "/c", "del", "/f",
+                     str(self.dest) + ":Zone.Identifier"],
+                    capture_output=True, timeout=5,
+                )
+            except Exception:
+                pass  # Not critical — user can still approve SmartScreen
             # Verify size — keep the file so the user can inspect or retry
             actual = self.dest.stat().st_size
             if self.expected_size > 0 and actual != self.expected_size:
