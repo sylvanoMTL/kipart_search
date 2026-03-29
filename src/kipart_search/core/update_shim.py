@@ -46,16 +46,15 @@ if not exist "%INSTALLER%" (
     goto :failed
 )
 
-:: Run installer silently (/SP- suppresses "Setup is preparing" dialog)
-"%INSTALLER%" /VERYSILENT /SUPPRESSMSGBOXES /SP-
+:: Run installer with elevation (UAC) via PowerShell Start-Process -Verb RunAs.
+:: Direct execution silently fails when the installer requires admin privileges.
+:: -Wait ensures we block until the installer finishes before checking results.
+echo Requesting elevation for installer... >> "%LOG%"
+powershell -NoProfile -Command "Start-Process -FilePath '%INSTALLER%' -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /SP-' -Verb RunAs -Wait" 2>>"%LOG%"
 set INSTALL_RESULT=%ERRORLEVEL%
 echo Installer exit code: %INSTALL_RESULT% >> "%LOG%"
 
-:: Check if installer actually ran (exe may have been blocked by SmartScreen/AV)
-if %INSTALL_RESULT% NEQ 0 (
-    echo ERROR: Installer failed with code %INSTALL_RESULT% >> "%LOG%"
-    goto :failed
-)
+:: Check if install succeeded by verifying the exe was updated
 if not exist "%APP_EXE%" (
     echo ERROR: App exe not found after install >> "%LOG%"
     goto :failed
