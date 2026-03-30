@@ -1,4 +1,25 @@
-"""Nuitka build script for KiPart Search standalone Windows binary.
+"""Nuitka build script for KiPart Search standalone binary.
+
+Replaces: build_nuitka.py
+
+CHANGES FROM ORIGINAL (2026-03-30)
+====================================
+
+1. build() function (line ~274): Added cross-platform Nuitka flag handling.
+   - Windows flags (--windows-*): ACTIVE, same as before
+   - macOS flags (--macos-*): COMMENTED stub with documentation
+   - Linux: no special flags needed (just --standalone)
+
+2. package() function: Added cross-platform packaging stubs.
+   - Windows ZIP: ACTIVE, same as before
+   - macOS DMG: COMMENTED stub (_package_macos_dmg)
+   - Linux AppImage: COMMENTED stub (_package_linux_appimage)
+
+3. compile_installer(): Added platform guard — Inno Setup is Windows-only.
+   Prints a message and returns on non-Windows platforms.
+
+4. Everything else is UNCHANGED: check_licenses, read_version, read_base_version,
+   main, CLI argument parsing.
 
 Usage:
     python build_nuitka.py
@@ -88,7 +109,11 @@ def check_licenses() -> None:
 
 
 def read_version() -> str:
-    """Read version from pyproject.toml and return X.X.X.X quad format."""
+    """Read version from pyproject.toml and return X.X.X.X quad format.
+
+    The quad format is a Windows PE requirement for --windows-file-version.
+    On macOS and Linux, use read_base_version() directly (semver X.Y.Z).
+    """
     version = read_base_version()
     # Convert to quad format: 0.1.0 -> 0.1.0.0
     parts = version.split(".")
@@ -117,6 +142,35 @@ def read_base_version() -> str:
 
 
 def package(output_dir: str = "dist") -> None:
+    """Package the Nuitka build output into a distributable archive.
+
+    Dispatches to the platform-specific packaging function.
+    Currently only Windows ZIP is implemented.
+    """
+    if sys.platform == "win32":
+        _package_windows_zip(output_dir)
+    elif sys.platform == "darwin":
+        # -----------------------------------------------------------------
+        # macOS DMG packaging — FUTURE IMPLEMENTATION
+        # -----------------------------------------------------------------
+        # _package_macos_dmg(output_dir)
+        # -----------------------------------------------------------------
+        print("macOS DMG packaging not yet implemented.")
+        sys.exit(1)
+    elif sys.platform == "linux":
+        # -----------------------------------------------------------------
+        # Linux AppImage packaging — FUTURE IMPLEMENTATION
+        # -----------------------------------------------------------------
+        # _package_linux_appimage(output_dir)
+        # -----------------------------------------------------------------
+        print("Linux AppImage packaging not yet implemented.")
+        sys.exit(1)
+    else:
+        print(f"Unsupported platform for packaging: {sys.platform}")
+        sys.exit(1)
+
+
+def _package_windows_zip(output_dir: str = "dist") -> None:
     """Package the Nuitka build output into a distributable zip file.
 
     Copies __main__.dist/ → kipart-search/, adds README.txt,
@@ -203,11 +257,155 @@ MIT License - Copyright (c) 2026 Sylvain Boyer (MecaFrog)
     print(f"  Zip size: {zip_size_mb:.1f} MB")
 
 
+# ---------------------------------------------------------------------------
+# macOS DMG packaging — FUTURE STUB
+# ---------------------------------------------------------------------------
+#
+# def _package_macos_dmg(output_dir: str = "dist") -> None:
+#     """Package Nuitka .app bundle into a .dmg disk image.
+#
+#     Prerequisites:
+#       - Nuitka build with --macos-create-app-bundle produces:
+#         dist/__main__.app/
+#       - hdiutil is built into macOS (no install needed)
+#       - Optional: create-dmg (npm package) for prettier DMGs with
+#         background images and icon positioning
+#
+#     Steps:
+#       1. Rename __main__.app → "KiPart Search.app"
+#       2. Create DMG using hdiutil:
+#          hdiutil create -volname "KiPart Search" \
+#            -srcfolder "dist/KiPart Search.app" \
+#            -ov -format UDZO \
+#            "dist/kipart-search-{version}-macos.dmg"
+#       3. Optional: add code signature
+#          codesign --deep --force --sign "Developer ID Application: ..." \
+#            "dist/KiPart Search.app"
+#
+#     The resulting .dmg is uploaded to GitHub Releases.
+#     update_check.py matches it via name.endswith(".dmg").
+#     update_shim.launch_installer() opens it via subprocess ["open", path].
+#     """
+#     output_path = Path(output_dir)
+#     version = read_base_version()
+#     app_bundle = output_path / "__main__.app"
+#     branded = output_path / "KiPart Search.app"
+#     dmg_path = output_path / f"kipart-search-{version}-macos.dmg"
+#
+#     if not app_bundle.exists():
+#         print(f"ERROR: {app_bundle} not found. Run Nuitka with --macos-create-app-bundle.")
+#         sys.exit(1)
+#
+#     if branded.exists():
+#         shutil.rmtree(branded)
+#     shutil.move(str(app_bundle), str(branded))
+#
+#     subprocess.run([
+#         "hdiutil", "create",
+#         "-volname", "KiPart Search",
+#         "-srcfolder", str(branded),
+#         "-ov", "-format", "UDZO",
+#         str(dmg_path),
+#     ], check=True)
+#
+#     size_mb = dmg_path.stat().st_size / (1024 * 1024)
+#     print(f"DMG complete: {dmg_path}")
+#     print(f"  Size: {size_mb:.1f} MB")
+
+
+# ---------------------------------------------------------------------------
+# Linux AppImage packaging — FUTURE STUB
+# ---------------------------------------------------------------------------
+#
+# def _package_linux_appimage(output_dir: str = "dist") -> None:
+#     """Package Nuitka standalone into an AppImage.
+#
+#     Prerequisites:
+#       - appimagetool: download from
+#         https://github.com/AppImage/appimagetool/releases
+#       - A .desktop file and icon for the AppDir structure
+#
+#     AppDir structure:
+#       AppDir/
+#         AppRun                    → symlink to usr/bin/kipart-search
+#         kipart-search.desktop     → freedesktop .desktop file
+#         kipart-search.png         → application icon (256x256 recommended)
+#         usr/
+#           bin/                    → contents of __main__.dist/
+#             kipart-search         → main executable
+#             *.so                  → shared libraries
+#             ...
+#
+#     Steps:
+#       1. Create AppDir structure from __main__.dist/
+#       2. Write .desktop file and symlink AppRun
+#       3. Run: appimagetool AppDir/ kipart-search-{version}-linux.AppImage
+#
+#     The resulting .AppImage is uploaded to GitHub Releases.
+#     update_check.py matches it via name.endswith(".AppImage").
+#     update_shim.launch_installer() replaces the binary in place.
+#     """
+#     output_path = Path(output_dir)
+#     version = read_base_version()
+#     nuitka_dist = output_path / "__main__.dist"
+#     appdir = output_path / "AppDir"
+#     appimage_path = output_path / f"kipart-search-{version}-linux.AppImage"
+#
+#     if not nuitka_dist.exists():
+#         print(f"ERROR: {nuitka_dist} not found.")
+#         sys.exit(1)
+#
+#     # Create AppDir structure
+#     usr_bin = appdir / "usr" / "bin"
+#     if appdir.exists():
+#         shutil.rmtree(appdir)
+#     usr_bin.mkdir(parents=True)
+#
+#     # Copy Nuitka output
+#     for item in nuitka_dist.iterdir():
+#         dest = usr_bin / item.name
+#         if item.is_dir():
+#             shutil.copytree(item, dest)
+#         else:
+#             shutil.copy2(item, dest)
+#
+#     # Create AppRun symlink
+#     apprun = appdir / "AppRun"
+#     apprun.symlink_to("usr/bin/kipart-search")
+#
+#     # Create .desktop file
+#     desktop = appdir / "kipart-search.desktop"
+#     desktop.write_text(
+#         "[Desktop Entry]\n"
+#         "Type=Application\n"
+#         "Name=KiPart Search\n"
+#         "Exec=kipart-search\n"
+#         "Icon=kipart-search\n"
+#         "Categories=Electronics;Engineering;\n"
+#     )
+#
+#     # TODO: Copy icon file (kipart-search.png) into appdir
+#
+#     # Build AppImage
+#     subprocess.run(["appimagetool", str(appdir), str(appimage_path)], check=True)
+#
+#     size_mb = appimage_path.stat().st_size / (1024 * 1024)
+#     print(f"AppImage complete: {appimage_path}")
+#     print(f"  Size: {size_mb:.1f} MB")
+
+
 def compile_installer(output_dir: str = "dist") -> None:
     """Compile the Inno Setup installer from existing Nuitka build output.
 
     Requires Inno Setup 6 installed with iscc on PATH or at the default location.
+    NOTE: Inno Setup is Windows-only.  macOS uses .dmg, Linux uses AppImage.
     """
+    if sys.platform != "win32":
+        print("Inno Setup installer is Windows-only. Skipping.")
+        print("  macOS: use _package_macos_dmg() instead (future)")
+        print("  Linux: use _package_linux_appimage() instead (future)")
+        return
+
     version = read_base_version()
     iss_path = Path(__file__).parent / "installer" / "kipart-search.iss"
 
@@ -272,10 +470,10 @@ def compile_installer(output_dir: str = "dist") -> None:
 
 
 def build(output_dir: str = "dist") -> None:
-    """Run Nuitka standalone build."""
-    version_quad = read_version()
-    print(f"Building KiPart Search v{version_quad}")
+    """Run Nuitka standalone build with platform-appropriate flags."""
+    version = read_base_version()
 
+    # --- Common flags (all platforms) ---
     nuitka_cmd = [
         sys.executable, "-m", "nuitka",
         "--standalone",
@@ -284,16 +482,67 @@ def build(output_dir: str = "dist") -> None:
         "--include-package=keyring.backends",
         "--include-package=kipy",
         "--assume-yes-for-downloads",
-        "--windows-console-mode=disable",
         "--output-filename=kipart-search",
         f"--output-dir={output_dir}",
-        "--windows-company-name=MecaFrog",
-        "--windows-product-name=KiPart Search",
-        f"--windows-file-version={version_quad}",
-        f"--windows-product-version={version_quad}",
-        "--windows-file-description=Parametric electronic component search",
         "src/kipart_search/__main__.py",
     ]
+
+    # --- Platform-specific flags ---
+    if sys.platform == "win32":
+        version_quad = read_version()  # X.X.X.X format for Windows PE
+        print(f"Building KiPart Search v{version_quad} (Windows)")
+        nuitka_cmd += [
+            "--windows-console-mode=disable",
+            "--windows-company-name=MecaFrog",
+            "--windows-product-name=KiPart Search",
+            f"--windows-file-version={version_quad}",
+            f"--windows-product-version={version_quad}",
+            "--windows-file-description=Parametric electronic component search",
+        ]
+
+    elif sys.platform == "darwin":
+        # ---------------------------------------------------------------
+        # macOS — FUTURE IMPLEMENTATION
+        # ---------------------------------------------------------------
+        # Nuitka's --macos-create-app-bundle creates a proper .app bundle
+        # with Info.plist, icon, and correct directory structure.
+        #
+        # To enable, uncomment:
+        # print(f"Building KiPart Search v{version} (macOS)")
+        # nuitka_cmd += [
+        #     "--macos-create-app-bundle",
+        #     "--macos-app-name=KiPart Search",
+        #     f"--macos-app-version={version}",
+        #     "--macos-disable-console",
+        #     # Code signing (requires Apple Developer ID):
+        #     # "--macos-sign-identity=Developer ID Application: MecaFrog",
+        #     # "--macos-sign-notarization",
+        # ]
+        # ---------------------------------------------------------------
+        print(f"Building KiPart Search v{version} (macOS)")
+        print("NOTE: macOS-specific Nuitka flags not yet configured.")
+        print("The build will produce a standalone folder, not a .app bundle.")
+
+    elif sys.platform == "linux":
+        # ---------------------------------------------------------------
+        # Linux — FUTURE IMPLEMENTATION
+        # ---------------------------------------------------------------
+        # No special Nuitka flags needed for Linux — --standalone is
+        # sufficient.  The packaging step (_package_linux_appimage) wraps
+        # the output into an AppImage.
+        #
+        # For better desktop integration, consider:
+        # nuitka_cmd += [
+        #     "--linux-icon=assets/kipart-search.png",
+        # ]
+        # ---------------------------------------------------------------
+        print(f"Building KiPart Search v{version} (Linux)")
+        print("NOTE: Linux build produces a standalone folder.")
+        print("Use --package to wrap it into an AppImage (future).")
+
+    else:
+        print(f"WARNING: Unsupported platform {sys.platform}")
+        print(f"Building KiPart Search v{version} (generic)")
 
     print("Nuitka command:")
     print("  " + " ".join(nuitka_cmd))
@@ -316,9 +565,10 @@ def build(output_dir: str = "dist") -> None:
         print(f"Build complete: {dist_path}")
         print(f"  Files: {file_count}")
         print(f"  Total size: {size_mb:.1f} MB")
-        print()
-        print("NOTE: Windows Defender may flag Nuitka-compiled executables.")
-        print("Code signing with an EV certificate is the only reliable fix.")
+        if sys.platform == "win32":
+            print()
+            print("NOTE: Windows Defender may flag Nuitka-compiled executables.")
+            print("Code signing with an EV certificate is the only reliable fix.")
     else:
         print(f"WARNING: Expected output directory {dist_path} not found.")
 

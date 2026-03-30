@@ -1,8 +1,17 @@
 """In-app version check against GitHub Releases.
 
-Checks api.github.com for the latest release tag, compares against the
-running version, and caches the result for 24 hours in config.json.
-Zero GUI dependencies — the QThread worker lives in gui/main_window.py.
+Replaces: src/kipart_search/core/update_check.py
+
+CHANGES FROM ORIGINAL (2026-03-30)
+====================================
+
+1. Asset filter (lines 74-81): Expanded with documented cross-platform stubs.
+   - Windows (-setup.exe): ACTIVE
+   - macOS (.dmg): COMMENTED — uncomment when macOS builds ship
+   - Linux (.AppImage): COMMENTED — uncomment when Linux builds ship
+
+2. Everything else is UNCHANGED: UpdateInfo, _compare_versions, load_cached_update,
+   save_update_cache, save_skipped_version, load_skipped_version, should_check.
 """
 
 from __future__ import annotations
@@ -68,17 +77,49 @@ def check_for_update(
     if skipped_version and latest == skipped_version:
         return None
 
+    # -----------------------------------------------------------------------
     # Resolve platform-specific installer asset
+    # -----------------------------------------------------------------------
+    # Each platform has a different asset naming convention in the GitHub
+    # Release.  The build system (build_nuitka.py + CI workflow) produces:
+    #   - Windows: kipart-search-{version}-setup.exe    (Inno Setup installer)
+    #   - macOS:   kipart-search-{version}-macos.dmg    (disk image, future)
+    #   - Linux:   kipart-search-{version}-linux.AppImage (AppImage, future)
+    #
+    # When a platform is not yet supported, asset_url stays "" and the
+    # "Update Now" button is disabled in the dialog with the message:
+    # "No installer available for this platform."
+    # -----------------------------------------------------------------------
     asset_url = ""
     asset_size = 0
     for asset in data.get("assets", []):
         name = asset.get("name", "")
+
+        # --- Windows (ACTIVE) ---
         if sys.platform == "win32" and name.endswith("-setup.exe"):
             asset_url = asset.get("browser_download_url", "")
             asset_size = asset.get("size", 0)
             break
-        # elif sys.platform == "darwin" and name.endswith(".dmg"):  # future
-        # elif sys.platform == "linux" and name.endswith(".AppImage"):  # future
+
+        # --- macOS (FUTURE) ---
+        # Uncomment when macOS builds are shipped via GitHub Releases.
+        # The .dmg is opened via subprocess.Popen(["open", path]) in
+        # update_shim.launch_installer().
+        #
+        # if sys.platform == "darwin" and name.endswith(".dmg"):
+        #     asset_url = asset.get("browser_download_url", "")
+        #     asset_size = asset.get("size", 0)
+        #     break
+
+        # --- Linux (FUTURE) ---
+        # Uncomment when Linux AppImage builds are shipped.
+        # The .AppImage is handled by _linux_replace_appimage() in
+        # update_shim.py (chmod +x, replace, relaunch).
+        #
+        # if sys.platform == "linux" and name.endswith(".AppImage"):
+        #     asset_url = asset.get("browser_download_url", "")
+        #     asset_size = asset.get("size", 0)
+        #     break
 
     return UpdateInfo(
         latest_version=latest,

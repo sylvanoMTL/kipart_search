@@ -1,5 +1,25 @@
 ; KiPart Search - Inno Setup Installer Script
 ; Compile with: iscc /DMyAppVersion=X.Y.Z /DMyOutputDir=..\dist /DMySourceDir=..\dist\__main__.dist installer\kipart-search.iss
+;
+; Replaces: installer/kipart-search.iss
+;
+; PLATFORM NOTE: Inno Setup is Windows-only.
+; macOS uses .dmg (hdiutil) and Linux uses AppImage (appimagetool).
+; See build_nuitka.py for cross-platform packaging stubs.
+;
+; UPDATE MECHANISM (2026-03-30):
+; The in-app updater calls os.startfile() on the downloaded setup.exe,
+; which is equivalent to the user double-clicking it.  Inno Setup handles
+; everything from there:
+;   - CloseApplications=yes → Restart Manager sends WM_CLOSE to the running app
+;   - CloseApplicationsFilter → identifies which process to close
+;   - /VERYSILENT mode → no UI, Restart Manager still works
+;   - [Run] section → optional relaunch after install (interactive mode only)
+;
+; CHANGES FROM ORIGINAL:
+;   1. ADDED [Run] section for post-install relaunch (interactive mode only)
+;   2. ADDED comments explaining Restart Manager behaviour
+;   3. All other settings UNCHANGED
 
 #define MyAppName "KiPart Search"
 #define MyAppVersion "0.2.3"
@@ -31,6 +51,12 @@ OutputDir={#MyOutputDir}
 OutputBaseFilename=kipart-search-{#MyAppVersion}-setup
 Compression=lzma
 SolidCompression=yes
+; --- App closure via Windows Restart Manager ---
+; These settings tell Inno Setup to use the Restart Manager to gracefully
+; close kipart-search.exe before replacing its files.  This works in both
+; interactive and /VERYSILENT mode.  The Restart Manager sends WM_CLOSE to
+; the process, which PySide6/Qt handles as a graceful shutdown.
+; This is why the old .bat shim's tasklist polling loop was redundant.
 CloseApplications=yes
 CloseApplicationsFilter={#MyAppExeName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -47,6 +73,17 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
+
+; --- NEW: Post-install relaunch ---
+; In interactive mode (user double-clicked the installer): shows a
+;   "Launch KiPart Search" checkbox on the final wizard page.
+; In /VERYSILENT mode (in-app update): skipifsilent means this is skipped,
+;   so the user relaunches from their shortcut.
+;
+; To auto-relaunch even in silent mode, remove "skipifsilent":
+;   Filename: "{app}\{#MyAppExeName}"; Flags: nowait postinstall
+[Run]
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

@@ -1,0 +1,225 @@
+# Build Release — Cross-Platform CI/CD Pipeline
+#
+# Replaces: .github/workflows/build-windows.yml
+#
+# CHANGES FROM ORIGINAL (2026-03-30)
+# ====================================
+#
+# 1. RENAMED: build-windows.yml → build-release.yml (future-proof name)
+#
+# 2. ADDED: Commented matrix build strategy for macOS + Linux (future)
+#    When ready to enable:
+#    a. Uncomment the matrix strategy block
+#    b. Uncomment the platform-specific steps (appimagetool, etc.)
+#    c. Add platform-specific artifacts to the upload step
+#
+# 3. UNCHANGED: All Windows build steps remain identical to the original.
+#    The only active job is build-windows on windows-latest.
+
+name: Build Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+# ---------------------------------------------------------------------------
+# FUTURE: Multi-platform matrix build
+# ---------------------------------------------------------------------------
+# When macOS and Linux builds are ready, replace the single build-windows
+# job with a matrix strategy.  This builds all platforms in parallel.
+#
+# jobs:
+#   build:
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           - os: windows-latest
+#             platform: windows
+#             artifact_glob: "kipart-search-*-setup.exe"
+#             shell: bash
+#           - os: macos-latest
+#             platform: macos
+#             artifact_glob: "kipart-search-*-macos.dmg"
+#             shell: bash
+#           - os: ubuntu-latest
+#             platform: linux
+#             artifact_glob: "kipart-search-*-linux.AppImage"
+#             shell: bash
+#
+#     runs-on: ${{ matrix.os }}
+#     timeout-minutes: 30
+#     defaults:
+#       run:
+#         shell: ${{ matrix.shell }}
+#
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: actions/setup-python@v5
+#         with:
+#           python-version: '3.10'
+#           cache: 'pip'
+#
+#       - name: Install dependencies
+#         run: pip install -e ".[dev]" nuitka
+#
+#       # --- Windows-only steps ---
+#       - name: Install Inno Setup
+#         if: matrix.platform == 'windows'
+#         run: choco install innosetup -y --no-progress
+#         shell: pwsh
+#
+#       # --- Linux-only steps ---
+#       - name: Install appimagetool
+#         if: matrix.platform == 'linux'
+#         run: |
+#           wget -q -O appimagetool \
+#             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+#           chmod +x appimagetool
+#           sudo mv appimagetool /usr/local/bin/
+#
+#       # --- Common build step (platform-aware via build_nuitka.py) ---
+#       - name: Build and package
+#         run: python build_nuitka.py --installer
+#
+#       - name: Generate SHA256 checksums
+#         run: |
+#           VERSION=$(python -c "from build_nuitka import read_base_version; print(read_base_version())")
+#           cd dist && sha256sum ${{ matrix.artifact_glob }} > checksums-${VERSION}-${{ matrix.platform }}-sha256.txt
+#
+#       - name: Upload release assets
+#         uses: softprops/action-gh-release@v2
+#         with:
+#           files: |
+#             dist/${{ matrix.artifact_glob }}
+#             dist/checksums-*-sha256.txt
+#           generate_release_notes: true
+# ---------------------------------------------------------------------------
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install nuitka
+
+      - name: Cache Nuitka ccache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Nuitka\Nuitka\Cache
+          key: nuitka-ccache-${{ runner.os }}-py3.10-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            nuitka-ccache-${{ runner.os }}-py3.10-
+
+      - name: GPL firewall check
+        run: python -c "from build_nuitka import check_licenses; check_licenses()"
+
+      - name: Verify tag matches pyproject.toml version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TOML_VERSION=$(python -c "from build_nuitka import read_base_version; print(read_base_version())")
+          if [ "$TAG_VERSION" != "$TOML_VERSION" ]; then
+            echo "ERROR: Tag version ($TAG_VERSION) does not match pyproject.toml version ($TOML_VERSION)"
+            exit 1
+          fi
+          echo "Version verified: $TAG_VERSION"
+
+      - name: Build and package
+        run: python build_nuitka.py --package
+
+      - name: Smoke test compiled binary
+        run: |
+          if [ ! -f "dist/__main__.dist/kipart-search.exe" ]; then
+            echo "ERROR: kipart-search.exe not found"
+            exit 1
+          fi
+          dist/__main__.dist/kipart-search.exe --version
+
+      - name: Run unit tests
+        run: python -m pytest tests/test_build_nuitka.py -v
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+        shell: pwsh
+
+      - name: Verify Inno Setup installation
+        run: |
+          if command -v iscc &> /dev/null; then
+            echo "iscc found on PATH"
+            iscc /? || true
+          elif [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+            echo "ISCC.exe found at default location"
+          else
+            echo "ERROR: Inno Setup not found"
+            exit 1
+          fi
+
+      - name: Compile Inno Setup installer
+        run: python build_nuitka.py --installer-only
+
+      - name: Verify installer artifact
+        run: |
+          VERSION=$(python -c "from build_nuitka import read_base_version; print(read_base_version())")
+          if [ ! -f "dist/kipart-search-${VERSION}-setup.exe" ]; then
+            echo "ERROR: dist/kipart-search-${VERSION}-setup.exe not found"
+            ls -la dist/
+            exit 1
+          fi
+          echo "Installer built: dist/kipart-search-${VERSION}-setup.exe"
+
+      - name: Generate SHA256 checksums
+        run: |
+          VERSION=$(python -c "from build_nuitka import read_base_version; print(read_base_version())")
+          cd dist
+          sha256sum "kipart-search-${VERSION}-windows.zip" "kipart-search-${VERSION}-setup.exe" > "checksums-${VERSION}-sha256.txt"
+          echo "Checksums:"
+          cat "checksums-${VERSION}-sha256.txt"
+
+      - name: Extract release notes
+        id: release_notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python -c "
+          import sys
+          from pathlib import Path
+          from release import extract_changelog
+          version = sys.argv[1]
+          notes = extract_changelog(version)
+          if notes:
+              Path('dist/release-notes.md').write_text(notes, encoding='utf-8')
+              print(f'Release notes extracted for {version}')
+          else:
+              print('No CHANGELOG entry -- auto-generated notes only')
+          " "$VERSION"
+          if [ -f dist/release-notes.md ]; then
+            echo "has_notes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: ${{ steps.release_notes.outputs.has_notes == 'true' && 'dist/release-notes.md' || '' }}
+          files: |
+            dist/kipart-search-*-windows.zip
+            dist/kipart-search-*-setup.exe
+            dist/checksums-*-sha256.txt
+          generate_release_notes: true
