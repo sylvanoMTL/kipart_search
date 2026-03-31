@@ -217,9 +217,11 @@ class UpdateDialog(QDialog):
     def _on_skip(self):
         """Persist the skipped version and close."""
         from kipart_search.core.paths import config_path
-        from kipart_search.core.update_check import save_skipped_version
+        from kipart_search.core.update_check import save_skipped_version, save_skip_policy
 
-        save_skipped_version(config_path(), self._info.latest_version)
+        cfg = config_path()
+        save_skipped_version(cfg, self._info.latest_version)
+        save_skip_policy(cfg, "next")
         self.reject()
 
     def _on_update_now(self):

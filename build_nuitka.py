@@ -37,6 +37,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -454,7 +455,37 @@ def compile_installer(output_dir: str = "dist") -> None:
     print(f"Compiling installer v{version}")
     print("  " + " ".join(cmd))
     print()
-    subprocess.run(cmd, check=True)
+
+    # The output .exe may be locked by antivirus scanning or a previous
+    # installer process.  Delete it before invoking iscc, then retry on
+    # failure (Error 32 = file in use).
+    installer_name = f"kipart-search-{version}-setup.exe"
+    installer_target = Path(output_dir) / installer_name
+    if installer_target.exists():
+        for attempt in range(3):
+            try:
+                installer_target.unlink()
+                break
+            except PermissionError:
+                wait = 5 * (attempt + 1)
+                print(f"  Output file locked, retrying delete in {wait}s...")
+                time.sleep(wait)
+        else:
+            print(f"WARNING: Could not delete {installer_target} — iscc may fail.")
+
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        result = subprocess.run(cmd)
+        if result.returncode == 0:
+            break
+        if attempt < max_attempts:
+            wait = 10 * attempt
+            print(f"\n  iscc failed (exit {result.returncode}). "
+                  f"Retrying in {wait}s... (attempt {attempt}/{max_attempts})")
+            time.sleep(wait)
+    else:
+        print(f"\nERROR: iscc failed after {max_attempts} attempts.")
+        sys.exit(2)
 
     # Verify output and print summary
     installer_name = f"kipart-search-{version}-setup.exe"

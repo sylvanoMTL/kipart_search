@@ -218,24 +218,25 @@ class _UpdateCheckWorker(QThread):
     def run(self):
         from kipart_search.core.update_check import (
             should_check, check_for_update, save_update_cache, load_cached_update,
-            load_skipped_version, _compare_versions,
+            load_skipped_version, load_skip_policy, _compare_versions,
         )
         from kipart_search.core.paths import config_path
 
         cfg = config_path()
         skipped = load_skipped_version(cfg)
+        policy = load_skip_policy(cfg)
 
         if not should_check(cfg):
             cached = load_cached_update(cfg)
             # Invalidate cache if user upgraded past the cached version
             if cached and not _compare_versions(__version__, cached.latest_version):
                 cached = None
-            # Suppress if this version was skipped
-            if cached and skipped and cached.latest_version == skipped:
-                cached = None
+            # Mark as skipped (don't suppress — let handler show correct message)
+            if cached and (policy == "all" or (skipped and cached.latest_version == skipped)):
+                cached.skipped = True
             self.result.emit(cached)
             return
-        info = check_for_update(__version__, skipped_version=skipped)
+        info = check_for_update(__version__, skipped_version=skipped, skip_policy=policy)
         if info:
             save_update_cache(cfg, info)
         self.result.emit(info)
@@ -445,7 +446,7 @@ class MainWindow(QMainWindow):
 
     def _on_update_check_result(self, info):
         """Show status bar notification if a newer version is available."""
-        if info is None:
+        if info is None or getattr(info, "skipped", False):
             # Show version permanently in status bar
             self._update_label.setText(f"  v{__version__}  ")
             self._update_label.setStyleSheet(
@@ -453,12 +454,18 @@ class MainWindow(QMainWindow):
             )
             self._update_label.setCursor(Qt.ArrowCursor)
             self._update_label.setVisible(True)
-            # Auto-show "up to date" dialog on startup
+            # Auto-show dialog on startup
             if getattr(self, "_auto_show_update_dialog", False):
                 self._auto_show_update_dialog = False
+                if info is not None and info.skipped:
+                    msg = (f"v{info.latest_version} is available but was skipped.\n"
+                           f"You are running v{__version__}.\n\n"
+                           f"You can un-skip it from Preferences or via\n"
+                           f"Help \u2192 Check for Updates.")
+                else:
+                    msg = f"You are running the latest version (v{__version__})."
                 QTimer.singleShot(500, lambda: QMessageBox.information(
-                    self, "Check for Updates",
-                    f"You are running the latest version (v{__version__})."))
+                    self, "Check for Updates", msg))
             return
         self._update_info = info
         self._update_release_url = info.release_url
@@ -488,63 +495,6 @@ class MainWindow(QMainWindow):
             return True
         return super().eventFilter(obj, event)
 
-    def _show_update_failed_dialog(self):
-        """Show a non-modal dialog when the app was relaunched after a failed update."""
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Icon.Warning)
-        msg.setWindowTitle("Update Failed")
-        msg.setText(
-            "Update could not be completed.\n\n"
-            "This usually means the installer was blocked by\n"
-            "Windows permissions or antivirus software."
-        )
-        try_again = msg.addButton("Try Again", QMessageBox.ButtonRole.AcceptRole)
-        download_btn = msg.addButton("Download Manually", QMessageBox.ButtonRole.HelpRole)
-        msg.addButton(QMessageBox.StandardButton.Close)
-
-        def _on_clicked(button):
-            if button == try_again:
-                info = getattr(self, "_update_info", None)
-                if info is None:
-                    from kipart_search.core.update_check import load_cached_update
-                    from kipart_search.core.paths import config_path
-                    info = load_cached_update(config_path())
-                if info:
-                    from kipart_search.gui.update_dialog import UpdateDialog
-                    dlg = UpdateDialog(info, parent=self)
-                    dlg.exec()
-                else:
-                    QMessageBox.information(
-                        self, "No Update Info",
-                        "Could not find update information.\n"
-                        "The app will check for updates again automatically.",
-                    )
-            elif button == download_btn:
-                from PySide6.QtCore import QUrl
-                from PySide6.QtGui import QDesktopServices
-                release_url = getattr(self, "_update_release_url", None)
-                if not release_url:
-                    # Try cached update info
-                    try:
-                        from kipart_search.core.update_check import load_cached_update
-                        from kipart_search.core.paths import config_path
-                        cached = load_cached_update(config_path())
-                        if cached:
-                            release_url = cached.release_url
-                    except Exception:
-                        pass
-                if release_url:
-                    QDesktopServices.openUrl(QUrl(release_url))
-                else:
-                    QDesktopServices.openUrl(
-                        QUrl("https://github.com/sylvanoMTL/kipart_search/releases/latest")
-                    )
-
-        msg.buttonClicked.connect(_on_clicked)
-        msg.setModal(False)
-        msg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        msg.show()
-        self._update_failed_msg = msg  # prevent GC
 
     def _on_auto_connect_result(self, ok: bool, msg: str):
         """Handle background KiCad auto-connect completion."""
@@ -2002,7 +1952,7 @@ def _create_splash(app: QApplication) -> "QSplashScreen":
     return splash
 
 
-def run_app(update_failed: bool = False) -> int:
+def run_app() -> int:
     """Launch the PySide6 application."""
     app = QApplication(sys.argv)
     app.setApplicationName("KiPart Search")
@@ -2018,8 +1968,5 @@ def run_app(update_failed: bool = False) -> int:
 
     # Start background tasks after splash closes and event loop is running
     window.start_background_tasks()
-
-    if update_failed:
-        window._show_update_failed_dialog()
 
     return app.exec()
