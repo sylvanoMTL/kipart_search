@@ -22,7 +22,7 @@
 ;   3. All other settings UNCHANGED
 
 #define MyAppName "KiPart Search"
-#define MyAppVersion "0.4.0"
+#define MyAppVersion "0.3.0"
 #define MyAppPublisher "MecaFrog"
 #define MyAppURL "https://github.com/sylvanoMTL/kipart_search"
 #define MyAppExeName "kipart-search.exe"
