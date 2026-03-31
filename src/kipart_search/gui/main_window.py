@@ -211,9 +211,16 @@ class _ConnectWorker(QThread):
 
 
 class _UpdateCheckWorker(QThread):
-    """Background thread for checking GitHub for app updates."""
+    """Background thread for checking GitHub for app updates.
 
-    result = Signal(object)  # UpdateInfo | None
+    Emits one of:
+    - UpdateInfo with skipped=False  → update available
+    - UpdateInfo with skipped=True   → update available but skipped by policy
+    - None                           → already up to date
+    - "offline"                      → network check failed
+    """
+
+    result = Signal(object)  # UpdateInfo | None | "offline"
 
     def run(self):
         from kipart_search.core.update_check import (
@@ -227,6 +234,7 @@ class _UpdateCheckWorker(QThread):
         policy = load_skip_policy(cfg)
 
         if not should_check(cfg):
+            log.info("Update check: using cached result (< 24 h old)")
             cached = load_cached_update(cfg)
             # Invalidate cache if user upgraded past the cached version
             if cached and not _compare_versions(__version__, cached.latest_version):
@@ -236,10 +244,23 @@ class _UpdateCheckWorker(QThread):
                 cached.skipped = True
             self.result.emit(cached)
             return
+        log.info("Update check: querying GitHub API")
         info = check_for_update(__version__, skipped_version=skipped, skip_policy=policy)
         if info:
             save_update_cache(cfg, info)
-        self.result.emit(info)
+            self.result.emit(info)
+        elif info is None:
+            # Distinguish "up to date" from "network failed": check_for_update
+            # returns None for both.  Try a minimal connectivity test.
+            import httpx
+            try:
+                httpx.head("https://api.github.com", timeout=3.0)
+                # Reachable → genuinely up to date
+                log.info("Update check: already up to date (v%s)", __version__)
+                self.result.emit(None)
+            except (httpx.HTTPError, httpx.TimeoutException):
+                log.info("Update check: offline or GitHub unreachable")
+                self.result.emit("offline")
 
 
 class MainWindow(QMainWindow):
@@ -446,6 +467,17 @@ class MainWindow(QMainWindow):
 
     def _on_update_check_result(self, info):
         """Show status bar notification if a newer version is available."""
+        if info == "offline":
+            # Network unavailable — show version, no popup
+            self._update_label.setText(f"  v{__version__}  ")
+            self._update_label.setStyleSheet(
+                "QLabel { color: #888888; padding: 0 6px; }"
+            )
+            self._update_label.setCursor(Qt.ArrowCursor)
+            self._update_label.setVisible(True)
+            self._auto_show_update_dialog = False
+            self.log_panel.log("Update check skipped (offline)")
+            return
         if info is None or getattr(info, "skipped", False):
             # Show version permanently in status bar
             self._update_label.setText(f"  v{__version__}  ")
@@ -597,7 +629,7 @@ class MainWindow(QMainWindow):
         from kipart_search.core.update_check import check_for_update
 
         self.log_panel.log("Checking for updates...")
-        # Force a fresh check (ignore cache)
+        # Force a fresh check (ignore cache, ignore skip policy)
         info = check_for_update(__version__)
         if info:
             self._update_info = info
@@ -612,12 +644,17 @@ class MainWindow(QMainWindow):
             dlg = UpdateDialog(info, parent=self)
             dlg.exec()
         else:
-            QMessageBox.information(
-                self,
-                "Check for Updates",
-                f"You are running the latest version (v{__version__}).",
-            )
-            self.log_panel.log(f"Already up to date (v{__version__})")
+            # Distinguish offline from up-to-date
+            import httpx
+            try:
+                httpx.head("https://api.github.com", timeout=3.0)
+                msg = f"You are running the latest version (v{__version__})."
+                self.log_panel.log(f"Already up to date (v{__version__})")
+            except (httpx.HTTPError, httpx.TimeoutException):
+                msg = (f"Could not check for updates (no internet connection).\n"
+                       f"You are running v{__version__}.")
+                self.log_panel.log("Update check failed (offline)")
+            QMessageBox.information(self, "Check for Updates", msg)
 
     # --- Dock helpers ---
 
