@@ -287,14 +287,14 @@ class UpdateDialog(QDialog):
             )
             self._status_label.setText(
                 "Your antivirus may have blocked the update.\n"
-                "Download manually from GitHub.\n\n"
+                "Download manually from the release page.\n\n"
                 f"URL copied to clipboard: {release_url}"
             )
             QApplication.clipboard().setText(release_url)
         else:
             self._status_label.setText(
                 f"Download failed: {error_msg}\n\n"
-                "Download may have been blocked. Download manually from GitHub."
+                "Download may have been blocked. Download manually from the release page."
             )
 
         # Re-enable buttons and add fallback link

@@ -244,7 +244,7 @@ class _UpdateCheckWorker(QThread):
                 cached.skipped = True
             self.result.emit(cached, True)
             return
-        log.info("Update check: querying GitHub API")
+        log.info("Update check: querying server")
         info = check_for_update(__version__, skipped_version=skipped, skip_policy=policy)
         if info:
             save_update_cache(cfg, info)
@@ -267,7 +267,7 @@ class _UpdateCheckWorker(QThread):
                 log.info("Update check: already up to date (v%s)", __version__)
                 self.result.emit(None, False)
             except (httpx.HTTPError, httpx.TimeoutException):
-                log.info("Update check: offline or GitHub unreachable")
+                log.info("Update check: server unreachable")
                 self.result.emit("offline", False)
 
 
@@ -475,7 +475,7 @@ class MainWindow(QMainWindow):
 
     def _on_update_check_result(self, info, from_cache: bool = False):
         """Show status bar notification if a newer version is available."""
-        source = "cached" if from_cache else "GitHub"
+        source = "cached" if from_cache else "server"
         if info == "offline":
             # Network unavailable — show version, no popup
             self._update_label.setText(f"  v{__version__}  ")
@@ -635,8 +635,8 @@ class MainWindow(QMainWindow):
             "<p>Parametric electronic component search with KiCad integration.</p>"
             "<p><b>Author:</b> Sylvain Boyer (MecaFrog)</p>"
             "<p><b>License:</b> MIT</p>"
-            '<p><a href="https://github.com/sylvanoMTL/kipart_search">'
-            "github.com/sylvanoMTL/kipart_search</a></p>",
+            '<p><a href="https://www.mecafrog.com">'
+            "www.mecafrog.com</a></p>",
         )
 
     def _on_check_update(self):
