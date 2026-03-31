@@ -1,0 +1,77 @@
+============================================================
+EPIC 8 SMOKE TEST RESULTS
+Installer, Auto-Update & Release Pipeline
+============================================================
+Date: 2026-03-31 13:13:03
+Release A: v0.3.0  |  Release B: v0.3.1
+
+Total:   22
+Passed:  19
+Failed:  1
+Skipped: 2
+
+DETAILED RESULTS:
+
+  --- Phase 1 — Build & Install Release A (v0.3.0) ---
+  [PASS] 1.1. Tag & Push to Trigger CI Build
+         Stories: 8.3, 8.4
+  [PASS] 1.2. Download & Install Release A
+         Stories: 8.2, 8.4
+  [PASS] 1.3. Launch Release A — Version & Update Dialog
+         Stories: 8.1, 8.2, 8.5
+  [PASS] 1.4. platformdirs Data Paths
+         Stories: 8.1
+  [PASS] 1.5. Basic Functionality
+         Stories: all
+
+  --- Phase 2 — Build Release B & Update Detection ---
+  [PASS] 2.1. Build Release B (v0.3.1)
+         Stories: 8.3, 8.4
+  [PASS] 2.2. Update Check Detects Release B on Startup
+         Stories: 8.5, 8.6
+  [PASS] 2.3. Full Download & Install (Happy Path)
+         Stories: 8.6, 8.7
+  [PASS] 2.4. Post-Update Functionality
+         Stories: 8.7
+
+  --- Phase 3 — Alternative Update Flows ---
+  [PASS] 3.1. Remind Me Later
+         Stories: 8.6
+  [PASS] 3.2. Skip This Version
+         Stories: 8.6
+
+  --- Phase 4 — Failure & Resilience ---
+  [PASS] 4.1. UAC Denial Recovery
+         Stories: 8.8
+  [SKIP] 4.2. Install Now Fallback (Launch Failure)
+         Stories: 8.8
+         Notes: On install now, clicked OK, and everything passed as normal, not sure if this is relevant.
+  [SKIP] 4.3. Offline Graceful Degradation
+         Stories: 8.5
+         Notes: So on opening, I have "you are running the latest version 0.3.0. If l clik help-> check new release, same dialog happens. So this is a bug.
+  [PASS] 4.4. Partial Download Cleanup
+         Stories: 8.8
+         Notes: The app laucnhed detected a new release 0.3.1  and doing Test-Path "$env:TEMP\kipart-search-update-v0.0.1.partial"  result is False, (apparently deleted by app)
+
+  --- Phase 5 — Edge Cases ---
+  [PASS] 5.1. Inno Setup Upgrade Detection
+         Stories: 8.2
+  [PASS] 5.2. Uninstall Preserves User Data
+         Stories: 8.2
+  [PASS] 5.3. Fresh Install After Uninstall
+         Stories: 8.2
+  [FAIL] 5.4. 24-Hour Cache TTL
+         Stories: 8.5
+         Notes: No message in the log console, before and after cleaning the cache. I guess it was not implementd. Through the same pop-up "check update" tells me I am using the latest version
+  [PASS] 5.5. Help > Check for Updates (Manual Trigger)
+         Stories: 8.5, 8.6
+
+  --- Phase 6 — Release Script Validation ---
+  [PASS] 6.1. Version Gate
+         Stories: 8.3
+  [PASS] 6.2. SHA256 Checksums
+         Stories: 8.3
+
+============================================================
+VERDICT: 1 FAILURE(S) — SEE NOTES ABOVE
+============================================================

@@ -1,0 +1,100 @@
+============================================================
+EPIC 8 SMOKE TEST RESULTS
+Installer, Auto-Update & Release Pipeline
+============================================================
+Start: 2026-03-29 15:23:38
+
+Total:   26
+Passed:  8
+Failed:  17
+Skipped: 1
+
+DETAILED RESULTS:
+
+  --- Phase 1 — Build & Install Release A ---
+  [PASS] 1.1. Version Bump + Local Build (0.2.0)
+         Stories: 8.3
+  [PASS] 1.2. Install Release A via Inno Setup
+         Stories: 8.2
+  [FAIL] 1.3. Launch Release A — Version Verification
+         Stories: 8.1, 8.2, 8.3
+         Notes: There is no bar bottom message as suggested in 5
+  [PASS] 1.4. platformdirs Data Paths
+         Stories: 8.1
+         Notes: USERPROFUK/.kipart-search does not exist
+  [FAIL] 1.5. Basic Functionality Sanity Check
+         Stories: all
+         Notes: Not a fail, but a note that there is no "Menu" Edit->Preference, and will need to be implemented
+  [PASS] 1.6. Download Release A Installer from GitHub
+         Stories: 8.4
+
+  --- Phase 2 — Build Release B & Update Detection ---
+  [PASS] 2.1. Build Release B (0.2.1)
+         Stories: 8.3, 8.4
+  [FAIL] 2.2. Update Check on Startup
+         Stories: 8.5
+         Notes: No GUI is showing also config json in C:\Users\sylvain\AppData\Local\KiPartSearch does not contain any URL
+  [FAIL] 2.3. Full Download & Install (Happy Path)
+         Stories: 8.6, 8.7
+         Notes: No update dialog available
+  [FAIL] 2.4. Post-Update Functionality
+         Stories: 8.7
+         Notes: could not do the update
+
+  --- Phase 3 — Alternative Update Flows ---
+  [FAIL] 3.1. Remind Me Later
+         Stories: 8.6
+         Notes: no dialog update
+  [FAIL] 3.2. Skip This Version
+         Stories: 8.6
+         Notes: No dialog update
+
+  --- Phase 4 — Failure & Resilience ---
+  [FAIL] 4.1. UAC Denial Recovery
+         Stories: 8.8
+         Notes: same
+  [FAIL] 4.2. Download Manually Fallback
+         Stories: 8.8
+         Notes: no dialog
+  [FAIL] 4.3. Offline Graceful Degradation
+         Stories: 8.5
+         Notes: no dialog
+  [FAIL] 4.4. Partial Download Cleanup
+         Stories: 8.8
+         Notes: did not try
+  [FAIL] 4.5. Download Interrupted Mid-Stream
+         Stories: 8.8
+         Notes: did not try
+
+  --- Phase 5 — Edge Cases ---
+  [FAIL] 5.1. Inno Setup Upgrade Detection
+         Stories: 8.2
+         Notes: no diolg wizard
+  [PASS] 5.2. Uninstall Preserves User Data
+         Stories: 8.2
+  [PASS] 5.3. Fresh Install After Uninstall
+         Stories: 8.2
+         Notes: could not check cache.db. not sure how to check this
+  [PASS] 5.4. Dev Bypass License Activation
+         Stories: N/A
+  [FAIL] 5.5. --update-failed Flag (Manual)
+         Stories: 8.8
+         Notes: I do the the test with release v0.2.0. the try again show a window "no update info", The Download manually redirect to https://github.com/sylvanoMTL/kipart-search/releases/latest which shows a 404 error . The close works and close the dialog (not the program)
+  [FAIL] 5.6. 24-Hour Cache TTL
+         Stories: 8.5
+         Notes: No dialog on opening (using v0.2.0) same with 0.2.1
+  [FAIL] 5.7. Open Folder Button
+         Stories: 8.6
+         Notes: No Start update donload
+
+  --- Phase 6 — Release Script Validation ---
+  [FAIL] 6.1. Version Gate
+         Stories: 8.3
+         Notes: 1) exiting E           AttributeError: 'MainWindow' object has no attribute '_cached_mpn_statuses'src\kipart_search\gui\main_window.py:1724: AttributeError====================================== short test summary info ====================================== FAILED tests/gui/test_assign_dialog.py::TestStandaloneAssignment::test_apply_assignment_updates_component_in_memory - AttributeError: 'MainWindow' object has no attribute '_cached_mpn_statuses'!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 272 passed in 9.49sERROR: Test suite failed. Fix tests before building a release.
+  [SKIP] 6.2. SHA256 Checksums
+         Stories: 8.3
+         Notes: Not sure if the check sum is the one that is from the local build
+
+============================================================
+VERDICT: 17 FAILURE(S) — SEE NOTES ABOVE
+============================================================

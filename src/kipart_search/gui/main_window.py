@@ -214,13 +214,13 @@ class _UpdateCheckWorker(QThread):
     """Background thread for checking GitHub for app updates.
 
     Emits one of:
-    - UpdateInfo with skipped=False  → update available
-    - UpdateInfo with skipped=True   → update available but skipped by policy
-    - None                           → already up to date
-    - "offline"                      → network check failed
+    - (UpdateInfo, True)   → update result from cache
+    - (UpdateInfo, False)  → update result from fresh API call
+    - (None, False)        → already up to date (fresh check)
+    - ("offline", False)   → network check failed
     """
 
-    result = Signal(object)  # UpdateInfo | None | "offline"
+    result = Signal(object, bool)  # (info, from_cache)
 
     def run(self):
         from kipart_search.core.update_check import (
@@ -242,13 +242,13 @@ class _UpdateCheckWorker(QThread):
             # Mark as skipped (don't suppress — let handler show correct message)
             if cached and (policy == "all" or (skipped and cached.latest_version == skipped)):
                 cached.skipped = True
-            self.result.emit(cached)
+            self.result.emit(cached, True)
             return
         log.info("Update check: querying GitHub API")
         info = check_for_update(__version__, skipped_version=skipped, skip_policy=policy)
         if info:
             save_update_cache(cfg, info)
-            self.result.emit(info)
+            self.result.emit(info, False)
         elif info is None:
             # Distinguish "up to date" from "network failed": check_for_update
             # returns None for both.  Try a minimal connectivity test.
@@ -257,10 +257,10 @@ class _UpdateCheckWorker(QThread):
                 httpx.head("https://api.github.com", timeout=3.0)
                 # Reachable → genuinely up to date
                 log.info("Update check: already up to date (v%s)", __version__)
-                self.result.emit(None)
+                self.result.emit(None, False)
             except (httpx.HTTPError, httpx.TimeoutException):
                 log.info("Update check: offline or GitHub unreachable")
-                self.result.emit("offline")
+                self.result.emit("offline", False)
 
 
 class MainWindow(QMainWindow):
@@ -465,8 +465,9 @@ class MainWindow(QMainWindow):
         self._update_check_worker.result.connect(self._on_update_check_result)
         self._update_check_worker.start()
 
-    def _on_update_check_result(self, info):
+    def _on_update_check_result(self, info, from_cache: bool = False):
         """Show status bar notification if a newer version is available."""
+        source = "cached" if from_cache else "GitHub"
         if info == "offline":
             # Network unavailable — show version, no popup
             self._update_label.setText(f"  v{__version__}  ")
@@ -486,6 +487,11 @@ class MainWindow(QMainWindow):
             )
             self._update_label.setCursor(Qt.ArrowCursor)
             self._update_label.setVisible(True)
+            if info is not None and info.skipped:
+                self.log_panel.log(
+                    f"Update v{info.latest_version} available but skipped ({source})")
+            else:
+                self.log_panel.log(f"Up to date v{__version__} ({source})")
             # Auto-show dialog on startup
             if getattr(self, "_auto_show_update_dialog", False):
                 self._auto_show_update_dialog = False
@@ -501,6 +507,7 @@ class MainWindow(QMainWindow):
             return
         self._update_info = info
         self._update_release_url = info.release_url
+        self.log_panel.log(f"Update available: v{info.latest_version} ({source})")
         self._update_label.setText(f"  Update available: v{info.latest_version}  ")
         self._update_label.setStyleSheet(
             "QLabel { color: #b8860b; padding: 0 6px; }"

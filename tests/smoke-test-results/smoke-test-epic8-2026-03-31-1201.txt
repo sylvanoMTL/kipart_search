@@ -1,0 +1,23 @@
+============================================================
+EPIC 8 SMOKE TEST RESULTS
+Installer, Auto-Update & Release Pipeline
+============================================================
+Date: 2026-03-31 12:01:03
+Release A: v0.3.0  |  Release B: v0.3.1
+
+Total:   1
+Passed:  0
+Failed:  1
+Skipped: 0
+Not run: 21
+
+DETAILED RESULTS:
+
+  --- Phase 1 — Build & Install Release A (v0.3.0) ---
+  [FAIL] 1.1. Tag & Push to Trigger CI Build
+         Stories: 8.3, 8.4
+         Notes: [22m45s] ▸ Build and package (6/16)    [23m00s] ▸ Build and package (6/16)    [23m15s] ▸ Build and package (6/16)    ✓ Build and package    ✓ Smoke test compiled binary    ✗ Run unit tests    - Install Inno Setup (skipped)    - Verify Inno Setup installation (skipped)    - Compile Inno Setup installer (skipped)    - Verify installer artifact (skipped)    - Generate SHA256 checksums (skipped)    - Extract release notes (skipped)    - Upload release (skipped)  ✗ CI finished with conclusion: failure    gh run view 23792834003 --log-failed
+
+============================================================
+VERDICT: 1 FAILURE(S) — SEE NOTES ABOVE
+============================================================
