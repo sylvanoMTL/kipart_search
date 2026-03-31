@@ -7,6 +7,7 @@ import logging
 from PySide6.QtCore import QThread, Signal, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QRadioButton,
     QVBoxLayout,
     QWidget,
 )
@@ -331,6 +333,34 @@ class SourcePreferencesDialog(QDialog):
 
         layout.addWidget(license_group)
 
+        # ── Releases section ──
+        releases_group = QGroupBox("Releases")
+        releases_layout = QVBoxLayout(releases_group)
+
+        from kipart_search.core.update_check import load_skip_policy
+        from kipart_search.core.paths import config_path
+        current_policy = load_skip_policy(config_path())
+
+        self._skip_policy_group = QButtonGroup(self)
+        self._radio_none = QRadioButton("Notify me of new releases")
+        self._radio_next = QRadioButton("Skip the next release only")
+        self._radio_all = QRadioButton("Skip all future releases")
+        self._skip_policy_group.addButton(self._radio_none)
+        self._skip_policy_group.addButton(self._radio_next)
+        self._skip_policy_group.addButton(self._radio_all)
+        releases_layout.addWidget(self._radio_none)
+        releases_layout.addWidget(self._radio_next)
+        releases_layout.addWidget(self._radio_all)
+
+        if current_policy == "all":
+            self._radio_all.setChecked(True)
+        elif current_policy == "next":
+            self._radio_next.setChecked(True)
+        else:
+            self._radio_none.setChecked(True)
+
+        layout.addWidget(releases_group)
+
         # Load current configs
         configs = self._config_manager.get_all_configs()
         config_map = {c.source_name: c for c in configs}
@@ -474,6 +504,17 @@ class SourcePreferencesDialog(QDialog):
 
     def _on_accept(self):
         """Save all configuration and close."""
+        # Save release skip policy
+        from kipart_search.core.update_check import save_skip_policy
+        from kipart_search.core.paths import config_path
+        if self._radio_all.isChecked():
+            policy = "all"
+        elif self._radio_next.isChecked():
+            policy = "next"
+        else:
+            policy = "none"
+        save_skip_policy(config_path(), policy)
+
         default_source = self._default_combo.currentText()
 
         configs: list[SourceConfig] = []

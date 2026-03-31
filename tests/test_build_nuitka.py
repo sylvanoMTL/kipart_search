@@ -528,15 +528,19 @@ class TestCompileInstaller:
     def test_invokes_iscc_with_version_and_paths(self, fake_dist):
         """compile_installer() calls iscc with /D flags for version, output, and source."""
         version = build_nuitka.read_base_version()
-        # Create the expected output file so the post-compile check passes
         installer = fake_dist / f"kipart-search-{version}-setup.exe"
         installer.write_bytes(b"FAKE_INSTALLER")
+
+        def _fake_iscc(*args, **kwargs):
+            # Simulate iscc creating the output file (pre-delete removes it)
+            installer.write_bytes(b"FAKE_INSTALLER")
+            return MagicMock(returncode=0)
+
         # Mock os.path.relpath to avoid cross-drive ValueError on CI
         # (repo on D:, temp on C:). Production code handles this gracefully.
         with patch("build_nuitka.shutil.which", return_value="iscc"), \
-             patch("build_nuitka.subprocess.run") as mock_run, \
+             patch("build_nuitka.subprocess.run", side_effect=_fake_iscc) as mock_run, \
              patch("build_nuitka.os.path.relpath", side_effect=ValueError("cross-drive")):
-            mock_run.return_value = MagicMock(returncode=0)
             build_nuitka.compile_installer(output_dir=str(fake_dist))
             mock_run.assert_called_once()
             cmd = mock_run.call_args[0][0]

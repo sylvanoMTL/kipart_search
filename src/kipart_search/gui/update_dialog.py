@@ -1,4 +1,24 @@
-"""Update dialog with download progress for app updates."""
+"""Update dialog with download progress for app updates.
+
+Replaces: src/kipart_search/gui/update_dialog.py
+
+CHANGES FROM ORIGINAL (2026-03-30)
+====================================
+
+1. Imports (line 25-30 → line 25-28):
+   - REMOVED: get_app_exe_path, launch_shim_and_exit, write_update_shim
+   - ADDED: launch_installer
+   - KEPT: is_compiled_build (unchanged)
+
+2. _on_install_now() (lines 288-320):
+   - REMOVED: get_app_exe_path() call, write_update_shim(), launch_shim_and_exit()
+   - ADDED: launch_installer() — single os.startfile() call
+   - See update_shim.py module docstring for full rationale.
+
+3. Everything else is UNCHANGED: _DownloadWorker, __init__, _on_skip,
+   _on_update_now, _on_progress, _on_download_finished, _on_download_error,
+   _on_open_folder, _on_open_release_page.
+"""
 
 from __future__ import annotations
 
@@ -23,10 +43,8 @@ from PySide6.QtWidgets import (
 from kipart_search import __version__
 from kipart_search.core.update_check import UpdateInfo
 from kipart_search.core.update_shim import (
-    get_app_exe_path,
     is_compiled_build,
-    launch_shim_and_exit,
-    write_update_shim,
+    launch_installer,
 )
 
 
@@ -88,7 +106,7 @@ class _DownloadWorker(QThread):
                 return
             self.finished.emit(str(self.dest))
         except Exception as e:
-            # Leave .partial file in temp — startup cleanup (AC #7) handles it
+            # Leave .partial file in temp — startup cleanup handles it
             self.error.emit(str(e))
 
 
@@ -199,9 +217,11 @@ class UpdateDialog(QDialog):
     def _on_skip(self):
         """Persist the skipped version and close."""
         from kipart_search.core.paths import config_path
-        from kipart_search.core.update_check import save_skipped_version
+        from kipart_search.core.update_check import save_skipped_version, save_skip_policy
 
-        save_skipped_version(config_path(), self._info.latest_version)
+        cfg = config_path()
+        save_skipped_version(cfg, self._info.latest_version)
+        save_skip_policy(cfg, "next")
         self.reject()
 
     def _on_update_now(self):
@@ -267,14 +287,14 @@ class UpdateDialog(QDialog):
             )
             self._status_label.setText(
                 "Your antivirus may have blocked the update.\n"
-                "Download manually from GitHub.\n\n"
+                "Download manually from the release page.\n\n"
                 f"URL copied to clipboard: {release_url}"
             )
             QApplication.clipboard().setText(release_url)
         else:
             self._status_label.setText(
                 f"Download failed: {error_msg}\n\n"
-                "Download may have been blocked. Download manually from GitHub."
+                "Download may have been blocked. Download manually from the release page."
             )
 
         # Re-enable buttons and add fallback link
@@ -285,39 +305,56 @@ class UpdateDialog(QDialog):
         self._fallback_btn.setVisible(True)
         self._close_btn.setVisible(True)
 
+    # === REWRITTEN METHOD (was lines 288-320 in original) ==================
+
     def _on_install_now(self):
-        """Confirm UAC warning, write the update shim, launch it, and quit."""
+        """Launch the installer via os.startfile() and quit the app.
+
+        Uses the simplified update mechanism (see update_shim.py docstring):
+          1. launch_installer() calls os.startfile() — the Python equivalent
+             of MATLAB's winopen(), i.e. Win32 ShellExecuteW("open", ...).
+          2. Windows shows the UAC prompt (installer manifest requests admin).
+          3. QApplication.quit() exits the app cooperatively.
+          4. Inno Setup's Restart Manager closes any remaining process via
+             WM_CLOSE (CloseApplications=yes in the .iss script).
+          5. Installer replaces files in Program Files.
+          6. User relaunches from Start Menu / Desktop shortcut.
+
+        This replaces the old .bat shim approach that caused a visible CMD
+        window and "INFO: No tasks are running" message on Windows 11.
+        """
         reply = QMessageBox.information(
             self,
             "Install Update",
-            "Windows will ask for permission to install.\nClick Yes to continue.",
+            "Windows will ask for permission to install.\nClick OK to continue.",
             QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
         )
         if reply != QMessageBox.StandardButton.Ok:
             return
 
+        # Launch installer via os.startfile() — see launch_installer() docstring
         installer = Path(self._downloaded_path)
-        app_exe = get_app_exe_path()
-        try:
-            shim = write_update_shim(installer, app_exe)
-            ok = launch_shim_and_exit(shim)
-        except Exception:
-            ok = False
+        ok = launch_installer(installer)
 
         if not ok:
             QApplication.clipboard().setText(self._downloaded_path)
             QMessageBox.warning(
                 self,
                 "Install Failed",
-                f"Automatic update couldn't start. Installer saved to:\n"
+                f"Could not launch the installer automatically.\n\n"
+                f"The installer has been saved to:\n"
                 f"{self._downloaded_path}\n\n"
-                "Path copied to clipboard. "
+                "Path copied to clipboard.\n"
                 "Please close KiPart Search and run it manually.",
             )
             return
 
-        # Shim launched — quit the app so the installer can proceed
+        # Installer launched — quit the app so Inno Setup can replace files.
+        # If the app hasn't exited by the time Inno Setup needs the files,
+        # the Restart Manager sends WM_CLOSE to handle it.
         QApplication.quit()
+
+    # === END REWRITTEN METHOD ==============================================
 
     def _on_open_folder(self):
         """Open the folder containing the downloaded installer."""

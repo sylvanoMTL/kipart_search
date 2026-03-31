@@ -1,0 +1,83 @@
+============================================================
+EPIC 8 SMOKE TEST RESULTS
+Installer, Auto-Update & Release Pipeline
+============================================================
+Date: 2026-03-31 10:37:11
+Release A: v0.3.0  |  Release B: v0.3.1
+
+Total:   23
+Passed:  17
+Failed:  6
+Skipped: 0
+
+DETAILED RESULTS:
+
+  --- Phase 1 — Build & Install Release A (v0.3.0) ---
+  [PASS] 1.1. Tag & Push to Trigger CI Build
+         Stories: 8.3, 8.4
+  [PASS] 1.2. Download & Install Release A
+         Stories: 8.2, 8.4
+  [PASS] 1.3. Launch Release A — Version & Update Dialog
+         Stories: 8.1, 8.2, 8.5
+  [PASS] 1.4. platformdirs Data Paths
+         Stories: 8.1
+  [PASS] 1.5. Basic Functionality
+         Stories: all
+
+  --- Phase 2 — Build Release B & Update Detection ---
+  [PASS] 2.1. Build Release B (v0.3.1)
+         Stories: 8.3, 8.4
+  [PASS] 2.2. Update Check Detects Release B on Startup
+         Stories: 8.5, 8.6
+  [PASS] 2.3. Full Download & Install (Happy Path)
+         Stories: 8.6, 8.7
+  [PASS] 2.4. Post-Update Functionality
+         Stories: 8.7
+
+  --- Phase 3 — Alternative Update Flows ---
+  [PASS] 3.1. Remind Me Later
+         Stories: 8.6
+  [FAIL] 3.2. Skip This Version
+         Stories: 8.6
+         Notes: Not a fail, but if the "Skipped version" is enable, on a a new lauch, a popup says "you are running the latest version (v0.3.0)" which is not a correct statment
+
+  --- Phase 4 — Failure & Resilience ---
+  [FAIL] 4.1. UAC Denial Recovery
+         Stories: 8.8
+         Notes: App does not relaucng and on laucngh there is no update fail. Likely this smoke test is obsolete siunce the new way to update
+  [FAIL] 4.2. Download Manually Fallback
+         Stories: 8.8
+         Notes: & 'C:\Program Files\KiPart Search\kipart-search.exe' --update-failed  does not trigger any dialog, likely this is an obsolete procedure. There is no need for this, it is over engineered
+  [FAIL] 4.3. Offline Graceful Degradation
+         Stories: 8.5
+         Notes: App doe snot crash, but there is no Offline messages,. Not sure what is a gracefull message (no error) we might need to discuss this more. A side note, is that skip/unskip furure release should be able to be toggled in the preference window.
+  [PASS] 4.4. Partial Download Cleanup
+         Stories: 8.8
+         Notes: Cannot comment on this, I did not understand the test
+  [FAIL] 4.5. --update-failed Flag
+         Stories: 8.8
+         Notes: Once again 'C:\Program Files\KiPart Search\kipart-search.exe' --update-failed  does not show a popup window, likely due to the new way of updating the software, is the test up to date? please check !
+
+  --- Phase 5 — Edge Cases ---
+  [PASS] 5.1. Inno Setup Upgrade Detection
+         Stories: 8.2
+  [PASS] 5.2. Uninstall Preserves User Data
+         Stories: 8.2
+  [PASS] 5.3. Fresh Install After Uninstall
+         Stories: 8.2
+  [FAIL] 5.4. 24-Hour Cache TTL
+         Stories: 8.5
+         Notes: Not sure if this is a fail, I suspect there is no check due to new way of updating the software. Maybe this test is obsolete
+  [PASS] 5.5. Help > Check for Updates (Manual Trigger)
+         Stories: 8.5, 8.6
+
+  --- Phase 6 — Release Script Validation ---
+  [PASS] 6.1. Version Gate
+         Stories: 8.3
+  [PASS] 6.2. SHA256 Checksums
+         Stories: 8.3
+         Notes: Note that the .env\Scripts\python.exe release.py --skip-version-gate --skip-tests  throwed the following error at the end: Creating setup files   Verification successful   The output file appears to be in use (32). Retrying: kipart-search-0.3.1-setup.exe   The output file appears to be in use (32). Retrying: kipart-search-0.3.1-setup.exe   The output file appears to be in use (32). Retrying: kipart-search-0.3.1-setup.exe   The output file appears to be in use (32). Retrying: kipart-search-0.3.1-setup.exeError in C:\Git_Repo_Clones\kipart-search\installer\kipart-search.iss: Could not copy "C:\Program Files (x86)\Inno Setup 6\SetupLdr.e32" to "C:\Git_Repo_Clones\kipart-search\dist\kipart-search-0.3.1-setup.exe".Error 32: The process cannot access the file because it is being used by another process.Compile aborted.Traceback (most recent call last):  File "C:\Git_Repo_Clones\kipart-search\release.py", line 594, in <module>    sys.exit(main())             ^^^^^^  File "C:\Git_Repo_Clones\kipart-search\release.py", line 579, in main    compile_installer(output_dir=args.output_dir)  File "C:\Git_Repo_Clones\kipart-search\build_nuitka.py", line 457, in compile_installer    subprocess.run(cmd, check=True)  File "C:\Python\Python311\Lib\subprocess.py", line 571, in run    raise CalledProcessError(retcode, process.args,subprocess.CalledProcessError: Command '['C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe', '/DMyAppVersion=0.3.1', '/DMyOutputDir=..\\dist', '/DMySourceDir=..\\dist\\__main__.dist', 'C:\\Git_Repo_Clones\\kipart-search\\installer\\kipart-search.iss']' returned non-zero exit status 2.
+
+============================================================
+VERDICT: 6 FAILURE(S) — SEE NOTES ABOVE
+============================================================

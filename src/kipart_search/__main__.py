@@ -49,9 +49,8 @@ def main():
     _migrate_data()
     _init_keyring_compiled()
     _cleanup_partial_downloads()
-    update_failed = "--update-failed" in sys.argv
     from kipart_search.gui.main_window import run_app
-    return run_app(update_failed=update_failed)
+    return run_app()
 
 
 if __name__ == "__main__":

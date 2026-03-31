@@ -1,0 +1,39 @@
+============================================================
+EPIC 8 SMOKE TEST RESULTS
+Installer, Auto-Update & Release Pipeline
+============================================================
+Date: 2026-03-29 17:15:42
+Release A: v0.3.0  |  Release B: v0.3.1
+
+Total:   8
+Passed:  7
+Failed:  1
+Skipped: 0
+Not run: 15
+
+DETAILED RESULTS:
+
+  --- Phase 1 — Build & Install Release A (v0.3.0) ---
+  [PASS] 1.1. Tag & Push to Trigger CI Build
+         Stories: 8.3, 8.4
+  [PASS] 1.2. Download & Install Release A
+         Stories: 8.2, 8.4
+  [PASS] 1.3. Launch Release A — Version & Update Dialog
+         Stories: 8.1, 8.2, 8.5
+  [PASS] 1.4. platformdirs Data Paths
+         Stories: 8.1
+  [PASS] 1.5. Basic Functionality
+         Stories: all
+
+  --- Phase 2 — Build Release B & Update Detection ---
+  [PASS] 2.1. Build Release B (v0.3.1)
+         Stories: 8.3, 8.4
+  [PASS] 2.2. Update Check Detects Release B on Startup
+         Stories: 8.5, 8.6
+  [FAIL] 2.3. Full Download & Install (Happy Path)
+         Stories: 8.6, 8.7
+         Notes: after clicking ok on the windows dialog saying: Windows Will ask for permission to install, clicking ok, the program close then a CMD console appear a brief message is displayed and the console close. nothing happen. By default the installer is blocked by windows, which may explain why. When relaucnhing manually the release is still the release A
+
+============================================================
+VERDICT: 1 FAILURE(S) — SEE NOTES ABOVE
+============================================================
