@@ -255,7 +255,15 @@ class _UpdateCheckWorker(QThread):
             import httpx
             try:
                 httpx.head("https://api.github.com", timeout=3.0)
-                # Reachable → genuinely up to date
+                # Reachable → genuinely up to date.  Save a cache entry so
+                # the 24h TTL prevents repeated API calls.
+                from kipart_search.core.update_check import UpdateInfo
+                save_update_cache(cfg, UpdateInfo(
+                    latest_version=__version__,
+                    release_url="",
+                    release_notes="",
+                    check_time=time.time(),
+                ))
                 log.info("Update check: already up to date (v%s)", __version__)
                 self.result.emit(None, False)
             except (httpx.HTTPError, httpx.TimeoutException):
