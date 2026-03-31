@@ -1996,6 +1996,16 @@ def _create_splash(app: QApplication) -> "QSplashScreen":
                 _Qt.AlignmentFlag.AlignHCenter | _Qt.AlignmentFlag.AlignCenter,
                 f"v{__version__}",
             )
+
+            site_font = QFont()
+            site_font.setPointSize(9)
+            painter.setFont(site_font)
+            painter.setPen(QColor("#666680"))
+            painter.drawText(
+                0, logical_h - 30, logical_w, 20,
+                _Qt.AlignmentFlag.AlignHCenter | _Qt.AlignmentFlag.AlignBottom,
+                "MecaFrog.com",
+            )
         finally:
             painter.end()
 
