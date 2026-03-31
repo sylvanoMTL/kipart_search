@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-17
-last_updated: 2026-03-28  # Story 8.8 done after review
+last_updated: 2026-03-31  # Story 9.2 created (PySide6 testing cheat sheet)
 project: kipart-search
 project_key: NOKEY
 tracking_system: file-system
@@ -103,7 +103,7 @@ development_status:
   epic-7-retrospective: done
 
   # Epic 8: Installer, Auto-Update & Release Pipeline
-  epic-8: in-progress
+  epic-8: done
   8-1-platformdirs-data-path-migration: done
   8-2-inno-setup-installer-script: done
   8-3-automated-release-build-script: done
@@ -112,8 +112,9 @@ development_status:
   8-6-update-dialog-with-download: done
   8-7-update-shim-and-auto-install: done
   8-8-update-failure-resilience: done
-  epic-8-retrospective: optional
+  epic-8-retrospective: done
 
   # Epic 9: User Verification & Per-Project State
   epic-9: in-progress
   9-1-user-verification-status: done
+  9-2-pyside6-testing-cheat-sheet: ready-for-dev
