@@ -155,10 +155,7 @@ def _build_tests() -> list[dict]:
             "story": "8.5, 8.6",
             "steps": [
                 "Clear the update cache so the app does a fresh GitHub check:",
-                "  PS> $p = \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"",
-                "  PS> $d = Get-Content $p | ConvertFrom-Json",
-                "  PS> $d.PSObject.Properties.Remove('update_check')",
-                "  PS> $d | ConvertTo-Json -Depth 10 | Set-Content $p",
+                "  PS> powershell -File clear_update_cache.ps1",
                 "",
                 f"Launch Release A (v{A} is still installed):",
                 "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
@@ -225,10 +222,7 @@ def _build_tests() -> list[dict]:
                 "  (complete wizard)",
                 "",
                 "Clear update cache:",
-                "  PS> $p = \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"",
-                "  PS> $d = Get-Content $p | ConvertFrom-Json",
-                "  PS> $d.PSObject.Properties.Remove('update_check')",
-                "  PS> $d | ConvertTo-Json -Depth 10 | Set-Content $p",
+                "  PS> powershell -File clear_update_cache.ps1",
                 "",
                 "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
                 f"  GUI> UpdateDialog appears with v{B}",
@@ -236,9 +230,7 @@ def _build_tests() -> list[dict]:
                 "  GUI> Close app",
                 "",
                 "Expire cache and relaunch:",
-                "  PS> $d = Get-Content $p | ConvertFrom-Json",
-                "  PS> $d.update_check.check_time = 0",
-                "  PS> $d | ConvertTo-Json -Depth 10 | Set-Content $p",
+                "  PS> powershell -File clear_update_cache.ps1 -Expire",
                 "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
                 "  GUI> UpdateDialog appears again (cache expired → fresh check)",
                 "  GUI> Close app",
@@ -250,7 +242,7 @@ def _build_tests() -> list[dict]:
             "name": "Skip This Version",
             "story": "8.6",
             "steps": [
-                "Clear update cache (same as 3.1 setup).",
+                "  PS> powershell -File clear_update_cache.ps1",
                 "",
                 "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
                 "  GUI> UpdateDialog appears → click 'Skip This Version'",
@@ -262,10 +254,7 @@ def _build_tests() -> list[dict]:
                 f"       → contains \"skipped_version\": \"{B}\"",
                 "",
                 "Expire cache and relaunch:",
-                "  PS> $p = \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"",
-                "  PS> $d = Get-Content $p | ConvertFrom-Json",
-                "  PS> $d.update_check.check_time = 0",
-                "  PS> $d | ConvertTo-Json -Depth 10 | Set-Content $p",
+                "  PS> powershell -File clear_update_cache.ps1 -Expire",
                 "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
                 f"  GUI> Startup popup: 'latest version' (v{B} is skipped)",
                 "  GUI> NO UpdateDialog appears",
@@ -281,7 +270,7 @@ def _build_tests() -> list[dict]:
             "story": "8.8",
             "steps": [
                 f"Reinstall Release A (if not already on v{A}).",
-                "Clear update cache (same as before).",
+                "  PS> powershell -File clear_update_cache.ps1",
                 "",
                 "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
                 "  GUI> UpdateDialog appears → click 'Update Now'",
@@ -332,7 +321,9 @@ def _build_tests() -> list[dict]:
             "steps": [
                 "  WIN> Disable Wi-Fi / unplug Ethernet",
                 "",
-                "Clear update cache, then launch:",
+                "  PS> powershell -File clear_update_cache.ps1",
+                "",
+                "Launch:",
                 "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
                 "",
                 "  GUI> App starts normally — no crash, no error dialog",
@@ -426,11 +417,8 @@ def _build_tests() -> list[dict]:
                 "       (no new GitHub API call within 24 hours)",
                 "  GUI> Close app",
                 "",
-                "Expire the cache by setting check_time to 0:",
-                "  PS> $p = \"$env:LOCALAPPDATA\\KiPartSearch\\config.json\"",
-                "  PS> $d = Get-Content $p | ConvertFrom-Json",
-                "  PS> $d.update_check.check_time = 0",
-                "  PS> $d | ConvertTo-Json -Depth 10 | Set-Content $p",
+                "Expire the cache:",
+                "  PS> powershell -File clear_update_cache.ps1 -Expire",
                 "",
                 "Relaunch:",
                 "  PS> & 'C:\\Program Files\\KiPart Search\\kipart-search.exe'",
@@ -649,7 +637,7 @@ def write_report(results: list[dict]) -> Path:
         lines.append("VERDICT: ALL PASSED")
     lines.append("=" * 60)
 
-    dist = Path(__file__).parent / "dist"
+    dist = Path(__file__).parent.parent / "dist"
     dist.mkdir(exist_ok=True)
     out = dist / f"smoke-test-epic8-{timestamp}.txt"
     out.write_text("\n".join(lines), encoding="utf-8")
