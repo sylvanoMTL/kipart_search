@@ -108,6 +108,10 @@ class TestUpdateDialogQuarantineMessage:
         assert "antivirus" in dlg._status_label.text().lower()
 
 
+@pytest.mark.xfail(
+    reason="write_update_shim removed from update_dialog — .bat shim replaced "
+    "by direct Inno Setup installer launch",
+)
 class TestUpdateDialogShimFailureClipboard:
     """Test that shim launch failure copies installer path to clipboard."""
 

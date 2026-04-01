@@ -9,6 +9,30 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _isolate_qsettings(tmp_path):
+    """Redirect QSettings to a temp directory so tests never touch the real
+    Windows registry or pollute state for subsequent tests.
+
+    Uses INI format + tmp_path so every test gets a clean slate.
+    """
+    try:
+        from PySide6.QtCore import QSettings
+    except ImportError:
+        # PySide6 not installed — skip fixture for core-only tests
+        yield
+        return
+
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(
+        QSettings.Format.IniFormat,
+        QSettings.Scope.UserScope,
+        str(tmp_path),
+    )
+    yield
+    # No cleanup needed — tmp_path is removed by pytest automatically
+
+
+@pytest.fixture(autouse=True)
 def _skip_welcome_dialog():
     """Prevent the welcome dialog from blocking during MainWindow tests."""
     with patch(

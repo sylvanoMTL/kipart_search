@@ -188,6 +188,10 @@ class TestDefaultSort:
 
 # ── Re-verify Button Tests ──
 
+@pytest.mark.xfail(
+    reason="VerifyPanel.reverify_button / reverify_requested removed — "
+    "re-verify now uses toolbar Scan action + refresh_requested signal",
+)
 class TestReverifyButton:
     def test_button_hidden_initially(self):
         """Re-verify button should be hidden before any scan."""

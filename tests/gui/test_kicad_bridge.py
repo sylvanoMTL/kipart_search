@@ -405,11 +405,12 @@ class TestScanWorker:
         with qtbot.waitSignal(worker.scan_complete, timeout=5000) as blocker:
             worker.start()
 
-        components, mpn_statuses, db_mtime = blocker.args
+        components, mpn_statuses, db_mtime, is_refresh = blocker.args
         assert len(components) == 1
         assert components[0].reference == "C1"
         assert "C1" in mpn_statuses
         assert db_mtime == 1000.0
+        assert is_refresh is False
 
     def test_scan_worker_error_on_empty_board(self, qtbot):
         """ScanWorker emits error when no components found."""
@@ -449,7 +450,7 @@ class TestScanWorker:
         with qtbot.waitSignal(worker.scan_complete, timeout=5000) as blocker:
             worker.start()
 
-        components, mpn_statuses, _ = blocker.args
+        components, mpn_statuses, _db_mtime, _is_refresh = blocker.args
         assert mpn_statuses["C1"] == Confidence.RED
 
     def test_scan_worker_handles_exception(self, qtbot):
@@ -507,6 +508,11 @@ class TestScanWorker:
 class TestSelectComponent:
     """Test select_component() for highlighting in KiCad."""
 
+    @pytest.mark.xfail(
+        reason="KiCad 9 IPC API limitation: select_component() is a no-op because "
+        "ClearSelection/AddToSelection have no handlers — see kicad_bridge.py:237",
+        run=True,
+    )
     def test_select_component_success(self):
         """select_component() returns True and calls board selection methods."""
         fp = _make_mock_footprint(reference="C1")
@@ -534,6 +540,11 @@ class TestSelectComponent:
 class TestWriteField:
     """Test write_field() for writing back to KiCad."""
 
+    @pytest.mark.xfail(
+        reason="KiCad 9 IPC API limitation: write_field() disabled because "
+        "update_items() strips custom fields — see kicad_bridge.py:263",
+        run=True,
+    )
     def test_write_empty_custom_field(self):
         """write_field() writes to empty custom field and returns True."""
         fp = _make_mock_footprint(
@@ -562,6 +573,11 @@ class TestWriteField:
         assert result is False
         bridge._board.update_items.assert_not_called()
 
+    @pytest.mark.xfail(
+        reason="KiCad 9 IPC API limitation: write_field() disabled because "
+        "update_items() strips custom fields — see kicad_bridge.py:263",
+        run=True,
+    )
     def test_write_datasheet_field(self):
         """write_field() can write to the datasheet predefined field."""
         fp = _make_mock_footprint(reference="C1", datasheet="")
@@ -600,6 +616,10 @@ class TestWriteField:
 class TestSelectComponentEdgeCases:
     """Story 5.2 — Edge case tests for select_component() cross-probe."""
 
+    @pytest.mark.xfail(
+        reason="KiCad 9: select_component() is a no-op — selection API not wired up",
+        run=True,
+    )
     def test_select_calls_clear_then_add_in_order(self):
         """select_component() calls clear_selection before add_to_selection."""
         fp = _make_mock_footprint(reference="R1")
@@ -658,6 +678,10 @@ class TestSelectComponentEdgeCases:
         bridge._board.clear_selection.assert_not_called()
         bridge._board.add_to_selection.assert_not_called()
 
+    @pytest.mark.xfail(
+        reason="KiCad 9: select_component() is a no-op — selection API not wired up",
+        run=True,
+    )
     def test_select_multiple_components_sequentially(self):
         """Selecting multiple components clears selection each time."""
         fp1 = _make_mock_footprint(reference="C1")
@@ -687,6 +711,10 @@ class TestSelectComponentEdgeCases:
         assert "C1" not in bridge._footprint_cache
         assert "R1" in bridge._footprint_cache
 
+    @pytest.mark.xfail(
+        reason="KiCad 9: select_component() is a no-op — selection API not wired up",
+        run=True,
+    )
     def test_select_after_rescan_uses_new_cache(self):
         """After re-scan, select_component uses the new footprint cache."""
         fp1 = _make_mock_footprint(reference="C1")

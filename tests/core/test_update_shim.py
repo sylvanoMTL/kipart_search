@@ -11,12 +11,29 @@ import pytest
 
 from kipart_search.core.update_shim import (
     cleanup_stale_partial_downloads,
-    get_app_exe_path,
-    launch_shim_and_exit,
-    write_update_shim,
 )
 
+# These functions were removed when the .bat shim approach was replaced
+# by direct Inno Setup installer launch (Story 8.7).
+_SHIM_REMOVED = pytest.mark.xfail(
+    reason="write_update_shim, get_app_exe_path, launch_shim_and_exit "
+    "removed in Story 8.7 — replaced by launch_installer()",
+    run=False,
+)
 
+try:
+    from kipart_search.core.update_shim import (
+        get_app_exe_path,
+        launch_shim_and_exit,
+        write_update_shim,
+    )
+except ImportError:
+    get_app_exe_path = None  # type: ignore[assignment]
+    launch_shim_and_exit = None  # type: ignore[assignment]
+    write_update_shim = None  # type: ignore[assignment]
+
+
+@_SHIM_REMOVED
 class TestWriteUpdateShim:
     """Test write_update_shim() generates a valid .bat file."""
 
@@ -98,6 +115,7 @@ class TestWriteUpdateShim:
         assert "100%dev" not in content.replace("100%%dev", "")
 
 
+@_SHIM_REMOVED
 class TestGetAppExePath:
     """Test get_app_exe_path() returns a Path."""
 
@@ -110,6 +128,7 @@ class TestGetAppExePath:
         assert result == Path(sys.executable).resolve()
 
 
+@_SHIM_REMOVED
 class TestLaunchShimAndExit:
     """Test launch_shim_and_exit() calls subprocess.Popen correctly."""
 
@@ -153,6 +172,10 @@ class TestLaunchShimAndExit:
         assert result is False
 
 
+@pytest.mark.xfail(
+    reason="run_app() signature changed — update_failed kwarg removed "
+    "when .bat shim was replaced by direct installer launch",
+)
 class TestUpdateFailedFlag:
     """Test --update-failed flag detection in __main__.py main()."""
 

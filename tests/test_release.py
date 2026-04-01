@@ -306,7 +306,11 @@ class TestExtractChangelog:
         monkeypatch.setattr("sys.argv", ["release.py", "--tag", "--skip-version-gate"])
         with patch("release.read_base_version", return_value="0.1.0"), \
              patch("release.extract_changelog", return_value=None), \
-             patch("release.tag_and_push"):
+             patch("release.tag_and_push"), \
+             patch("release.subprocess") as mock_sp, \
+             patch("builtins.input", return_value="y"):
+            # Simulate clean working tree so git check passes
+            mock_sp.run.return_value = MagicMock(stdout="")
             release.main()
         captured = capsys.readouterr()
         assert "WARNING" in captured.out

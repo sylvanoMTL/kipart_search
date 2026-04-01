@@ -53,12 +53,20 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Testing Rules
 
 - pytest is the test framework — no unittest classes
-- No tests exist yet — start with manual testing, add pytest later
 - Test files go in `tests/` mirroring the `src/kipart_search/` structure
 - Core modules can be tested without any GUI or Qt dependency
-- GUI testing requires QApplication — use `pytest-qt` if/when GUI tests are added
+- GUI testing requires QApplication — `pytest-qt` and `qtbot` handle lifecycle
 - Mock the KiCad IPC API in tests — do not require a running KiCad instance
 - JLCPCB database tests should use a small fixture DB, not the full 500MB download
+
+### PySide6 Testing
+
+Key rules (full guide: `docs/testing-pyside6.md`):
+
+- **Always `wait()` in `closeEvent`**: Any QMainWindow/QDialog that creates QThread workers must call `worker.wait(timeout)` in `closeEvent` — otherwise threads outlive the widget and cause access violations.
+- **Always clean up widgets in fixtures**: Use `qtbot.addWidget(w)` + `w.close()` in yield fixtures. Unclosed widgets cause segfaults on teardown.
+- **Never write to real QSettings in tests**: `conftest.py` provides `_isolate_qsettings` (autouse) that redirects QSettings to a temp directory. No test should touch the Windows registry.
+- **Use `MainWindow.__new__()` for method tests**: Full `MainWindow()` construction crashes on Windows (VerifyPanel init access violation). Test individual methods by creating via `__new__()` and setting only needed attributes.
 
 ### Code Quality & Style Rules
 

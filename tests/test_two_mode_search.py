@@ -204,7 +204,7 @@ class TestSearchOrchestratorSourceRouting:
         orch = SearchOrchestrator()
         assert orch.get_source_names() == []
 
-    def test_search_source_queries_only_named_source(self):
+    def test_search_source_queries_only_named_source(self, pro_license):
         jlcpcb = FakeSource("JLCPCB", JLCPCB_PARTS)
         digikey = FakeSource("DigiKey", DIGIKEY_PARTS)
         orch = SearchOrchestrator()
@@ -223,7 +223,7 @@ class TestSearchOrchestratorSourceRouting:
         results = orch.search_source("100nF", "Mouser")
         assert results == []
 
-    def test_search_all_queries_all_sources(self):
+    def test_search_all_queries_all_sources(self, pro_license):
         jlcpcb = FakeSource("JLCPCB", JLCPCB_PARTS)
         digikey = FakeSource("DigiKey", DIGIKEY_PARTS)
         orch = SearchOrchestrator()

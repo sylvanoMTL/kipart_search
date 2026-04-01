@@ -673,6 +673,12 @@ class TestMismatchAcknowledgmentGate:
 class TestWriteFieldOverwrite:
     """Test KiCadBridge.write_field with allow_overwrite parameter."""
 
+    _xfail_write = pytest.mark.xfail(
+        reason="KiCad 9 IPC API limitation: write_field() disabled because "
+        "update_items() strips custom fields — see kicad_bridge.py:263",
+        run=True,
+    )
+
     def _make_bridge_with_mock_fp(self, field_name: str, current_value: str):
         """Create a KiCadBridge with a mock footprint that has one field."""
         from kipart_search.gui.kicad_bridge import KiCadBridge
@@ -693,6 +699,7 @@ class TestWriteFieldOverwrite:
         bridge._footprint_cache["C1"] = fp
         return bridge, fp
 
+    @_xfail_write
     def test_write_field_allow_overwrite_true(self):
         """write_field(allow_overwrite=True) writes to non-empty field."""
         bridge, fp = self._make_bridge_with_mock_fp("MPN", "OLD-VALUE")
@@ -717,6 +724,7 @@ class TestWriteFieldOverwrite:
 
         assert result is False
 
+    @_xfail_write
     def test_write_field_datasheet_overwrite(self):
         """write_field(allow_overwrite=True) works for datasheet field."""
         bridge, fp = self._make_bridge_with_mock_fp("Datasheet", "https://old.com")
